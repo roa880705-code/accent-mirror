@@ -1,26 +1,27 @@
 @echo off
+chcp 65001 >nul
 cd /d %~dp0
-echo === GitHubから最新版を取り込みます ===
+echo === Updating from GitHub ===
 git pull
 if errorlevel 1 (
   echo.
-  echo git pull に失敗しました。上のエラー内容を確認してください。
+  echo git pull failed. Please check the error above.
   pause
   exit /b 1
 )
 
 echo.
-echo === 必要な部品を確認します ===
+echo === Checking dependencies ===
 call npm install
 if errorlevel 1 (
   echo.
-  echo npm install に失敗しました。上のエラー内容を確認してください。
+  echo npm install failed. Please check the error above.
   pause
   exit /b 1
 )
 
 echo.
-echo === サーバーを起動します ===
-echo （このウィンドウを閉じるとサーバーも止まります）
+echo === Starting server ===
+echo (Closing this window will stop the server)
 call npm start
 pause
