@@ -2277,6 +2277,16 @@ function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature
 
   const hasExpectedLinkingBreak = (speechFeatures?.pronunciationEvents || []).some((event) => event.type === "expected_linking_break" || event.type === "word_boundary_pause");
   if (hasExpectedLinkingBreak || soundSignature?.katakanaVowelHeavy) {
+    // 絶対ルール: カタカナ英語は母音追加・粒立ち・区切りで表現し、子音欠落として扱わない。
+    // このイベントの severity/confidence が "low" だと eventCanAffectMirrorVoice() の
+    // フィルター(severityRank >= 2 相当)を通過できず、hasKatakanaDeliveryForRole() が
+    // 常に false になってしまう。その結果、同じ弱い子音スコアから作られる
+    // consonant_or_phonics イベント(localConsonantOmissionForVoice = 子音欠落表現)が
+    // 優先されてしまい、ルール違反の「てうあって」「もあえ」のような欠落ミラーが
+    // 生成される実害があった(soundSignature 由来の場合のみ再現)。
+    // soundSignature.katakanaVowelHeavy は Azureの音素スコア・長さから直接算出される
+    // 具体的な信号であり、他の consonant_or_phonics 系イベント(hard-codedな語別ロジック)
+    // と同程度の確からしさがあるため、"medium" に統一してフィルターを通過させる。
     localEvents.push({
       id: "katakana-delivery",
       source: hasExpectedLinkingBreak ? "expectedLinkingBreak" : "soundSignature",
@@ -2284,8 +2294,8 @@ function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature
       word: null,
       timeRangeMs: null,
       syllablePosition: { scope: "phrase", fraction: 0.5, slot3: null, syllables: 1 },
-      severity: hasExpectedLinkingBreak ? "medium" : "low",
-      confidence: hasExpectedLinkingBreak ? "medium" : "low",
+      severity: "medium",
+      confidence: "medium",
       targetRoles: ["request-action", "request-ending", "predicate", "predicate-ending", "object", "request-object"],
       englishEvidence: hasExpectedLinkingBreak
         ? "本来つながりやすい英語フレーズが、1語ずつ粒立って聞こえる候補です。"
