@@ -11,7 +11,11 @@ const { analyzePitchFromWav } = require("./src/services/audioPitchService");
 const { buildDeviationTimeline } = require("./src/services/pitchAlignmentService");
 const app = express();
 const PORT = Number(process.env.PORT || 3003);
-const LOG_DIR = path.join(__dirname, "logs");
+// Azure App Service 等でGitHub連携デプロイを使う場合、デプロイのたびにアプリコード
+// フォルダ(__dirname配下)が展開し直されるため、そこに書いたログは消えてしまう。
+// VALIDATION_LOG_DIR を設定すれば、デプロイの影響を受けない永続領域
+// (例: Azure App Service Linuxの /home/logs) にログを保存できる。
+const LOG_DIR = process.env.VALIDATION_LOG_DIR || path.join(__dirname, "logs");
 const VALIDATION_LOG_FILE = path.join(LOG_DIR, "validation-log.jsonl");
 
 // ピッチ判定モデル基準化用: モデル音声(TTS)を毎回合成/評価すると遅くコストもかかるため、

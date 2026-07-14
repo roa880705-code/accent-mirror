@@ -3,6 +3,9 @@
   "version": "0.12.0",
   "private": true,
   "main": "server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "start": "node server.js",
     "start:3003": "set PORT=3003&& node server.js",
