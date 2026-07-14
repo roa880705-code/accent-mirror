@@ -179,10 +179,8 @@ function clearResult({ keepRecording = false } = {}) {
   $("mirrorListener").textContent = "まだありません。";
   $("mirrorVoiceText").textContent = "まだありません。";
   $("mirrorSpeechFeatures").textContent = "まだありません。";
-  $("mirrorTimeline").textContent = "まだありません。";
-  $("mirrorPronunciationEvents").textContent = "まだありません。";
-  $("mirrorReflectionSummary").textContent = "まだありません。";
-  $("mirrorVoicePlan").textContent = "まだありません。";
+  $("mirrorDeviationModel").textContent = "まだありません。";
+  $("mirrorWordBreakdown").textContent = "まだありません。";
   $("mirrorEvidence").textContent = "まだありません。";
   $("mirrorWarning").textContent = "まだありません。";
   $("mirrorVoiceStatus").textContent = "ミラー音声はまだありません。";
