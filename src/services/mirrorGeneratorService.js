@@ -1,4 +1,6 @@
-﻿const WORD_MIRRORS = {
+﻿const pitchThresholds = require("../config/pitchThresholds");
+
+const WORD_MIRRORS = {
   could: {
     target: "クドゥ",
     weak: "クッ",
@@ -1413,7 +1415,11 @@ function buildLengthAndPronunciationSignals(words) {
   };
 }
 
-function classifyIntonationAgainstTarget(intonationFeatures, intonationTarget = {}) {
+// 旧: 絶対(自己相対)判定。riseSemitones は録音内の early→final の自己相対な上昇量で、
+// フラット(0st)を基準に判定するため、疑問文の自然な文末上昇まで「癖」として誤検出しやすい。
+// モデル参照が使えない場合のみのフォールバックとして残し、buildSpeechFeatures 側で
+// 低信頼度(trace)に格下げして音声への反映は抑える。
+function classifyIntonationAgainstTargetLegacy(intonationFeatures, intonationTarget = {}) {
   if (!intonationFeatures?.available) return { status: "unknown", level: "unknown", label: "pitch unavailable" };
   const rise = Number(intonationFeatures.riseSemitones || 0);
   const expected = intonationTarget.expectedFinalContour || "neutral";
@@ -1437,6 +1443,36 @@ function classifyIntonationAgainstTarget(intonationFeatures, intonationTarget = 
   return { status: "borderline", level: "low", label: `borderline ${rise.toFixed(1)}st` };
 }
 
+// 新: モデル音声基準(deviation)判定。riseSemitones はここでは
+// deviation(t) = userSemitone(t) - modelSemitone(t) の文末区間平均を表す
+// (pitchAlignmentService.buildDeviationTimeline が同じ形状で供給する)。
+// deviation ≈ 0 はモデルと同じ動き=自然という意味になるため、閾値は0を中心に対称。
+function classifyIntonationDeviation(intonationFeatures, intonationTarget = {}) {
+  if (!intonationFeatures?.available) return { status: "unknown", level: "unknown", label: "pitch unavailable" };
+  const deviation = Number(intonationFeatures.riseSemitones || 0);
+  const expected = intonationTarget.expectedFinalContour || "neutral";
+  const abs = Math.abs(deviation);
+
+  if (abs <= pitchThresholds.naturalToleranceSemitone) {
+    return { status: "natural", level: "none", label: `model-relative natural Δ${deviation.toFixed(1)}st` };
+  }
+  if (abs <= pitchThresholds.strongDeviationSemitone) {
+    return { status: "trace", level: "low", label: `model-relative trace Δ${deviation.toFixed(1)}st` };
+  }
+  if (deviation > 0) {
+    return { status: "over_rising", level: "high", label: `model-relative over-rising Δ+${deviation.toFixed(1)}st` };
+  }
+  return expected === "moderate_rise"
+    ? { status: "flat_question", level: "high", label: `model-relative flat Δ${deviation.toFixed(1)}st` }
+    : { status: "falling_question", level: "medium", label: `model-relative falling Δ${deviation.toFixed(1)}st` };
+}
+
+function classifyIntonationAgainstTarget(intonationFeatures, intonationTarget = {}) {
+  return intonationFeatures?.basis === "model-relative"
+    ? classifyIntonationDeviation(intonationFeatures, intonationTarget)
+    : classifyIntonationAgainstTargetLegacy(intonationFeatures, intonationTarget);
+}
+
 function buildIntonationSignals(intonationFeatures, intonationTarget) {
   if (!intonationFeatures?.available) {
     return { level: "unknown", label: "pitch unavailable", signals: [], events: [] };
@@ -1453,13 +1489,21 @@ function buildIntonationSignals(intonationFeatures, intonationTarget) {
   const finalMove = contourMoves.slice().reverse().find((move) => ["rise", "fall"].includes(move.direction));
   const finalMoveMagnitude = Math.abs(Number(finalMove?.semitones || 0));
   const hasFinalDirectionalMove = finalMove && finalMoveMagnitude >= 1.0;
-  const hasZigzag = contour.pattern === "zigzag" || contourChanges >= 2 || (hasRiseAndFall && contourRange >= 2.8);
+  // deviation ベース(model-relative)の contour は pitchAlignmentService 側で
+  // 既に pitchThresholds を使って pattern を判定済みなので、それをそのまま信頼する。
+  // 自己相対フォールバック時のみ、旧来の再判定(マジックナンバー)を使う。
+  const isModelRelative = intonationFeatures?.basis === "model-relative";
+  const hasZigzag = isModelRelative
+    ? contour.pattern === "zigzag"
+    : contour.pattern === "zigzag" || contourChanges >= 2 || (hasRiseAndFall && contourRange >= 2.8);
   const hasPhraseMovement = !hasZigzag && (
-    contourChanges >= 1
-    || contourRange >= 2.6
-    || (contour.pattern === "mixed" && contourRange >= 2.0)
-    || hasFinalDirectionalMove
-    || hasRiseAndFall
+    isModelRelative
+      ? contour.pattern === "phrase_movement"
+      : contourChanges >= 1
+        || contourRange >= 2.6
+        || (contour.pattern === "mixed" && contourRange >= 2.0)
+        || hasFinalDirectionalMove
+        || hasRiseAndFall
   );
   if (hasZigzag) {
     return {
@@ -1498,6 +1542,11 @@ function buildIntonationSignals(intonationFeatures, intonationTarget) {
   }
 
   if (classification.status === "natural") {
+    // deviation ≈ 0 は「モデルと一致」を意味するため、model-relative の場合はここで
+    // 追加の「理想の絶対上昇量からのズレ」判定(自己相対専用の概念)は行わない。
+    if (isModelRelative) {
+      return { level: "none", label: classification.label, signals: [], events: [], classification };
+    }
     const expected = intonationTarget?.expectedFinalContour || "neutral";
     const idealRise = expected === "moderate_rise" ? 2.8 : -0.8;
     const subtleGap = Math.abs(rise - idealRise);
@@ -1527,24 +1576,48 @@ function buildIntonationSignals(intonationFeatures, intonationTarget) {
     };
   }
 
-  const labels = {
-    over_rising: "文尾上昇が強すぎる",
-    falling_question: "疑問文なのに文尾が下がる",
-    flat_question: "疑問文の文尾が平坦",
-    borderline: "文尾イントネーションを確認"
-  };
-  const details = {
-    over_rising: `文末の音高が約${rise.toFixed(1)}半音上がっています。この疑問文では上がりすぎで、不安げ・確認っぽく聞こえる候補です。`,
-    falling_question: `文末の音高が約${rise.toFixed(1)}半音下がっています。この疑問文では依頼・質問の感じが弱く聞こえる候補です。`,
-    flat_question: `文末の音高変化が約${rise.toFixed(1)}半音で平坦です。この疑問文では棒読み、または質問らしさが弱く聞こえる候補です。`,
-    borderline: `文末の音高変化は約${rise.toFixed(1)}半音です。目標イントネーションとの違いを確認してください。`
-  };
-  const actions = {
-    over_rising: "文末だけを上げすぎず、自然な軽い上昇で録音し直す。",
-    falling_question: "疑問文らしく、文末を軽く上げる録音と聞き比べる。",
-    flat_question: "最後の一語だけを少し上げ、質問として聞こえるか比べる。",
-    borderline: "文末の上げ下げを意識して、自然な疑問文と聞き比べる。"
-  };
+  const labels = isModelRelative
+    ? {
+        over_rising: "モデルより文尾が上がりすぎ",
+        falling_question: "モデルより文尾が下がっている",
+        flat_question: "モデルは上がるのに文尾が平坦",
+        trace: "モデルとの軽いズレ",
+        borderline: "文尾イントネーションを確認"
+      }
+    : {
+        over_rising: "文尾上昇が強すぎる",
+        falling_question: "疑問文なのに文尾が下がる",
+        flat_question: "疑問文の文尾が平坦",
+        borderline: "文尾イントネーションを確認"
+      };
+  const details = isModelRelative
+    ? {
+        over_rising: `モデル音声と比べて文末の音高が約${rise.toFixed(1)}半音高く動いています。モデルより上がりすぎで、不安げ・確認っぽく聞こえる候補です。`,
+        falling_question: `モデル音声と比べて文末の音高が約${Math.abs(rise).toFixed(1)}半音低く動いています。モデルより下がっている候補です。`,
+        flat_question: `モデル音声は文末で上昇していますが、この録音では約${Math.abs(rise).toFixed(1)}半音分その上昇が不足しています。疑問文の棒読み、または質問らしさが弱く聞こえる候補です。`,
+        trace: `モデル音声との差は約${rise.toFixed(1)}半音で、許容範囲に近い軽いズレです。上級者の微妙な違和感として扱う候補です。`,
+        borderline: `モデル音声との文末の差は約${rise.toFixed(1)}半音です。`
+      }
+    : {
+        over_rising: `文末の音高が約${rise.toFixed(1)}半音上がっています。この疑問文では上がりすぎで、不安げ・確認っぽく聞こえる候補です。`,
+        falling_question: `文末の音高が約${rise.toFixed(1)}半音下がっています。この疑問文では依頼・質問の感じが弱く聞こえる候補です。`,
+        flat_question: `文末の音高変化が約${rise.toFixed(1)}半音で平坦です。この疑問文では棒読み、または質問らしさが弱く聞こえる候補です。`,
+        borderline: `文末の音高変化は約${rise.toFixed(1)}半音です。目標イントネーションとの違いを確認してください。`
+      };
+  const actions = isModelRelative
+    ? {
+        over_rising: "文末だけを上げすぎず、モデル音声と同程度の上昇で録音し直す。",
+        falling_question: "モデル音声の文末の動きに合わせて録音し直す。",
+        flat_question: "モデル音声のように最後の一語を少し上げてみる。",
+        trace: "モデル音声と聞き比べながら文末の上げ下げを微調整する。",
+        borderline: "モデル音声と聞き比べて文末の動きを確認する。"
+      }
+    : {
+        over_rising: "文末だけを上げすぎず、自然な軽い上昇で録音し直す。",
+        falling_question: "疑問文らしく、文末を軽く上げる録音と聞き比べる。",
+        flat_question: "最後の一語だけを少し上げ、質問として聞こえるか比べる。",
+        borderline: "文末の上げ下げを意識して、自然な疑問文と聞き比べる。"
+      };
   const strength = classification.level === "high" ? "strong" : "weak";
   return {
     level: classification.level,
@@ -1560,6 +1633,24 @@ function buildIntonationSignals(intonationFeatures, intonationTarget) {
       action: actions[classification.status] || actions.borderline
     }],
     classification
+  };
+}
+
+// 絶対ルール: trace/low信頼度の候補は分析表示のみとし、音声反映は原則しない。
+// モデル参照が使えず自己相対(絶対)判定にフォールバックした場合、その判定はノイズが
+// 大きく誤検出しやすいことが検証ログ(logs/validation-log.jsonl)で繰り返し指摘されている。
+// そのためフォールバック時は強いステータス(zigzag/phrase_movement/over_rising等)であっても
+// trace(表示のみ・低信頼度)に格下げし、ミラー音声への強い反映を避ける。
+function downgradeFallbackIntonation(intonation, intonationFeatures) {
+  if (intonationFeatures?.basis !== "self-relative-fallback") return intonation;
+  const downgradeStatuses = ["zigzag", "phrase_movement", "over_rising", "falling_question", "flat_question", "borderline"];
+  if (!downgradeStatuses.includes(intonation.classification?.status)) return intonation;
+  return {
+    ...intonation,
+    level: "low",
+    label: `(fallback) ${intonation.label}`,
+    events: intonation.events.map((event) => ({ ...event, level: "low", strength: "weak" })),
+    classification: { ...intonation.classification, status: "trace", level: "low" }
   };
 }
 
@@ -1580,7 +1671,7 @@ function buildSpeechFeatures({ words, scores, consonantAvg, consonantMin, muffle
   const segmentedDelivery = boundaryPauses.events.some((event) => ["expected_linking_break", "word_boundary_pause"].includes(event.type))
     || (localPauseCount >= 2 && localMaxPauseMs >= 170);
   const voiceSpeed = combineVoiceSpeed({ overallSpeed: speed, articulationSpeed, segmentedDelivery: segmentedDelivery && articulationWpm });
-  const intonation = buildIntonationSignals(intonationFeatures, intonationTarget);
+  const intonation = downgradeFallbackIntonation(buildIntonationSignals(intonationFeatures, intonationTarget), intonationFeatures);
   const articulationEvents = [...boundaryPauses.events, ...linking.events, ...length.events];
   const pronunciationEvents = [...articulationEvents, ...intonation.events];
   const lengthSignals = [...new Set([...boundaryPauses.signals, ...linking.signals, ...length.signals])];
@@ -1916,11 +2007,14 @@ function buildPitchOverlay(speechFeatures) {
   const pitch = speechFeatures?.intonationFeatures || {};
   return {
     available: Boolean(pitch.available),
+    basis: pitch.basis || "unknown",
     status: speechFeatures?.intonationStatus || "unknown",
     label: speechFeatures?.intonationLabel || "pitch unavailable",
     earlyHz: pitch.earlyHz ?? null,
     finalHz: pitch.finalHz ?? null,
-    riseSemitones: pitch.riseSemitones ?? null
+    riseSemitones: pitch.riseSemitones ?? null,
+    modelMedianHz: pitch.modelMedianHz ?? null,
+    userMedianHz: pitch.userMedianHz ?? null
   };
 }
 

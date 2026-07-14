@@ -6,12 +6,38 @@ const { contrastSets, getContrastSet } = require("./src/config/contrastSets");
 const { analyzeAzureRaw } = require("./src/services/contrastAnalysisService");
 const { assessPronunciationFromWav, recognizeEnglishFromWav, assertAzureConfig } = require("./src/services/azurePronunciationService");
 const { compareAttempts } = require("./src/services/contrastSessionService");
-const { synthesizeJapaneseSpeech, synthesizeEnglishModelSpeech } = require("./src/services/azureTtsService");
+const { synthesizeJapaneseSpeech, synthesizeEnglishModelSpeech, synthesizeEnglishModelSpeechWav } = require("./src/services/azureTtsService");
 const { analyzePitchFromWav } = require("./src/services/audioPitchService");
+const { buildDeviationTimeline } = require("./src/services/pitchAlignmentService");
 const app = express();
 const PORT = Number(process.env.PORT || 3003);
 const LOG_DIR = path.join(__dirname, "logs");
 const VALIDATION_LOG_FILE = path.join(LOG_DIR, "validation-log.jsonl");
+
+// ピッチ判定モデル基準化用: モデル音声(TTS)を毎回合成/評価すると遅くコストもかかるため、
+// referenceText 単位でモデル側のWAVとAzure単語タイムスタンプをプロセス内キャッシュする。
+// 合成/評価に失敗した場合はキャッシュに残さず、次回リクエストで再試行する。
+const modelPitchReferenceCache = new Map();
+
+async function getModelPitchReference(referenceText) {
+  const cacheKey = referenceText.trim();
+  if (!cacheKey) return null;
+  if (modelPitchReferenceCache.has(cacheKey)) return modelPitchReferenceCache.get(cacheKey);
+
+  const promise = (async () => {
+    const modelSpeech = await synthesizeEnglishModelSpeechWav({ text: cacheKey });
+    const modelAssessment = await assessPronunciationFromWav(modelSpeech.audio, cacheKey);
+    return { wavBuffer: modelSpeech.audio, raw: modelAssessment.raw };
+  })().catch((error) => {
+    console.warn(`[pitch] model reference unavailable for "${cacheKey}":`, String(error.message || error));
+    return null;
+  });
+
+  modelPitchReferenceCache.set(cacheKey, promise);
+  const result = await promise;
+  if (!result) modelPitchReferenceCache.delete(cacheKey);
+  return result;
+}
 
 function parseJsonQuery(value) {
   if (!value) return null;
@@ -124,11 +150,27 @@ app.post("/api/assess", async (req, res) => {
 
     const recordingDurationMs = Number(req.query.durationMs || 0) || null;
     const rhythmHints = parseJsonQuery(req.query.rhythmHints) || {};
-    const intonationFeatures = analyzePitchFromWav(req.body);
-    const [azureResult, freeRecognition] = await Promise.all([
+    const [azureResult, freeRecognition, modelReference] = await Promise.all([
       assessPronunciationFromWav(req.body, referenceText),
-      recognizeEnglishFromWav(req.body).catch((error) => ({ text: "", raw: {}, error: String(error.message || error) }))
+      recognizeEnglishFromWav(req.body).catch((error) => ({ text: "", raw: {}, error: String(error.message || error) })),
+      getModelPitchReference(referenceText)
     ]);
+
+    // ピッチ判定はモデル音声基準(deviation = userSemitone - modelSemitone)を優先し、
+    // モデル参照が使えない場合のみ自己相対の旧ロジックにフォールバックする
+    // (フォールバック時は mirrorGeneratorService 側で低信頼度=表示のみに格下げされる)。
+    let intonationFeatures = modelReference
+      ? buildDeviationTimeline({
+          modelWavBuffer: modelReference.wavBuffer,
+          modelRaw: modelReference.raw,
+          userWavBuffer: req.body,
+          userRaw: azureResult.raw
+        })
+      : { available: false, reason: "model-reference-unavailable" };
+    if (!intonationFeatures.available) {
+      intonationFeatures = analyzePitchFromWav(req.body);
+    }
+
     const analysis = analyzeAzureRaw(azureResult.raw, { ...contrastSet, text: referenceText }, {
       recordingDurationMs,
       rhythmHints,

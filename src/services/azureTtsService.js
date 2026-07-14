@@ -146,7 +146,8 @@ async function synthesizeSpeech({
   pausePattern = "plain",
   style = "",
   voiceScript = null,
-  language = "ja-JP"
+  language = "ja-JP",
+  outputFormat = "audio-24khz-48kbitrate-mono-mp3"
 }) {
   const { key, region } = assertAzureConfig();
   const scriptText = voiceScript?.segments?.map((segment) => segment.text).join("") || "";
@@ -164,7 +165,7 @@ async function synthesizeSpeech({
     headers: {
       "Ocp-Apim-Subscription-Key": key,
       "Content-Type": "application/ssml+xml",
-      "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
+      "X-Microsoft-OutputFormat": outputFormat,
       "User-Agent": "AccentMirror"
     },
     body: ssml
@@ -179,7 +180,7 @@ async function synthesizeSpeech({
 
   return {
     audio: Buffer.from(await response.arrayBuffer()),
-    contentType: "audio/mpeg",
+    contentType: outputFormat.startsWith("riff") ? "audio/wav" : "audio/mpeg",
     voice,
     spokenText,
     ssmlPlan: { rate, pitch, pausePattern, style: style || "none", voiceScript: voiceScript?.version || "none", language }
@@ -204,4 +205,25 @@ async function synthesizeEnglishModelSpeech({
   });
 }
 
-module.exports = { synthesizeJapaneseSpeech, synthesizeEnglishModelSpeech, buildSsml };
+// ピッチ判定のモデル基準化用: Azure Pronunciation Assessment / audioPitchService は
+// WAV(16bit PCM)を前提とするため、再生用のmp3とは別にWAV出力の合成を提供する。
+async function synthesizeEnglishModelSpeechWav({
+  text,
+  voice = process.env.MODEL_TTS_VOICE || "en-US-JennyNeural",
+  rate = process.env.MODEL_TTS_RATE || "+0%",
+  pitch = process.env.MODEL_TTS_PITCH || "+0Hz",
+  style = process.env.MODEL_TTS_STYLE || ""
+}) {
+  return synthesizeSpeech({
+    text,
+    voice,
+    rate,
+    pitch,
+    pausePattern: "plain",
+    style,
+    language: "en-US",
+    outputFormat: "riff-24khz-16bit-mono-pcm"
+  });
+}
+
+module.exports = { synthesizeJapaneseSpeech, synthesizeEnglishModelSpeech, synthesizeEnglishModelSpeechWav, buildSsml };

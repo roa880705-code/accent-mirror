@@ -150,6 +150,20 @@ function buildPitchContour(frames) {
   };
 }
 
+function toSemitone(f0Hz, medianF0OfSpeaker) {
+  return semitoneDiff(f0Hz, medianF0OfSpeaker);
+}
+
+function sampleHzAt(frames, centerMs, windowMs = 60) {
+  if (!Array.isArray(frames) || !frames.length) return null;
+  const inWindow = frames.filter((frame) => Math.abs(frame.centerMs - centerMs) <= windowMs);
+  if (inWindow.length) return median(inWindow.map((frame) => frame.hz));
+  const nearest = frames.reduce((best, frame) => (
+    Math.abs(frame.centerMs - centerMs) < Math.abs(best.centerMs - centerMs) ? frame : best
+  ), frames[0]);
+  return nearest.hz;
+}
+
 function nearestOctave(hz, anchorHz) {
   if (!Number.isFinite(hz) || !Number.isFinite(anchorHz) || hz <= 0 || anchorHz <= 0) return hz;
   let adjusted = hz;
@@ -174,7 +188,7 @@ function stabilizePitchFrames(frames) {
   });
 }
 
-function analyzePitchFromWav(buffer) {
+function extractPitchTrack(buffer) {
   const parsed = parseWavPcm(buffer);
   if (!parsed) {
     return { available: false, reason: "unsupported-wav" };
@@ -195,10 +209,30 @@ function analyzePitchFromWav(buffer) {
   }
 
   const durationMs = Math.round((samples.length / sampleRate) * 1000);
-  const sortedFrames = stabilizePitchFrames(frames);
-  if (sortedFrames.length < 4) {
-    return { available: false, reason: "not-enough-stable-pitch-frames", durationMs, voicedFrameCount: frames.length, stableFrameCount: sortedFrames.length };
+  const stableFrames = stabilizePitchFrames(frames);
+  if (stableFrames.length < 4) {
+    return { available: false, reason: "not-enough-stable-pitch-frames", durationMs, voicedFrameCount: frames.length, stableFrameCount: stableFrames.length };
   }
+
+  const medianHz = median(stableFrames.map((frame) => frame.hz));
+  if (!medianHz) {
+    return { available: false, reason: "missing-median-f0", durationMs, voicedFrameCount: frames.length };
+  }
+
+  return {
+    available: true,
+    durationMs,
+    voicedFrameCount: frames.length,
+    frames: stableFrames,
+    medianHz
+  };
+}
+
+function analyzePitchFromWav(buffer) {
+  const track = extractPitchTrack(buffer);
+  if (!track.available) return { ...track, basis: "self-relative-fallback" };
+
+  const { durationMs, voicedFrameCount, frames: sortedFrames } = track;
   const finalCount = Math.max(2, Math.ceil(sortedFrames.length * 0.16));
   const earlyCount = Math.max(2, Math.floor((sortedFrames.length - finalCount) * 0.55));
   const earlyFrames = sortedFrames.slice(0, earlyCount);
@@ -207,7 +241,7 @@ function analyzePitchFromWav(buffer) {
   const finalHz = median(finalFrames.map((frame) => frame.hz));
 
   if (!earlyHz || !finalHz) {
-    return { available: false, reason: "missing-comparison-window", durationMs, voicedFrameCount: frames.length };
+    return { available: false, reason: "missing-comparison-window", durationMs, voicedFrameCount };
   }
 
   const riseRatio = finalHz / earlyHz;
@@ -218,8 +252,9 @@ function analyzePitchFromWav(buffer) {
 
   return {
     available: true,
+    basis: "self-relative-fallback",
     durationMs,
-    voicedFrameCount: frames.length,
+    voicedFrameCount,
     stableFrameCount: sortedFrames.length,
     voicedStartMs: sortedFrames[0]?.centerMs ?? null,
     voicedEndMs: sortedFrames[sortedFrames.length - 1]?.centerMs ?? null,
@@ -232,8 +267,8 @@ function analyzePitchFromWav(buffer) {
     finalRise,
     finalFall,
     contour,
-    confidence: frames.length >= 8 ? "medium" : "low"
+    confidence: voicedFrameCount >= 8 ? "medium" : "low"
   };
 }
 
-module.exports = { analyzePitchFromWav };
+module.exports = { analyzePitchFromWav, extractPitchTrack, toSemitone, sampleHzAt };
