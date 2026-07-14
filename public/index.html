@@ -1,0 +1,236 @@
+﻿<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Accent Mirror v0.12.0</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<section id="homeScreen" class="home-screen">
+<div class="home-sky">
+<div class="aurora-ribbon"></div>
+<div class="cloud cloud-a"></div>
+<div class="cloud cloud-b"></div>
+<div class="cloud cloud-c"></div>
+<div class="home-title">
+<div class="home-app-name">Accent Mirror</div>
+<div class="home-copy">English practice from Japan to Canada</div>
+</div>
+<div class="earth-dome" aria-hidden="true">
+<span class="earth-shine"></span>
+<span class="canada-pin"></span>
+<span class="japan-pin"></span>
+<span class="travel-arc"></span>
+</div>
+<div class="mountains"></div>
+<div class="neighborhood">
+<div class="house house-a"></div>
+<div class="house house-b"></div>
+<div class="house house-c"></div>
+</div>
+<div class="trees">
+<span></span><span></span><span></span><span></span><span></span>
+</div>
+<div class="home-friend-counter">
+<div class="counter-label">Friends</div>
+<div id="homeFriendCount" class="counter-number">248</div>
+</div>
+<div id="homeCrowd" class="home-crowd" aria-hidden="true"></div>
+<div class="home-avatar" aria-label="主人公アバター">
+<div class="avatar-shadow"></div>
+<div class="avatar-arm avatar-arm-left"></div>
+<div class="avatar-arm avatar-arm-right"></div>
+<div class="avatar-body"></div>
+<div class="avatar-head"></div>
+<div class="avatar-hair"></div>
+<div class="avatar-bangs"></div>
+<div class="avatar-face"><span class="avatar-eye eye-left"></span><span class="avatar-eye eye-right"></span><span class="avatar-mouth"></span><span class="avatar-cheek cheek-left"></span><span class="avatar-cheek cheek-right"></span></div>
+<div class="avatar-badge">日本</div>
+</div>
+<div class="home-ground"></div>
+<button id="startPracticeButton" class="start-practice-button">Start Practice</button>
+</div>
+</section>
+
+<div id="analyzingOverlay" class="analyzing-overlay hidden" aria-live="polite">
+<div class="analysis-scene">
+<div id="fallingFriends" class="falling-friends"></div>
+<div class="analysis-card">
+<div class="analysis-spinner"></div>
+<div class="analysis-title">Analyzing...</div>
+<div id="analysisFriendGain" class="analysis-subtitle">Friends +0</div>
+</div>
+</div>
+</div>
+
+<main id="practiceScreen" class="wrap practice-screen hidden">
+<section class="card hero">
+<h1>Accent Mirror</h1>
+<p class="tagline">v0.12.0 タイムライン音声スクリプト</p>
+<p>聞こえ方タイムラインから、日本語ミラー音声用のスクリプトを生成します。</p>
+<div class="principle">Not how you speak. How they hear.</div>
+</section>
+
+<section class="card">
+<h2>1. 練習セット</h2>
+<div id="contrastButtons"></div>
+<div class="profile-grid">
+<label>学習者の声
+<select id="profileGender">
+<option value="female">女性</option>
+<option value="male">男性</option>
+</select>
+</label>
+<label>年代
+<select id="profileAge">
+<option value="teens">10代</option>
+<option value="20s" selected>20代</option>
+<option value="30s">30代以上</option>
+</select>
+</label>
+<label>場面
+<select id="profileScene">
+<option value="daily">日常会話</option>
+<option value="friend">友人との会話</option>
+<option value="business">ビジネス</option>
+<option value="travel">旅行</option>
+</select>
+</label>
+</div>
+<div id="profileStatus" class="panel">ミラー声: 女性 / 年代: 20s / 場面: 日常会話</div>
+</section>
+
+<section class="card grid">
+<div>
+<h2>2. Step A：録音再生</h2>
+<div class="minor">参照英文</div>
+<div id="referenceText" class="english"></div>
+<button id="modelVoiceButton" class="secondary-button">Model Englishを再生</button>
+<audio id="modelVoicePlayback" controls class="audio hidden"></audio>
+<div id="modelVoiceStatus" class="panel">モデル音声はまだありません。</div>
+<button id="recordLocalButton">① 録音を開始する</button>
+<div id="localStatus" class="panel">未録音です。</div>
+<audio id="audioPlayback" controls class="audio hidden"></audio>
+</div>
+<div>
+<h2>3. Step B：Azure診断</h2>
+<div class="minor">Step Aで録音した同じ音声をサーバー経由で診断します。</div>
+<button id="azureButton">② サーバー経由でAzure診断する</button>
+<div id="azureStatus" class="panel">未診断です。</div>
+</div>
+</section>
+
+<section class="card">
+<h2>ミラー音声比較</h2>
+<div class="minor">Azure診断後に、録音の癖を反映したミラー音声と、癖を入れない模範日本語ミラーを聞き比べます。</div>
+<div class="voice-actions">
+<button id="mirrorVoiceButton" class="secondary-button">ミラー音声を再生</button>
+<button id="modelMirrorVoiceButton" class="secondary-button">模範日本語ミラーを再生</button>
+</div>
+<audio id="mirrorVoicePlayback" controls class="audio hidden"></audio>
+<audio id="modelMirrorVoicePlayback" controls class="audio hidden"></audio>
+<div id="mirrorVoiceStatus" class="panel">ミラー音声はまだありません。</div>
+<div id="modelMirrorVoiceStatus" class="panel">模範日本語ミラーはまだありません。</div>
+</section>
+
+<section class="card">
+<h2>4. 文全体のスコア</h2>
+<div class="signal-grid">
+<div class="signal"><span>正確さ</span><strong id="accuracy">--</strong></div>
+<div class="signal"><span>流ちょうさ</span><strong id="fluency">--</strong></div>
+<div class="signal"><span>完全性</span><strong id="completeness">--</strong></div>
+<div class="signal"><span>抑揚</span><strong id="prosody">--</strong></div>
+</div>
+<div class="panel"><b>認識された英文</b><div id="recognized">まだありません</div></div>
+<div class="panel"><b>スコアの読み方</b><div id="scoreInterpretation">まだありません</div></div>
+</section>
+
+<section class="card">
+<h2>5. Azureの見落とし候補</h2>
+<div id="badges"></div>
+<div id="blindSpotJudgment" class="judgment">まだ診断されていません。</div>
+<div class="panel"><b>結論</b><div id="conclusion">まだありません。</div></div>
+<div class="panel"><b>次の判定方針</b><div id="nextDecision">まだありません。</div></div>
+</section>
+
+<section class="card">
+<h2>6. 聞こえ方ミラー</h2>
+<div class="minor">カタカナ聞こえ方</div>
+<div class="mirror-output" id="mirrorPhonetic">まだありません</div>
+<div id="mirrorSeverity" class="badge">深刻度: --</div>
+<div id="mirrorConfidence" class="badge">確信度: --</div>
+<div class="panel"><b>意味</b><div id="mirrorMeaning">まだありません。</div></div>
+<div class="panel"><b>聞き手の受け取り方</b><div id="mirrorListener">まだありません。</div></div>
+<div class="panel"><b>音声読み上げ文</b><div id="mirrorVoiceText">まだありません。</div></div>
+<div class="panel"><b>発話特徴</b><div id="mirrorSpeechFeatures">まだありません。</div></div>
+<div class="panel"><b>ミラータイムライン</b><div id="mirrorTimeline">まだありません。</div></div>
+<div class="panel"><b>ズレのモデル</b><div id="mirrorDeviationModel">まだありません。</div></div>
+<div class="panel"><b>発音イベント</b><div id="mirrorPronunciationEvents">まだありません。</div></div>
+<div class="panel"><b>癖の反映まとめ</b><div id="mirrorReflectionSummary">まだありません。</div></div>
+<div class="panel"><b>音声生成プラン</b><div id="mirrorVoicePlan">まだありません。</div></div>
+<div class="panel"><b>根拠</b><div id="mirrorEvidence">まだありません。</div></div>
+<div class="panel"><b>注意</b><div id="mirrorWarning">まだありません。</div></div>
+<div class="panel"><b>そう聞こえる理由</b><div id="mirrorReasons">まだありません。</div></div>
+<div class="panel"><b>次に直すところ</b><div id="mirrorTargetActions">まだありません。</div></div>
+<div class="panel"><b>目標との対比</b><div id="mirrorTarget">まだありません。</div></div>
+</section>
+
+<section class="card">
+<h2>7. 検証ログ</h2>
+<div class="minor">この診断結果が実際の聞こえ方に合っていたかを、項目ごとに保存します。ログはブラウザとサーバーの logs/validation-log.jsonl に保存されます。</div>
+<div id="validationItemFeedback" class="validation-item-list"></div>
+<textarea id="validationNote" class="note-box" placeholder="全体メモ：例：カタカナは近いが、ミラー音声の崩れ方は違う。"></textarea>
+<button id="saveValidationButton" class="secondary-button save-button">保存</button>
+<div id="validationStatus" class="panel">まだ保存していません。</div>
+<div class="panel validation-insights">
+<b>ログ反映候補</b>
+<div id="validationInsightSummary">まだログがありません。</div>
+<div id="validationInsightCards" class="insight-grid"></div>
+</div>
+<div class="session-actions">
+<button id="exportValidationButton" class="secondary-button">検証ログをJSONで出力</button>
+<button id="clearValidationButton" class="secondary-button">検証ログをクリア</button>
+</div>
+<table id="validationTable"><thead><tr><th>#</th><th>判定</th><th>ミラー</th><th>次に直すところ</th><th>メモ</th></tr></thead><tbody></tbody></table>
+</section>
+
+<section class="card">
+<h2>8. 単語ごとの診断</h2>
+<table id="wordTable"><thead><tr><th>単語</th><th>正確さ</th><th>エラー種別</th><th>重要語?</th><th>判定</th></tr></thead><tbody></tbody></table>
+</section>
+
+<section class="card">
+<h2>9. 音素ごとの診断</h2>
+<div class="minor">* は子音候補です。</div>
+<div id="phonemeCards"></div>
+</section>
+
+<section class="card">
+<h2>10. 音声特徴の簡易チェック</h2>
+<div class="muffle-grid">
+<div class="big-metric"><span>録音音量</span><strong id="rmsValue">--</strong></div>
+<div class="big-metric"><span>こもり推定</span><strong id="muffledProxy">--</strong></div>
+<div class="big-metric"><span>子音平均</span><strong id="consonantAvg">--</strong></div>
+<div class="big-metric"><span>子音最小</span><strong id="consonantMin">--</strong></div>
+</div>
+<div class="panel"><b>音声特徴メモ</b><div id="audioFeatureMemo">まだありません。</div></div>
+</section>
+
+<section class="card">
+<h2>11. セッション比較</h2>
+<div class="minor">診断が完了したattemptは自動でここに保存されます。別のContrast Setを選んで録音・診断すると、session比較に追加されます。</div>
+<div class="session-actions">
+<button id="clearSessionButton" class="secondary-button">セッションをクリア</button>
+</div>
+<div class="panel"><b>セッション判定</b><div id="sessionJudgment">まだattemptがありません。</div></div>
+<div class="panel"><b>おすすめ</b><div id="sessionRecommendation">録音して診断すると、attempt間の差分がここに出ます。</div></div>
+<table id="attemptTable"><thead><tr><th>#</th><th>セット</th><th>正確さ</th><th>抑揚</th><th>子音最小</th><th>見落とし候補</th><th>ミラー</th></tr></thead><tbody></tbody></table>
+</section>
+
+<section class="card"><details><summary>開発用：Azure Raw JSON</summary><pre id="rawJson">まだありません</pre></details></section>
+<footer>v0.12.0はミラータイムラインから音声スクリプトを生成します。検証ポートは3003です。</footer>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
