@@ -1280,11 +1280,26 @@ function spokenMirrorText(mirror) {
   return segments.map((segment) => segment.text || "").join("");
 }
 
+// 表示専用: セグメント間の間(breakAfterMs)を半角スペースの個数で視覚的に表す。
+// spokenMirrorText() 自体は TTSフォールバックや検証ログの保存にも使われるため、
+// そちらは元の(スペースを挟まない)文字列のままにしておく。
+function spokenMirrorTextForDisplay(mirror) {
+  const segments = mirror?.voiceScript?.segments || [];
+  if (!segments.length) return spokenMirrorText(mirror);
+  return segments.map((segment, index) => {
+    const text = segment.text || "";
+    if (index === segments.length - 1) return text;
+    const breakMs = Number(segment.breakAfterMs || 0);
+    const spaceCount = breakMs > 0 ? Math.max(1, Math.min(9, Math.round(breakMs / 100))) : 0;
+    return text + " ".repeat(spaceCount);
+  }).join("");
+}
+
 function renderVoiceTextSummary(mirror) {
   const baseText = mirror?.voiceText || mirror?.meaningJapanese || "まだありません。";
-  const spokenText = spokenMirrorText(mirror);
-  if (!spokenText || spokenText === baseText) return escapeHtml(baseText);
-  return `<div><b>実際に読み上げる音</b><br>${escapeHtml(spokenText)}</div>
+  const spokenText = spokenMirrorTextForDisplay(mirror);
+  if (!spokenText || spokenText.trim() === baseText) return escapeHtml(baseText);
+  return `<div><b>実際に読み上げる音</b><br><span class="spoken-text-preview">${escapeHtml(spokenText)}</span></div>
     <div class="minor">基本の和訳: ${escapeHtml(baseText)}</div>`;
 }
 
