@@ -18,14 +18,20 @@ let mirrorProfile = {
 const $ = (id) => document.getElementById(id);
 const FRIEND_COUNT_KEY = "accentMirrorFriendCount";
 
+// 文全体レベルの固定フィードバック項目。単語・フレーズごとの項目は
+// buildDynamicValidationItems() が診断結果ごとに動的に生成する。
 const VALIDATION_ITEMS = [
   { key: "meaning", label: "意味（参考）", targetId: "mirrorMeaning", hint: "自由発話や別英文として聞こえた時に重点確認。通常練習では参考項目です。" },
   { key: "phoneticMirror", label: "カタカナ聞こえ方", targetId: "mirrorPhonetic", hint: "録音した英語の音が、カタカナ聞こえ方として近く表現されているか。" },
   { key: "listenerExperience", label: "聞き手の受け取り方", targetId: "mirrorListener", hint: "聞き手にどう届くかの説明が実感と合っているか。" },
   { key: "analysisSignals", label: "分析された癖", targetId: "mirrorSpeechFeatures", hint: "速度、区切り、子音の弱さ、曖昧さ、音程、音素などの分析が実感と合っているか。" },
-  { key: "reflectionSummary", label: "癖の反映まとめ", targetId: "mirrorReflectionSummary", hint: "どの癖を、どの日本語ミラー表現へ変換したかが納得できるか。" },
+  { key: "voiceReadAloud", label: "音声読み上げ文", targetId: "mirrorVoiceText", hint: "実際に読み上げられる音（癖の反映を含む文）が、聞こえ方として自然か。" },
   { key: "mirrorVoiceOutput", label: "ミラー音声", targetId: "mirrorVoiceStatus", hint: "再生された日本語音声が、英語発音の癖を同じ種類の癖として反映しているか。" }
 ];
+
+function allValidationItems() {
+  return [...VALIDATION_ITEMS, ...buildDynamicValidationItems(latestAssessment?.mirror)];
+}
 
 function currentSet() {
   return contrastSets[selectedIndex] || contrastSets[0];
@@ -701,7 +707,7 @@ function verdictLabel(verdict) {
 
 function resetValidationFeedback(defaultVerdict = "unsure") {
   validationItemFeedback = {};
-  VALIDATION_ITEMS.forEach((item) => {
+  allValidationItems().forEach((item) => {
     validationItemFeedback[item.key] = { verdict: defaultVerdict, note: "" };
   });
   pendingValidationVerdict = defaultVerdict;
@@ -714,7 +720,7 @@ function setValidationItemVerdict(key, verdict) {
     verdict
   };
   renderValidationItemFeedback();
-  $("validationStatus").textContent = `${VALIDATION_ITEMS.find((item) => item.key === key)?.label || "項目"}: ${verdictLabel(verdict)}。下の保存ボタンで記録できます。`;
+  $("validationStatus").textContent = `${allValidationItems().find((item) => item.key === key)?.label || "項目"}: ${verdictLabel(verdict)}。下の保存ボタンで記録できます。`;
 }
 
 function updateValidationItemNote(key, note) {
@@ -731,7 +737,7 @@ function renderValidationItemFeedback() {
   root.innerHTML = '<div class="panel">各項目のフィードバックは、6. 聞こえ方ミラーの該当欄のすぐ下に表示されます。入力後、この下の保存ボタンでまとめて保存します。</div>';
 
   const lastInsertedByTarget = {};
-  VALIDATION_ITEMS.forEach((item) => {
+  allValidationItems().forEach((item) => {
     const value = validationItemFeedback[item.key] || { verdict: "unsure", note: "" };
     const buttons = ["match", "miss", "unsure"].map((verdict) => {
       const active = value.verdict === verdict ? " active-lite" : "";
@@ -764,7 +770,7 @@ function renderValidationItemFeedback() {
 }
 
 function collectValidationItems() {
-  return VALIDATION_ITEMS.reduce((items, item) => {
+  return allValidationItems().reduce((items, item) => {
     const feedback = validationItemFeedback[item.key] || { verdict: "unsure", note: "" };
     items[item.key] = {
       label: item.label,
@@ -801,7 +807,7 @@ function escapeHtml(value) {
 }
 
 function buildValidationInsights() {
-  const stats = VALIDATION_ITEMS.map((item) => ({
+  const stats = allValidationItems().map((item) => ({
     key: item.key,
     label: item.label,
     targetId: item.targetId,
@@ -1106,108 +1112,128 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function effectLabel(effect) {
-  const type = effect?.type || "";
+
+function issueTypeLabel(issueType) {
   return {
-    semantic_collapse: "意味の輪郭を少し崩す",
-    phoneme_sound_deformation: "音素由来の音変形",
-    pause: "間の再現",
-    segmented_delivery: "単語・かたまりの区切り",
-    length_drag: "母音・語尾の長さ",
-    soften_consonants: "子音の弱さ・滑舌の曖昧さ",
-    linking_compression: "単語連結",
+    consonant_or_phonics: "子音・音素の弱さ",
+    vowel_weakness: "母音の弱さ",
+    length: "母音・語尾の長さ",
+    linking: "単語連結",
+    pause_or_unlinked: "間・区切り",
+    katakana_delivery: "カタカナ発音（母音付加）",
     intonation: "音程・文尾/文中の上げ下げ",
-    trace_accent: "微細な非ネイティブ感"
-  }[type] || type || "反映";
+    alignment: "余分な音の挿入",
+    subtle_phonics_trace: "微細な非ネイティブ感",
+    speech_rate: "全体の速度"
+  }[issueType] || issueType || "検出された癖";
 }
 
-function eventTargetText(event) {
-  if (Array.isArray(event?.words) && event.words.length) return event.words.join(" + ");
-  return event?.word || event?.label || "文全体";
-}
-
-function mirrorMethodForEffect(effect, segments) {
-  const type = effect?.type || "";
-  const segmentText = segments.length
-    ? segments.map((segment) => `${segment.text}（速度:${segment.rate || "--"} / 音程:${segment.pitch || "--"} / 明瞭さ:${segment.articulation || "--"}${segment.breakAfterMs ? ` / 後ろに${segment.breakAfterMs}ms` : ""}）`).join(" / ")
-    : "音声セグメントなし";
-  if (type === "phoneme_sound_deformation") {
-    const sig = effect.soundSignature;
-    const weak = (sig?.weakPhones || []).map((item) => `${item.original}:${item.phone} score ${item.score}`).join(", ");
-    const long = (sig?.longPhones || []).map((item) => `${item.original}:${item.phone} ${item.durationMs}ms`).join(", ");
-    return `音素スコア/長さを、日本語側の母音残し・子音弱化へ変換。弱い音: ${weak || "なし"} / 長い音: ${long || "なし"}。出力: ${segmentText}`;
-  }
-  if (type === "soften_consonants") {
-    return `子音の閉じ・舌先・唇の弱さを、日本語側では輪郭の弱い発音に変換。例: 「ます/か」が「まふ/ふうか」寄りになる場合があります。出力: ${segmentText}`;
-  }
-  if (type === "semantic_collapse") {
-    return `発音の弱さで意味が取りにくくなる可能性を、日本語文の明瞭さを少し落とす方向で表現。出力: ${segmentText}`;
-  }
-  if (type === "length_drag") {
-    return `英語側の母音や語尾が長い候補を、日本語側の母音の残り・伸びとして表現。出力: ${segmentText}`;
-  }
-  if (type === "linking_compression") {
-    return `単語同士がつながって聞こえる候補を、日本語側でも一部を滑らかにつなげる方向で表現。出力: ${segmentText}`;
-  }
-  if (type === "segmented_delivery" || type === "pause") {
-    return `英語側の区切りや無音ギャップを、日本語セグメント間の間として表現。出力: ${segmentText}`;
-  }
-  if (type === "intonation") {
-    return `検出した音程傾向を、日本語側の文末/文中ピッチへ反映。現在の状態: ${effect.status || "--"}。出力: ${segmentText}`;
-  }
-  if (type === "trace_accent") {
-    return `大きな誤りではないが、モデルとの差を軽いクセとして残す候補。出力: ${segmentText}`;
-  }
-  return `出力: ${segmentText}`;
-}
-
-function renderReflectionSummary(mirror) {
-  const transfer = mirror?.voiceScript?.transferPlan;
+// mirrorTimeline.phonemeTimeline を軸に、英単語ごとのグループを作る。
+// mirrorLocalEvents.events は word フィールドで単語に紐づいている(word:null は
+// 単語連結・カタカナ・文末音程のような「文全体・フレーズ」レベルの反映)ため、
+// それを使って「単語/フレーズ → 分析 → ミラーへの反映」の形にまとめ直す。
+function buildWordGroups(mirror) {
+  const phonemeItems = mirror?.mirrorTimeline?.phonemeTimeline || [];
+  const kanaItems = mirror?.mirrorTimeline?.japaneseMirrorTimeline || [];
+  const localEvents = mirror?.mirrorLocalEvents?.events || mirror?.voiceScript?.transferPlan?.localEvents?.events || [];
   const segments = mirror?.voiceScript?.segments || [];
-  const effects = transfer?.effects || [];
-  const events = transfer?.events || [];
-  const localEvents = mirror?.mirrorLocalEvents?.events || transfer?.localEvents?.events || [];
-  if (!effects.length && !events.length && !localEvents.length) return "大きな反映ルールはまだありません。";
 
-  const localSummary = localEvents.length
-    ? `<div class="reflection-card"><div class="reflection-title">局所ミラー反映</div>
-      <ul>${localEvents.map((event) => `<li><strong>${escapeHtml(event.word || event.issueType)}</strong> / ${escapeHtml(event.issueType || "")} / ${escapeHtml(event.severity || "")}<br>
-      ${escapeHtml(event.englishEvidence || "")}<br>
-      <span class="minor">反映先: ${escapeHtml((event.targetRoles || []).join(", ") || "未指定")} / 方法: ${escapeHtml(event.mirrorAction || "")}</span></li>`).join("")}</ul>
-    </div>`
-    : "";
-
-  const eventByType = events.reduce((map, event) => {
-    const key = event.type === "final-consonant" || event.type === "liquid" || event.type === "alignment" ? "soften_consonants"
-      : event.type === "length" ? "length_drag"
-      : event.type === "linking" ? "linking_compression"
-      : event.type === "intonation" ? "intonation"
-      : event.type === "phonics_trace" ? "trace_accent"
-      : event.type;
-    map[key] = map[key] || [];
-    map[key].push(event);
-    return map;
-  }, {});
-
-  const rows = effects.map((effect, index) => {
-    const relatedEvents = effect.type === "phoneme_sound_deformation"
-      ? events.filter((event) => ["final-consonant", "liquid", "alignment", "length", "phonics_trace"].includes(event.type))
-      : eventByType[effect.type] || [];
-    const detected = relatedEvents.length
-      ? relatedEvents.map((event) => `<li><strong>${escapeHtml(eventTargetText(event))}</strong>: ${escapeHtml(event.label || "")}<br>${escapeHtml(event.detail || "")}</li>`).join("")
-      : `<li>${escapeHtml(effect.status ? `状態: ${effect.status}` : effect.strength ? `強さ: ${effect.strength}` : "イベントなし")}</li>`;
-    return `<div class="reflection-card">
-      <div class="reflection-title">${index + 1}. ${escapeHtml(effectLabel(effect))}</div>
-      <div><b>検出した癖</b><ul>${detected}</ul></div>
-      <div><b>ミラーへの反映</b><br>${escapeHtml(mirrorMethodForEffect(effect, segments))}</div>
-    </div>`;
+  const wordGroups = phonemeItems.map((item) => {
+    const wordKey = String(item.word || "").toLowerCase();
+    const kana = kanaItems.find((entry) => entry.wordIndex === item.wordIndex) || null;
+    const events = localEvents.filter((event) => String(event.word || "").toLowerCase() === wordKey && wordKey);
+    const roles = new Set(events.flatMap((event) => event.targetRoles || []));
+    const wordSegments = segments.filter((segment) => {
+      const role = String(segment.role || "");
+      return [...roles].some((target) => role === target || role.startsWith(`${target}-pitch-`));
+    });
+    return {
+      key: `word-${item.wordIndex}`,
+      kind: "word",
+      label: item.word,
+      score: item.score,
+      errorType: item.errorType,
+      phones: item.phones || [],
+      kana,
+      events,
+      segments: wordSegments
+    };
   });
 
-  const unusedEvents = events.filter((event) => !Object.values(eventByType).flat().includes(event));
-  const extras = unusedEvents.length
-    ? `<div class="reflection-card"><div class="reflection-title">その他の検出候補</div><ul>${unusedEvents.map((event) => `<li>${escapeHtml(event.label || event.type)}<br>${escapeHtml(event.detail || "")}</li>`).join("")}</ul></div>`
+  const phraseEvents = localEvents.filter((event) => !event.word);
+  const usedSegmentRoles = new Set(wordGroups.flatMap((group) => group.segments.map((segment) => segment.role)));
+  const phraseSegments = segments.filter((segment) => !usedSegmentRoles.has(segment.role));
+
+  const groups = [...wordGroups];
+  if (phraseEvents.length || phraseSegments.length) {
+    groups.push({
+      key: "phrase-sentence",
+      kind: "phrase",
+      label: "文全体・単語のつながり",
+      events: phraseEvents,
+      segments: phraseSegments
+    });
+  }
+  return groups;
+}
+
+function buildDynamicValidationItems(mirror) {
+  if (!mirror) return [];
+  return buildWordGroups(mirror).map((group) => ({
+    key: `word:${group.key}`,
+    label: group.label,
+    targetId: `wordcard-${group.key}`,
+    hint: group.kind === "phrase"
+      ? "単語同士のつながり方、カタカナ発音、文末/文中の音程など、文全体にかかる反映が実感と合っているか。"
+      : `「${group.label}」の分析とミラーへの反映（母音・子音・長さ・音程など）が実感と合っているか。`
+  }));
+}
+
+function renderWordGroupSegments(segments) {
+  if (!segments.length) return "";
+  const text = segments
+    .map((segment) => `「${escapeHtml(segment.text)}」（速度:${segment.rate || "--"} / 音程:${segment.pitch || "--"} / 明瞭さ:${segment.articulation || "--"}${segment.breakAfterMs ? ` / 後ろに${segment.breakAfterMs}ms` : ""}）`)
+    .join(" ");
+  return `<div class="minor"><b>音声生成プラン</b>: ${text}</div>`;
+}
+
+function renderWordGroupCard(group) {
+  const isWord = group.kind === "word";
+  const weakPhones = isWord ? (group.phones || []).filter((phone) => phoneHasDetectedIssue(phone)) : [];
+  const phoneLine = weakPhones.length
+    ? `<div class="minor"><b>音素</b>: ${weakPhones.map((phone) => `${escapeHtml(phone.phone)}:${phone.score}/${phone.durationMs ?? "--"}ms`).join(", ")}</div>`
     : "";
-  return `${localSummary}${rows.join("")}${extras}`;
+  const kanaLine = group.kana && timelineHasDetectedIssue(group.kana)
+    ? `<div class="minor"><b>カタカナ聞こえ方</b>: <strong>${escapeHtml(group.kana.kana)}</strong>（${group.kana.durationMs ?? "--"}ms）<br>${escapeHtml(group.kana.reason || "")}</div>`
+    : "";
+  const eventsList = group.events.length
+    ? `<ul>${group.events.map((event) => `<li><strong>${escapeHtml(issueTypeLabel(event.issueType))}</strong> / ${escapeHtml(event.severity || "")}<br>
+        ${escapeHtml(event.englishEvidence || "")}<br>
+        <span class="minor">ミラーへの反映: ${escapeHtml(event.mirrorAction || "")}</span></li>`).join("")}</ul>`
+    : `<div class="minor">検出された癖はありません。</div>`;
+  const scoreBadge = isWord && Number.isFinite(group.score)
+    ? `<span class="badge ${group.score < 60 ? "alert" : group.score < 80 ? "warn" : "ok"}">score ${group.score}</span>`
+    : "";
+  const errorBadge = isWord && group.errorType && group.errorType !== "None"
+    ? `<span class="badge alert">${escapeHtml(group.errorType)}</span>`
+    : "";
+
+  return `<div class="panel word-card" id="wordcard-${group.key}">
+    <div class="word-card-head"><strong>${escapeHtml(group.label)}</strong> ${scoreBadge}${errorBadge}</div>
+    ${phoneLine}
+    ${kanaLine}
+    <div class="word-card-events">${eventsList}</div>
+    ${renderWordGroupSegments(group.segments)}
+  </div>`;
+}
+
+function renderMirrorWordBreakdown(mirror) {
+  const container = $("mirrorWordBreakdown");
+  if (!container) return;
+  const groups = buildWordGroups(mirror);
+  container.innerHTML = groups.length
+    ? groups.map(renderWordGroupCard).join("")
+    : "分析対象の単語がまだありません。";
 }
 
 function spokenMirrorText(mirror) {
@@ -1245,11 +1271,8 @@ function renderMirror(mirror) {
     $("mirrorListener").textContent = "まだありません。";
     $("mirrorVoiceText").textContent = "まだありません。";
     $("mirrorSpeechFeatures").textContent = "まだありません。";
-    $("mirrorTimeline").textContent = "まだありません。";
     $("mirrorDeviationModel").textContent = "まだありません。";
-    $("mirrorPronunciationEvents").textContent = "まだありません。";
-    $("mirrorReflectionSummary").textContent = "まだありません。";
-    $("mirrorVoicePlan").textContent = "まだありません。";
+    $("mirrorWordBreakdown").textContent = "まだありません。";
     $("mirrorEvidence").textContent = "まだありません。";
     $("mirrorWarning").textContent = "まだありません。";
     $("mirrorVoiceStatus").textContent = "ミラー音声はまだありません。";
@@ -1284,40 +1307,16 @@ function renderMirror(mirror) {
   $("mirrorSpeechFeatures").textContent = features
     ? `全体WPM: ${features.wpm ?? "--"} / 発音中WPM: ${features.articulationWpm ?? "--"} / 全体速度: ${features.speedLabel || "--"} / ミラー速度: ${features.voiceSpeedLabel || features.speedLabel || "--"} / 区切り: ${features.boundaryPauseLabel || "--"} / 波形区切り: ${features.rhythmHints?.localPauseCount ?? 0}箇所・最大${features.rhythmHints?.localMaxPauseMs ?? 0}ms / 子音弱さ: ${features.consonantWeaknessLabel || "--"} / 曖昧さ: ${features.ambiguityLevel || "--"} / 音声反映: ${features.voiceMirrorLevel || "--"} / 長短: ${features.lengthSignal || "--"} / 音調: ${pitchText}`
     : "まだありません。";
-  const timeline = mirror.mirrorTimeline;
   const freeRecognitionNote = mirror.meaningSource === "freeRecognition" && latestAssessment?.utteranceCheck?.status !== "match"
     ? `<div class="notice"><strong>自由認識を優先中</strong>: 選択文と違う英文として聞こえたため、ミラー音声は自由認識された意味を優先します。下の参照文ベース詳細は診断参考で、ミラー音声の直接材料ではありません。</div>`
     : "";
-  const detectedKanaItems = (timeline?.japaneseMirrorTimeline || []).filter(timelineHasDetectedIssue);
-  const detectedPhonemeItems = (timeline?.phonemeTimeline || [])
-    .map((item) => ({ ...item, phones: (item.phones || []).filter(phoneHasDetectedIssue) }))
-    .filter((item) => item.phones.length || Number(item.score || 100) < 90 || String(item.errorType || "None") !== "None");
-  $("mirrorTimeline").innerHTML = timeline
-    ? `${freeRecognitionNote}<div><strong>音の高低</strong>: ${timeline.pitchOverlay?.status || "--"} / ${timeline.pitchOverlay?.riseSemitones ?? "--"}st</div>
-       <div><strong>カタカナタイムライン</strong>: ${detectedKanaItems.length ? "検出箇所のみ表示" : "反映対象なし"}</div>
-       ${detectedKanaItems.length ? `<ul>${detectedKanaItems.map((item) => `<li>${escapeHtml(item.sourceWord)}: <strong>${escapeHtml(item.kana)}</strong> / ${item.durationMs ?? "--"}ms / pause ${item.pauseAfterMs || 0}ms<br>${escapeHtml(item.reason || "")}</li>`).join("")}</ul>` : ""}
-       <div><strong>音素タイムライン</strong>: ${detectedPhonemeItems.length ? "弱い/長い音のみ表示" : "反映対象なし"}</div>
-       ${detectedPhonemeItems.length ? `<ul>${detectedPhonemeItems.map((item) => `<li>${escapeHtml(item.word)}: ${(item.phones || []).map((phone) => `${escapeHtml(phone.phone)}:${phone.score}/${phone.durationMs ?? "--"}ms`).join(", ") || escapeHtml(item.errorType || "no phoneme")}</li>`).join("")}</ul>` : ""}`
-    : "まだありません。";
   const deviationModel = mirror.deviationModel;
   const detectedDeviations = (deviationModel?.deviations || []).filter((item) => item.evidence && !["none", "unknown"].includes(String(item.severity || "")));
   $("mirrorDeviationModel").innerHTML = detectedDeviations.length
     ? `<div>${escapeHtml(deviationModel.summary)}</div><ul>${detectedDeviations.map((item) => `<li><strong>${escapeHtml(item.type)}</strong> / ${escapeHtml(item.status)} / ${escapeHtml(item.severity)}<br>${escapeHtml(item.evidence || "")}</li>`).join("")}</ul>`
     : deviationModel?.summary || "大きな聞こえ方のズレ候補はまだありません。";
-  const detectedPronunciationEvents = (features?.pronunciationEvents || []).filter((event) => event.detail && event.label);
-  $("mirrorPronunciationEvents").innerHTML = detectedPronunciationEvents.length
-    ? `<ul>${detectedPronunciationEvents.map((event) => `<li><strong>${escapeHtml(event.label)}</strong><br>${escapeHtml(event.detail)}</li>`).join("")}</ul>`
-    : "検出された発音イベントはありません。";
-  $("mirrorReflectionSummary").innerHTML = renderReflectionSummary(mirror);
-  const plan = mirror.voicePlan;
-  const transfer = mirror.voiceScript?.transferPlan;
-  const localEventCount = mirror.mirrorLocalEvents?.events?.length || transfer?.localEvents?.events?.length || 0;
-  const transferText = transfer
-    ? ` / 転写 ${transfer.effects?.map((effect) => effect.status ? `${effect.type}:${effect.status}` : `${effect.type}:${effect.strength || "--"}`).join(", ") || "なし"} / 局所イベント ${localEventCount}${transfer.segmentedTargets?.length ? ` / 区切り反映: ${transfer.segmentedTargets.join(", ")}` : ""}`
-    : "";
-  $("mirrorVoicePlan").textContent = plan
-    ? `速度 ${plan.rate || "--"} / 音量 ${plan.volume || "--"} / 明瞭さ ${plan.articulation || "--"} / 区切り ${plan.pausePattern || "--"} / 音声スクリプト ${mirror.voiceScript?.version || "なし"} / 発話速度 ${mirror.voiceScript?.speedLevel || "--"} / 連結 ${mirror.voiceScript?.linking ? "あり" : "なし"}${transferText} / セグメント ${(mirror.voiceScript?.segments || []).map((segment) => `${segment.text}:${segment.rate || "--"}:${segment.pitch || "--"}:${segment.volume || "--"}:${segment.breakAfterMs || 0}ms`).join(" | ")} / 信号 ${(plan.appliedSignals || []).join(", ")}`
-    : "まだありません。";
+  renderMirrorWordBreakdown(mirror);
+  if (freeRecognitionNote) $("mirrorWordBreakdown").insertAdjacentHTML("afterbegin", freeRecognitionNote);
   $("mirrorEvidence").innerHTML = (mirror.confidence?.evidence || []).length
     ? `<ul>${mirror.confidence.evidence.map((item) => `<li>${item}</li>`).join("")}</ul>`
     : "まだありません。";

@@ -1931,7 +1931,9 @@ function buildMirroredWords(words, speechFeatures, context) {
         severity: linkingEvent.strength === "weak" ? "low" : "medium",
         reason: `Could you の連結が「${text.replace(/[()?]/g, "")}」寄りに聞こえる候補です。`,
         conservative: linkingEvent.strength === "weak",
-        linking: true
+        linking: true,
+        sourceWordIndex: i,
+        pauseAfterIndex: i + 1
       });
       i += 1;
       continue;
@@ -1939,7 +1941,9 @@ function buildMirroredWords(words, speechFeatures, context) {
     mirroredWords.push({
       word: current?.word,
       original: current?.original,
-      ...mirrorWord(current, { ...context, pronunciationEvents: speechFeatures.pronunciationEvents || [] })
+      ...mirrorWord(current, { ...context, pronunciationEvents: speechFeatures.pronunciationEvents || [] }),
+      sourceWordIndex: i,
+      pauseAfterIndex: i
     });
   }
 
@@ -1985,12 +1989,19 @@ function buildPhonemeTimeline(words) {
 }
 
 function buildJapaneseMirrorTimeline(words, mirroredWords, speechFeatures) {
+  // mirroredWords は Could+you のような連結ペアを1件にまとめる場合があり、
+  // words 配列と要素数がズレる。ループの index をそのまま words[] の添字として
+  // 使うと、連結が発生した文で以降の単語すべての sourceWord/kana が1つずつ
+  // ズレてしまう(例: help の判定が you の欄に、me の判定が help の欄に出る)。
+  // mirrorWord 生成時に記録した sourceWordIndex/pauseAfterIndex を使う。
   const pauseByIndex = new Map((speechFeatures?.boundaryPauseEvents || []).map((pause) => [pause.afterWordIndex, pause]));
   return mirroredWords.map((mirror, index) => {
-    const source = words[index] || {};
-    const pauseAfter = pauseByIndex.get(index);
+    const sourceIndex = Number.isInteger(mirror.sourceWordIndex) ? mirror.sourceWordIndex : index;
+    const pauseIndex = Number.isInteger(mirror.pauseAfterIndex) ? mirror.pauseAfterIndex : index;
+    const source = words[sourceIndex] || {};
+    const pauseAfter = pauseByIndex.get(pauseIndex);
     return {
-      wordIndex: index,
+      wordIndex: sourceIndex,
       sourceWord: source.original || source.word || "",
       kana: mirror.text,
       severity: mirror.severity || "ok",
