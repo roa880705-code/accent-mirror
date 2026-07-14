@@ -2082,7 +2082,28 @@ function buildSoundSignature(words) {
   const longPhones = allPhones.filter((item) => Number(item.durationMs || 0) >= 240);
   const longVowels = allPhones.filter((item) => item.class === "vowel" && Number(item.durationMs || 0) >= 220);
   const longStops = allPhones.filter((item) => item.class === "stop" && Number(item.durationMs || 0) >= 120);
-  const katakanaVowelHeavy = longVowels.length >= 1 || (longStops.length >= 1 && count("liquid") + count("stop") >= 1);
+
+  // カタカナ発音(母音追加)は「単語1つの中で複数の音が伸びる/保持される」パターンで、
+  // 文全体のどこかに1音だけ長い箇所があるのとは区別する必要がある。
+  // 実機テストで、同じ p の長さ(約190ms)でも
+  // - l も約120ms と長い場合(「ヘルプ」のようなカタカナ発音) → カタカナ扱いが正しい
+  // - l は約30msと短い場合(「ヘプ」のような子音圧縮/弱化) → 子音欠落/弱化として扱うべき
+  // という違いが確認された。単語内で「長い音」がisLong的が2つ以上ある場合のみ、
+  // その単語をカタカナ発音候補とする(1音だけの長さは伸長の根拠にしない)。
+  const isLongForWordSignature = (item) => {
+    const dur = Number(item.durationMs || 0);
+    if (item.class === "vowel") return dur >= 220;
+    if (item.class === "stop") return dur >= 120;
+    return dur >= 100;
+  };
+  const katakanaHeavyWords = new Set();
+  new Set(allPhones.map((item) => item.word)).forEach((wordKey) => {
+    const wordPhones = allPhones.filter((item) => item.word === wordKey);
+    const wordLongVowels = wordPhones.filter((item) => item.class === "vowel" && Number(item.durationMs || 0) >= 220);
+    const wordLongPhones = wordPhones.filter(isLongForWordSignature);
+    if (wordLongVowels.length >= 1 || wordLongPhones.length >= 2) katakanaHeavyWords.add(wordKey);
+  });
+  const katakanaVowelHeavy = katakanaHeavyWords.size > 0;
   return {
     weakPhones,
     longPhones,
@@ -2096,6 +2117,7 @@ function buildSoundSignature(words) {
     vowelWeakness: count("vowel"),
     strongCount,
     katakanaVowelHeavy,
+    katakanaHeavyWords,
     level: strongCount >= 2 || (weakest && weakest.score < 40) ? "high" : weakPhones.length >= 2 ? "medium" : weakPhones.length ? "low" : "none",
     summary: weakPhones.length
       ? weakPhones.map((item) => `${item.original}:${item.phone}/${item.score}/${item.class}`).join(", ")
@@ -2287,6 +2309,16 @@ function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature
     // soundSignature.katakanaVowelHeavy は Azureの音素スコア・長さから直接算出される
     // 具体的な信号であり、他の consonant_or_phonics 系イベント(hard-codedな語別ロジック)
     // と同程度の確からしさがあるため、"medium" に統一してフィルターを通過させる。
+    // soundSignature 由来の場合は、カタカナ的な伸びが確認できた単語だけに反映範囲を絞る
+    // (文中の別の単語がたまたま長い母音を持つだけで、無関係な単語の子音の癖まで
+    // カタカナ扱いに引きずられないようにする)。hasExpectedLinkingBreak は単語同士の
+    // つながり方についての文全体の信号のため、従来通り広い範囲を対象にする。
+    const katakanaHeavyWords = [...(soundSignature?.katakanaHeavyWords || [])];
+    const wordScopedRoles = new Set(katakanaHeavyWords.flatMap((word) => [...japaneseRolesForEnglishWord(word, meaningJapanese)]));
+    const targetRoles = hasExpectedLinkingBreak || !wordScopedRoles.size
+      ? ["request-action", "request-ending", "predicate", "predicate-ending", "object", "request-object"]
+      : [...wordScopedRoles];
+
     localEvents.push({
       id: "katakana-delivery",
       source: hasExpectedLinkingBreak ? "expectedLinkingBreak" : "soundSignature",
@@ -2296,7 +2328,7 @@ function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature
       syllablePosition: { scope: "phrase", fraction: 0.5, slot3: null, syllables: 1 },
       severity: "medium",
       confidence: "medium",
-      targetRoles: ["request-action", "request-ending", "predicate", "predicate-ending", "object", "request-object"],
+      targetRoles,
       englishEvidence: hasExpectedLinkingBreak
         ? "本来つながりやすい英語フレーズが、1語ずつ粒立って聞こえる候補です。"
         : "母音や語尾が日本語的に残り、カタカナ英語寄りに聞こえる候補です。",
