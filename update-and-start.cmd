@@ -1,27 +1,9 @@
 @echo off
-chcp 65001 >nul
+rem This launcher is kept intentionally minimal and stable.
+rem Do not add logic here: git pull can rewrite this very file while it
+rem is running, which corrupts cmd.exe's read position mid-script.
+rem All actual logic lives in run-server.cmd, which is safe to change
+rem because it is opened fresh (after the pull) via the call below.
 cd /d %~dp0
-echo === Updating from GitHub ===
 git pull
-if errorlevel 1 (
-  echo.
-  echo git pull failed. Please check the error above.
-  pause
-  exit /b 1
-)
-
-echo.
-echo === Checking dependencies ===
-call npm install
-if errorlevel 1 (
-  echo.
-  echo npm install failed. Please check the error above.
-  pause
-  exit /b 1
-)
-
-echo.
-echo === Starting server ===
-echo (Closing this window will stop the server)
-call npm start
-pause
+call run-server.cmd
