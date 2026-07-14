@@ -48,9 +48,14 @@ module.exports = {
   strongDeviationSemitone: 2.2,
 
   // 文中(語間)の deviation 変化量。これ以上の変化を「上げ」「下げ」とみなす。
-  midSentenceMoveSemitone: 1.0,
+  // 実機テスト(2026-07-14, "Could you help me?" をモデルに寄せて自然に発話)で、
+  // 1.0半音だと単語ごとのピッチ推定ノイズだけで方向転換が2回発生し、zigzag(高)に
+  // 誤判定されるケースを確認。1.5半音に引き上げてノイズ耐性を上げた。
+  midSentenceMoveSemitone: 1.5,
 
-  // 文中で方向転換がこの回数以上、またはレンジがこれ以上でジグザグ(1語ずつ区切れる棒読み感)とみなす。
+  // 文中で方向転換がこの回数「かつ」レンジがこれ以上の場合のみジグザグ(1語ずつ区切れる棒読み感)とみなす。
+  // (回数だけでの判定はノイズに弱いため、pitchAlignmentService.buildDeviationContour で
+  //  方向転換回数とレンジの両方を必須条件にしている。)
   zigzagMinDirectionChanges: 2,
   zigzagRangeSemitone: 3.0,
 

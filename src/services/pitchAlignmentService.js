@@ -62,11 +62,12 @@ function buildDeviationContour(words) {
   const rangeSemitones = valid.length
     ? Number((Math.max(...valid.map((word) => word.avgDeviation)) - Math.min(...valid.map((word) => word.avgDeviation))).toFixed(1))
     : 0;
-  const hasRise = significantMoves.some((move) => move.direction === "rise");
-  const hasFall = significantMoves.some((move) => move.direction === "fall");
-  const pattern = directionChanges >= thresholds.zigzagMinDirectionChanges || (hasRise && hasFall && rangeSemitones >= thresholds.zigzagRangeSemitone)
+  // 方向転換の「回数」だけでは、単語ごとのピッチ推定ノイズ(1半音前後の揺れ)だけで
+  // zigzag と誤判定しやすいことが実機テストで判明したため、回数と音域差の両方を
+  // 満たす場合のみ zigzag とする(回数だけ・音域差だけでは phrase_movement 止まり)。
+  const pattern = directionChanges >= thresholds.zigzagMinDirectionChanges && rangeSemitones >= thresholds.zigzagRangeSemitone
     ? "zigzag"
-    : directionChanges >= 1 || rangeSemitones >= thresholds.phraseMovementRangeSemitone
+    : directionChanges >= 1 && rangeSemitones >= thresholds.phraseMovementRangeSemitone
       ? "phrase_movement"
       : "simple";
 
