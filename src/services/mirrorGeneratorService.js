@@ -1933,7 +1933,8 @@ function buildMirroredWords(words, speechFeatures, context) {
         conservative: linkingEvent.strength === "weak",
         linking: true,
         sourceWordIndex: i,
-        pauseAfterIndex: i + 1
+        pauseAfterIndex: i + 1,
+        spanWordIndices: [i, i + 1]
       });
       i += 1;
       continue;
@@ -1943,7 +1944,8 @@ function buildMirroredWords(words, speechFeatures, context) {
       original: current?.original,
       ...mirrorWord(current, { ...context, pronunciationEvents: speechFeatures.pronunciationEvents || [] }),
       sourceWordIndex: i,
-      pauseAfterIndex: i
+      pauseAfterIndex: i,
+      spanWordIndices: [i]
     });
   }
 
@@ -2002,6 +2004,7 @@ function buildJapaneseMirrorTimeline(words, mirroredWords, speechFeatures) {
     const pauseAfter = pauseByIndex.get(pauseIndex);
     return {
       wordIndex: sourceIndex,
+      spanWordIndices: Array.isArray(mirror.spanWordIndices) ? mirror.spanWordIndices : [sourceIndex],
       sourceWord: source.original || source.word || "",
       kana: mirror.text,
       severity: mirror.severity || "ok",

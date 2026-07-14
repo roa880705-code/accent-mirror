@@ -1132,35 +1132,64 @@ function issueTypeLabel(issueType) {
 // mirrorLocalEvents.events は word フィールドで単語に紐づいている(word:null は
 // 単語連結・カタカナ・文末音程のような「文全体・フレーズ」レベルの反映)ため、
 // それを使って「単語/フレーズ → 分析 → ミラーへの反映」の形にまとめ直す。
+// Could+you のように連結して発音された単語は、mirrorTimeline.japaneseMirrorTimeline
+// 側で spanWordIndices（例: [0,1]）としてまとめて記録されている。これを使って、
+// 単語カードもフレーズ単位（1つのフィードバック欄）にまとめる。
+function findSpanForWordIndex(kanaItems, wordIndex) {
+  return kanaItems.find((entry) => (entry.spanWordIndices || [entry.wordIndex]).includes(wordIndex)) || null;
+}
+
 function buildWordGroups(mirror) {
   const phonemeItems = mirror?.mirrorTimeline?.phonemeTimeline || [];
   const kanaItems = mirror?.mirrorTimeline?.japaneseMirrorTimeline || [];
   const localEvents = mirror?.mirrorLocalEvents?.events || mirror?.voiceScript?.transferPlan?.localEvents?.events || [];
   const segments = mirror?.voiceScript?.segments || [];
 
-  const wordGroups = phonemeItems.map((item) => {
-    const wordKey = String(item.word || "").toLowerCase();
-    const kana = kanaItems.find((entry) => entry.wordIndex === item.wordIndex) || null;
-    const events = localEvents.filter((event) => String(event.word || "").toLowerCase() === wordKey && wordKey);
+  const wordGroups = [];
+  const consumedIndices = new Set();
+  const claimedPhraseEvents = new Set();
+
+  phonemeItems.forEach((item) => {
+    if (consumedIndices.has(item.wordIndex)) return;
+    const span = findSpanForWordIndex(kanaItems, item.wordIndex);
+    const spanIndices = span?.spanWordIndices?.length ? span.spanWordIndices : [item.wordIndex];
+    const members = spanIndices
+      .map((wordIndex) => phonemeItems.find((entry) => entry.wordIndex === wordIndex))
+      .filter(Boolean);
+    members.forEach((member) => consumedIndices.add(member.wordIndex));
+
+    const memberWordKeys = members.map((member) => String(member.word || "").toLowerCase());
+    const events = localEvents.filter((event) => memberWordKeys.includes(String(event.word || "").toLowerCase()) && event.word);
+
+    if (memberWordKeys.length > 1) {
+      const spanPrefix = memberWordKeys.join("-");
+      localEvents.forEach((event) => {
+        if (event.word) return;
+        if (String(event.key || "").toLowerCase().startsWith(`${spanPrefix}:`)) {
+          events.push(event);
+          claimedPhraseEvents.add(event);
+        }
+      });
+    }
+
     const roles = new Set(events.flatMap((event) => event.targetRoles || []));
     const wordSegments = segments.filter((segment) => {
       const role = String(segment.role || "");
       return [...roles].some((target) => role === target || role.startsWith(`${target}-pitch-`));
     });
-    return {
-      key: `word-${item.wordIndex}`,
+
+    wordGroups.push({
+      key: `word-${spanIndices.join("-")}`,
       kind: "word",
-      label: item.word,
-      score: item.score,
-      errorType: item.errorType,
-      phones: item.phones || [],
-      kana,
+      label: members.map((member) => member.word).join(" "),
+      members,
+      kana: span,
       events,
       segments: wordSegments
-    };
+    });
   });
 
-  const phraseEvents = localEvents.filter((event) => !event.word);
+  const phraseEvents = localEvents.filter((event) => !event.word && !claimedPhraseEvents.has(event));
   const usedSegmentRoles = new Set(wordGroups.flatMap((group) => group.segments.map((segment) => segment.role)));
   const phraseSegments = segments.filter((segment) => !usedSegmentRoles.has(segment.role));
 
@@ -1199,10 +1228,27 @@ function renderWordGroupSegments(segments) {
 
 function renderWordGroupCard(group) {
   const isWord = group.kind === "word";
-  const weakPhones = isWord ? (group.phones || []).filter((phone) => phoneHasDetectedIssue(phone)) : [];
-  const phoneLine = weakPhones.length
-    ? `<div class="minor"><b>音素</b>: ${weakPhones.map((phone) => `${escapeHtml(phone.phone)}:${phone.score}/${phone.durationMs ?? "--"}ms`).join(", ")}</div>`
-    : "";
+  const members = group.members || [];
+  const isPhraseSpan = members.length > 1;
+
+  const badges = members
+    .map((member) => Number.isFinite(member.score)
+      ? `<span class="badge ${member.score < 60 ? "alert" : member.score < 80 ? "warn" : "ok"}">${isPhraseSpan ? `${escapeHtml(member.word)} ` : ""}score ${member.score}</span>`
+      : "")
+    .join("")
+    + members.filter((member) => member.errorType && member.errorType !== "None")
+      .map((member) => `<span class="badge alert">${escapeHtml(member.word)}: ${escapeHtml(member.errorType)}</span>`)
+      .join("");
+
+  const phoneLine = members
+    .map((member) => {
+      const weakPhones = (member.phones || []).filter((phone) => phoneHasDetectedIssue(phone));
+      if (!weakPhones.length) return "";
+      const prefix = isPhraseSpan ? `${escapeHtml(member.word)}: ` : "";
+      return `<div class="minor"><b>音素</b>: ${prefix}${weakPhones.map((phone) => `${escapeHtml(phone.phone)}:${phone.score}/${phone.durationMs ?? "--"}ms`).join(", ")}</div>`;
+    })
+    .join("");
+
   const kanaLine = group.kana && timelineHasDetectedIssue(group.kana)
     ? `<div class="minor"><b>カタカナ聞こえ方</b>: <strong>${escapeHtml(group.kana.kana)}</strong>（${group.kana.durationMs ?? "--"}ms）<br>${escapeHtml(group.kana.reason || "")}</div>`
     : "";
@@ -1211,15 +1257,9 @@ function renderWordGroupCard(group) {
         ${escapeHtml(event.englishEvidence || "")}<br>
         <span class="minor">ミラーへの反映: ${escapeHtml(event.mirrorAction || "")}</span></li>`).join("")}</ul>`
     : `<div class="minor">検出された癖はありません。</div>`;
-  const scoreBadge = isWord && Number.isFinite(group.score)
-    ? `<span class="badge ${group.score < 60 ? "alert" : group.score < 80 ? "warn" : "ok"}">score ${group.score}</span>`
-    : "";
-  const errorBadge = isWord && group.errorType && group.errorType !== "None"
-    ? `<span class="badge alert">${escapeHtml(group.errorType)}</span>`
-    : "";
 
   return `<div class="panel word-card" id="wordcard-${group.key}">
-    <div class="word-card-head"><strong>${escapeHtml(group.label)}</strong> ${scoreBadge}${errorBadge}</div>
+    <div class="word-card-head"><strong>${escapeHtml(group.label)}</strong> ${isWord ? badges : ""}</div>
     ${phoneLine}
     ${kanaLine}
     <div class="word-card-events">${eventsList}</div>
