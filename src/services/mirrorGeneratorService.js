@@ -3263,6 +3263,15 @@ function buildAccentTransferPlan({ speechFeatures, mirrorTimeline, voicePlan, so
   const katakanaDeliveryEvents = (mirrorLocalEvents?.events || []).filter((event) => event.issueType === "katakana_delivery");
   const intonationStatus = mirrorTimeline?.pitchOverlay?.status || speechFeatures?.intonationStatus || "unknown";
   const intonationMoves = Array.isArray(speechFeatures?.pitchContour?.moves) ? speechFeatures.pitchContour.moves : [];
+  // モデル音声比較(model-relative)が使える場合のみ、語ごとの実測ピッチ差(avgDeviation, 半音)を
+  // そのままミラーのセグメントへ引き継ぐ。自己相対フォールバック時は語ごとの実測値がないため
+  // (basis !== "model-relative")、intonationStatus 別の固定パターンにフォールバックする。
+  const rawIntonationFeatures = speechFeatures?.intonationFeatures;
+  const intonationDeviationWords = rawIntonationFeatures?.basis === "model-relative"
+    ? (rawIntonationFeatures.words || [])
+        .filter((word) => Number.isFinite(word.avgDeviation))
+        .map((word) => ({ word: word.word, avgDeviation: word.avgDeviation }))
+    : [];
   const maxPause = effectivePauseEvents.length ? Math.max(...effectivePauseEvents.map((event) => Number(event.gapMs || 0))) : 0;
   const maxUnlinkedGap = effectiveUnlinkedEvents.length ? Math.max(...effectiveUnlinkedEvents.map((event) => Number(event.gapMs || 0))) : 0;
   const voiceMirrorLevel = speechFeatures?.voiceMirrorLevel || "clear";
@@ -3342,6 +3351,7 @@ function buildAccentTransferPlan({ speechFeatures, mirrorTimeline, voicePlan, so
     articulationSpeedLevel: speechFeatures?.articulationSpeedLevel || "unknown",
     intonationStatus,
     intonationMoves,
+    intonationDeviationWords,
     intonationExpected: speechFeatures?.intonationTarget?.expectedFinalContour || "unknown"
   };
 }
@@ -3464,8 +3474,60 @@ function intonationPitchPattern(transferPlan, partCount = 0) {
   return pattern;
 }
 
+// transferPlan.intonationDeviationWords ([{word, avgDeviation}], 単語ごとの実測半音差) を
+// 出力セグメント数に合わせて位置ベースで再サンプリングする(区間の意味的対応ではなく、
+// 発話タイムライン上の相対位置での近似)。区間数と語数が異なっていても、実際に測定した
+// 上げ下げ・ジグザグの形をそのままミラーへ引き継ぐのが目的。
+function resampledDeviationForSegments(words, partCount) {
+  if (!Array.isArray(words) || words.length < 2 || partCount < 1) return [];
+  if (words.length === 1) return new Array(partCount).fill(words[0].avgDeviation);
+  const values = words.map((word) => Number(word.avgDeviation));
+  return Array.from({ length: partCount }, (_, index) => {
+    const t = partCount > 1 ? index / (partCount - 1) : 0;
+    const pos = t * (values.length - 1);
+    const lower = Math.floor(pos);
+    const upper = Math.min(values.length - 1, lower + 1);
+    const frac = pos - lower;
+    const a = values[lower];
+    const b = values[upper];
+    if (!Number.isFinite(a) && !Number.isFinite(b)) return null;
+    if (!Number.isFinite(a)) return b;
+    if (!Number.isFinite(b)) return a;
+    return a + (b - a) * frac;
+  });
+}
+
+const PITCH_PERCENT_PER_SEMITONE = 2.1;
+const PITCH_DEVIATION_PERCENT_CAP = 22;
+const PITCH_SEGMENT_PERCENT_CAP = 30;
+
+function parsePercentValue(value) {
+  const match = String(value || "").match(/([+-]?\d+(?:\.\d+)?)%/);
+  return match ? Number(match[1]) : 0;
+}
+
+function formatSignedPercent(value, cap = PITCH_SEGMENT_PERCENT_CAP) {
+  const clamped = Math.max(-cap, Math.min(cap, Math.round(value)));
+  return `${clamped >= 0 ? "+" : ""}${clamped}%`;
+}
+
 function pitchForVoiceSegment({ index, parts, basePitch, weakPitch, transferPlan }) {
   const isFinal = index === parts.length - 1;
+  const deviationCurve = resampledDeviationForSegments(transferPlan?.intonationDeviationWords, parts.length);
+  const deviation = deviationCurve[index];
+
+  // 実測ピッチ差(モデル音声基準)が使える場合は、カテゴリ別の固定パターンではなく、
+  // 実際に録音で動いた音程の形(上げ下げ・ジグザグ・大きさ)をそのままミラーの
+  // セグメントごとの音程に反映する。articulation由来の基準値(basePitch/weakPitch)に
+  // 実測差分を上乗せする形にし、既存の子音の弱さ等の反映は維持する。
+  if (Number.isFinite(deviation)) {
+    const baselinePercent = parsePercentValue(isFinal ? basePitch : weakPitch);
+    const deviationPercent = Math.max(-PITCH_DEVIATION_PERCENT_CAP, Math.min(PITCH_DEVIATION_PERCENT_CAP, deviation * PITCH_PERCENT_PER_SEMITONE));
+    return formatSignedPercent(baselinePercent + deviationPercent);
+  }
+
+  // フォールバック: 語ごとの実測ピッチ差が使えない場合(自己相対フォールバック・音声区間不足など)は、
+  // 従来のintonationStatus別の固定パターンを使う。
   if (transferPlan?.intonationStatus === "zigzag") {
     const pattern = intonationPitchPattern(transferPlan, parts.length);
     if (pattern.length) return pattern[index % pattern.length];
