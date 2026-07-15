@@ -1126,7 +1126,9 @@ function issueTypeLabel(issueType) {
     intonation: "音程・文尾/文中の上げ下げ",
     alignment: "余分な音の挿入",
     subtle_phonics_trace: "微細な非ネイティブ感",
-    speech_rate: "全体の速度"
+    speech_rate: "全体の速度",
+    liquid_confusion: "r/lの弱さ・混同",
+    alternate_word_local: "別の単語として聞こえる可能性"
   }[issueType] || issueType || "検出された癖";
 }
 

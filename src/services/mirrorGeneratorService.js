@@ -1,5 +1,5 @@
 ﻿const pitchThresholds = require("../config/pitchThresholds");
-const { weakenJapaneseMoraText, elongateJapaneseMoraText, segmentPauseJapaneseMoraText } = require("./japaneseMoraTransform");
+const { weakenJapaneseMoraText, elongateJapaneseMoraText, muddleJapaneseMoraText, segmentPauseJapaneseMoraText } = require("./japaneseMoraTransform");
 
 const WORD_MIRRORS = {
   could: {
@@ -2072,7 +2072,7 @@ function buildMirrorTimeline({ words, mirroredWords, speechFeatures }) {
 function soundClassForPhone(phone) {
   const value = String(phone || "").toLowerCase();
   if (/[pbtdkg]/.test(value) || value.includes("tʃ") || value.includes("dʒ")) return "stop";
-  if (/[fvszʃʒh]/.test(value) || value.includes("sh") || value.includes("th")) return "fricative";
+  if (/[fvszʃʒhθð]/.test(value) || value.includes("sh") || value.includes("th")) return "fricative";
   if (/[lr]/.test(value)) return "liquid";
   if (/[mnŋ]/.test(value)) return "nasal";
   if (isVowelPhone(value)) return "vowel";
@@ -2208,6 +2208,21 @@ function phoneNameFromPronunciationEvent(event) {
   return match ? match[1] : "";
 }
 
+// r/l など、聞き間違えると別の実在単語になる紛らわしい単語ペア。
+// データとして持つことで、新しいペアの追加は表の1行追加だけで済み、コード側の
+// 分岐を増やす必要がない(alternateWordMeaningFromPronunciationのような文全体
+// 単位のハードコードとは違い、単語単位でどの練習文にも適用できる)。
+const CONFUSABLE_WORD_PAIRS = {
+  light: { alternate: "right", alternateJapanese: "右" },
+  right: { alternate: "light", alternateJapanese: "軽い" },
+  correct: { alternate: "collect", alternateJapanese: "集める" },
+  collect: { alternate: "correct", alternateJapanese: "正しい" },
+  grass: { alternate: "glass", alternateJapanese: "ガラス" },
+  glass: { alternate: "grass", alternateJapanese: "芝生" },
+  road: { alternate: "load", alternateJapanese: "荷物" },
+  load: { alternate: "road", alternateJapanese: "道" }
+};
+
 function japaneseRolesForEnglishWord(word, meaningJapanese) {
   const value = String(word || "").toLowerCase();
   const meaning = String(meaningJapanese || "");
@@ -2223,7 +2238,8 @@ function japaneseRolesForEnglishWord(word, meaningJapanese) {
     roles.add("object");
     roles.add("request-ending");
   }
-  if (["phone", "number", "salt", "pen", "today", "tomorrow", "here", "it"].includes(value)) {
+  if (["phone", "number", "salt", "pen", "today", "tomorrow", "here", "it",
+    "light", "right", "correct", "collect", "grass", "glass", "road", "load"].includes(value)) {
     roles.add("request-object");
     roles.add("object");
     roles.add("time");
@@ -2243,7 +2259,11 @@ function japaneseRolesForEnglishWord(word, meaningJapanese) {
 function issueTypeForPronunciationEvent(event) {
   const type = String(event?.type || "");
   if (type === "word_boundary_pause" || type === "expected_linking_break") return "pause_or_unlinked";
-  if (type === "initial-consonant" || type === "final-consonant" || type === "liquid" || type === "alignment") return "consonant_or_phonics";
+  // r/l の弱さは「別の子音に置き換わって聞こえる」性質が強く、他の子音弱化
+  // (h/p/sなどが単に落ちる)とは別カテゴリとして扱う(絶対ルール: 別種類の
+  // 癖に置き換えない、を守るため、混同せず区別する)。
+  if (type === "liquid") return "liquid_confusion";
+  if (type === "initial-consonant" || type === "final-consonant" || type === "alignment") return "consonant_or_phonics";
   if (type === "length") return "length";
   if (type === "linking") return "linking";
   if (type === "intonation") return "intonation";
@@ -2255,6 +2275,7 @@ function mirrorActionForLocalEvent(issueType, event) {
   if (issueType === "pause_or_unlinked") return "該当する日本語の区切りだけに短い間を入れる。全体を遅くしない。";
   if (issueType === "katakana_delivery") return "子音を欠落させず、該当する日本語を粒立てて母音つきに聞こえるようにする。";
   if (issueType === "consonant_or_phonics") return "該当する語句だけ子音の輪郭を少し弱める。別種類の癖には置き換えない。";
+  if (issueType === "liquid_confusion") return "該当する語句の子音を、別の子音に置き換わって聞こえる形(清音→濁音)で反映する。母音だけにする弱化とは区別する。";
   if (issueType === "length") return "該当する母音・語尾だけを少し伸ばす。文全体を崩さない。";
   if (issueType === "linking") return "該当する語句だけを少し連結して聞こえるようにする。";
   if (issueType === "intonation") return String(event?.key || "").includes("zigzag")
@@ -2264,10 +2285,48 @@ function mirrorActionForLocalEvent(issueType, event) {
   return "該当箇所だけに反映する。";
 }
 
-function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature }) {
+// CONFUSABLE_WORD_PAIRS に載っている単語について、r/l などの弱さや自由認識結果から
+// 「別の実在単語として聞こえた可能性」を検出する。文全体単位ではなく単語単位の
+// チェックなので、この単語が登場するどの練習文にも自動的に適用できる。
+function confusableWordLocalEvents(words, meaningJapanese, freeRecognizedText) {
+  const freeWords = new Set(sentenceMeaningKey(freeRecognizedText).split(" ").filter(Boolean));
+  const events = [];
+  (words || []).forEach((word, index) => {
+    const key = String(word.word || "").toLowerCase();
+    const pair = CONFUSABLE_WORD_PAIRS[key];
+    if (!pair) return;
+    const liquidPhone = (word.phones || []).find((phone) => soundClassForPhone(phone.phone) === "liquid");
+    const liquidScore = liquidPhone ? phoneScoreValue(liquidPhone) : null;
+    const heardInFreeRecognition = freeWords.has(pair.alternate);
+    const weakLiquid = liquidScore !== null && liquidScore < 60;
+    if (!heardInFreeRecognition && !weakLiquid) return;
+
+    events.push({
+      id: `alternate-${index + 1}-${key}`,
+      source: "confusableWordPair",
+      issueType: "alternate_word_local",
+      word: word.original || key,
+      timeRangeMs: timeRangeMsForWord(word),
+      syllablePosition: { scope: "word", fraction: 0.5, slot3: null, syllables: 1 },
+      severity: heardInFreeRecognition || (liquidScore !== null && liquidScore < 45) ? "high" : "medium",
+      confidence: heardInFreeRecognition ? "high" : "medium",
+      targetRoles: japaneseRolesForEnglishWord(key, meaningJapanese),
+      alternateWord: pair.alternate,
+      alternateJapanese: pair.alternateJapanese,
+      englishEvidence: heardInFreeRecognition
+        ? `自由認識で「${pair.alternate}」寄りに聞こえています。`
+        : `${word.original || key} の r/l が score ${Math.round(liquidScore)}。「${pair.alternate}」寄りに聞こえる候補です。`,
+      mirrorAction: `該当語句を「${pair.alternateJapanese}」の和訳に置き換えて反映する。`,
+      preserveMeaning: false
+    });
+  });
+  return events;
+}
+
+function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature, freeRecognizedText }) {
   const meaningJapanese = meaning?.japanese || "";
   const byWord = new Map((words || []).map((word) => [String(word.word || word.original || "").toLowerCase(), word]));
-  const localEvents = [];
+  const localEvents = [...confusableWordLocalEvents(words, meaningJapanese, freeRecognizedText)];
 
   (speechFeatures?.pronunciationEvents || []).forEach((event, index) => {
     const eventWord = String(event.word || "").toLowerCase().replace(/[^a-z]/g, "");
@@ -2304,12 +2363,13 @@ function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature
 
   (soundSignature?.weakPhones || []).slice(0, 8).forEach((phone, index) => {
     const alreadyCovered = localEvents.some((event) => String(event.word || "").toLowerCase() === String(phone.word || "").toLowerCase()
-      && ["consonant_or_phonics", "subtle_phonics_trace"].includes(event.issueType));
+      && ["consonant_or_phonics", "subtle_phonics_trace", "liquid_confusion"].includes(event.issueType));
     if (alreadyCovered) return;
+    const issueType = phone.class === "vowel" ? "vowel_weakness" : phone.class === "liquid" ? "liquid_confusion" : "consonant_or_phonics";
     localEvents.push({
       id: `phone-${index + 1}-${phone.word}-${phone.phone}`,
       source: "soundSignature",
-      issueType: phone.class === "vowel" ? "vowel_weakness" : "consonant_or_phonics",
+      issueType,
       word: phone.original || phone.word,
       phone: phone.phone,
       timeRangeMs: null,
@@ -2320,7 +2380,9 @@ function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature
       englishEvidence: `${phone.original || phone.word} の ${phone.phone} が score ${phone.score}。${phone.class} の弱さとして扱う候補です。`,
       mirrorAction: phone.class === "vowel"
         ? "該当語句だけ母音の曖昧さとして軽く反映する。子音弱化には置き換えない。"
-        : "該当語句だけ子音の輪郭を軽く弱める。文全体を入れ歯風にしない。",
+        : issueType === "liquid_confusion"
+          ? "該当語句の子音を、別の子音に置き換わって聞こえる形で反映する。母音だけにする弱化とは区別する。"
+          : "該当語句だけ子音の輪郭を軽く弱める。文全体を入れ歯風にしない。",
       preserveMeaning: true
     });
   });
@@ -2892,13 +2954,28 @@ function hasKatakanaDeliveryForRole(transferPlan, role) {
 // 明確に強い方を優先する。同点の場合は従来通りカタカナ→子音→連結の順を維持する。
 function dominantLocalTransformForRole(transferPlan, role) {
   const maxRank = (events) => events.reduce((max, event) => Math.max(max, severityRank(event.severity)), -1);
+  const alternateRank = maxRank(localEventsForRole(transferPlan, role, ["alternate_word_local"]));
   const katakanaRank = maxRank(localEventsForRole(transferPlan, role, ["katakana_delivery", "pause_or_unlinked"]));
+  const liquidRank = maxRank(localEventsForRole(transferPlan, role, ["liquid_confusion"]));
   const consonantRank = maxRank(localEventsForRole(transferPlan, role, ["consonant_or_phonics"]));
   const linkingRank = maxRank(localEventsForRole(transferPlan, role, ["linking"]));
-  if (katakanaRank < 0 && consonantRank < 0 && linkingRank < 0) return "none";
-  if (katakanaRank >= consonantRank && katakanaRank >= linkingRank && katakanaRank >= 0) return "katakana";
+  if (alternateRank < 0 && katakanaRank < 0 && liquidRank < 0 && consonantRank < 0 && linkingRank < 0) return "none";
+  // alternate_word_local(r/lなどで単語そのものが別の実在単語として聞こえる)は
+  // 最も具体的で強い根拠なので、存在する限り最優先する。
+  if (alternateRank >= 0) return "alternate";
+  if (katakanaRank >= liquidRank && katakanaRank >= consonantRank && katakanaRank >= linkingRank && katakanaRank >= 0) return "katakana";
+  if (liquidRank >= consonantRank && liquidRank >= linkingRank && liquidRank >= 0) return "liquid";
   if (consonantRank >= linkingRank) return "consonant";
   return "linking";
+}
+
+// alternate_word_local イベントのうち、この role に一致するものの和訳(alternateJapanese)
+// を返す。複数ある場合はseverityが最も高いものを採用する。
+function alternateWordJapaneseForRole(transferPlan, role) {
+  const events = localEventsForRole(transferPlan, role, ["alternate_word_local"]);
+  if (!events.length) return "";
+  const best = events.slice().sort((a, b) => severityRank(b.severity) - severityRank(a.severity))[0];
+  return best?.alternateJapanese || "";
 }
 
 function katakanaDeliveryStrengthForRole(transferPlan, role) {
@@ -2951,6 +3028,21 @@ function localConsonantOmissionForVoice(text, transferPlan, role = "") {
   const severityTier = events.some((event) => severityRank(event.severity) >= 3) ? "strong" : "medium";
   const strength = coverageTier === "strong" || coverageTier === "medium" ? coverageTier : severityTier;
   return weakenJapaneseMoraText(source, strength);
+}
+
+// r/l の弱さ・混同は、清音→濁音のずらし(muddle)で表現する。consonant_or_phonics の
+// 母音化(weaken)とは別の操作 — 絶対ルール: 別種類の癖に置き換えない、を守るため、
+// 「子音が落ちる」パターンと「別の子音に聞こえる」パターンを混同しない。
+function localLiquidConfusionForVoice(text, transferPlan, role = "") {
+  const source = String(text || "");
+  const events = localEventsForRole(transferPlan, role, ["liquid_confusion"]);
+  if (!events.length) return source;
+
+  const words = [...new Set(events.map((event) => String(event.word || event.key || "").toLowerCase()))];
+  const ratio = phoneCoverageRatioForWords(words, transferPlan?.soundSignature, "weakMs");
+  if (reflectionTierFromRatio(ratio) === "light") return source;
+
+  return muddleJapaneseMoraText(source);
 }
 
 // 連結による子音の弱化・脱落(例: Could you を強く連結して「クッユー」寄りに聞こえる)も、
@@ -3099,22 +3191,33 @@ function addLengthDragForVoice(text, transferPlan, role = "") {
 }
 
 function applyAccentTransferToVoiceText(text, articulation, transferPlan, role = "") {
-  const localSound = shouldApplyLocalSoundEffect(transferPlan, role);
   const dominantTransform = dominantLocalTransformForRole(transferPlan, role);
+
+  // alternate(r/lなどで単語そのものが別の実在単語に聞こえる)は、音の弱め・伸ばし
+  // ではなく、そのものずばり別単語の和訳に置き換える、最も強い反映。他の変形は重ねない。
+  if (dominantTransform === "alternate") {
+    const alternateText = alternateWordJapaneseForRole(transferPlan, role);
+    if (alternateText) return alternateText;
+  }
+
+  const localSound = shouldApplyLocalSoundEffect(transferPlan, role);
   const localConsonant = dominantTransform === "consonant";
   const localLinking = dominantTransform === "linking";
+  const localLiquid = dominantTransform === "liquid";
   const localKatakanaDelivery = dominantTransform === "katakana";
-  const localLength = shouldApplyLocalLengthEffect(transferPlan, role) && !localConsonant && !localLinking;
+  const localLength = shouldApplyLocalLengthEffect(transferPlan, role) && !localConsonant && !localLinking && !localLiquid;
   const lengthAdjusted = localLength ? addLengthDragForVoice(text, transferPlan, role) : String(text || "");
   const consonantEffect = (transferPlan?.effects || []).find((effect) => effect.type === "soften_consonants");
   const collapseEffect = (transferPlan?.effects || []).find((effect) => effect.type === "semantic_collapse");
   const soundEffect = (transferPlan?.effects || []).find((effect) => effect.type === "phoneme_sound_deformation");
   const shouldDeformText = localSound && (articulation !== "clear" || consonantEffect?.strength === "strong" || localConsonant);
-  let softened = localConsonant || localKatakanaDelivery
+  let softened = localConsonant || localLiquid || localKatakanaDelivery
     ? lengthAdjusted
     : softenJapaneseConsonantsForVoice(lengthAdjusted, shouldDeformText ? articulation : "clear");
   if (localKatakanaDelivery) {
     softened = katakanaDeliveryForVoice(softened, katakanaDeliveryStrengthForRole(transferPlan, role));
+  } else if (localLiquid) {
+    softened = localLiquidConfusionForVoice(softened, transferPlan, role);
   } else if (localConsonant) {
     softened = localConsonantOmissionForVoice(softened, transferPlan, role);
   } else if (localLinking) {
@@ -3122,7 +3225,7 @@ function applyAccentTransferToVoiceText(text, articulation, transferPlan, role =
   } else if (soundEffect && localSound) {
     softened = weakenJapaneseBySoundSignature(softened, soundEffect.soundSignature, soundEffect.strength);
   }
-  if (!localConsonant && collapseEffect && localSound && !soundEffect?.soundSignature?.katakanaVowelHeavy) {
+  if (!localConsonant && !localLiquid && collapseEffect && localSound && !soundEffect?.soundSignature?.katakanaVowelHeavy) {
     softened = collapseJapaneseMeaningForVoice(softened, collapseEffect.strength);
   }
   if (transferPlan?.hasLinkingCompression && articulation === "clear") {
@@ -3624,7 +3727,7 @@ function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonan
   const voiceSoundSignature = useFreeMeaningNaturalMirror ? neutralSoundSignature() : soundSignature;
   const voiceMirrorTimeline = useFreeMeaningNaturalMirror ? neutralMirrorTimelineForFreeMeaning(mirrorTimeline, voiceSpeechFeatures) : mirrorTimeline;
   const voiceSeverity = useFreeMeaningNaturalMirror ? "ok" : maxSeverity;
-  const mirrorLocalEvents = buildMirrorLocalEvents({ meaning, words, mirroredWords, speechFeatures: voiceSpeechFeatures, soundSignature: voiceSoundSignature });
+  const mirrorLocalEvents = buildMirrorLocalEvents({ meaning, words, mirroredWords, speechFeatures: voiceSpeechFeatures, soundSignature: voiceSoundSignature, freeRecognizedText });
   const voicePlan = buildVoicePlan({ meaning, severity: voiceSeverity, muffled: useFreeMeaningNaturalMirror ? false : muffled, speechFeatures: voiceSpeechFeatures, soundSignature: voiceSoundSignature });
   const voiceScript = timelineToVoiceScript({ meaning, mirrorTimeline: voiceMirrorTimeline, voicePlan, speechFeatures: voiceSpeechFeatures, soundSignature: voiceSoundSignature, mirrorLocalEvents });
   const listenerExperience = utteranceMismatch

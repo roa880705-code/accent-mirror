@@ -28,6 +28,20 @@ const VOWEL_GROUPS = {
 const VOWEL_ONLY_KANA = new Set(["あ", "い", "う", "え", "お", "ア", "イ", "ウ", "エ", "オ", "を", "ヲ"]);
 const HIRAGANA_VOWEL_KANA = { a: "あ", i: "い", u: "う", e: "え", o: "お" };
 const KATAKANA_VOWEL_KANA = { a: "ア", i: "イ", u: "ウ", e: "エ", o: "オ" };
+
+// 清音→濁音のずらし(例: す→ず, く→ぐ)。r/l のように「別の子音に置き換わって
+// 聞こえる」タイプの崩れは、母音だけにする(weaken)よりも、近い子音にずれる
+// この操作の方が実際の聞こえ方に近い。
+const DEVOICE_MAP = {
+  か: "が", き: "ぎ", く: "ぐ", け: "げ", こ: "ご",
+  さ: "ざ", し: "じ", す: "ず", せ: "ぜ", そ: "ぞ",
+  た: "だ", ち: "ぢ", つ: "づ", て: "で", と: "ど",
+  は: "ば", ひ: "び", ふ: "ぶ", へ: "べ", ほ: "ぼ",
+  カ: "ガ", キ: "ギ", ク: "グ", ケ: "ゲ", コ: "ゴ",
+  サ: "ザ", シ: "ジ", ス: "ズ", セ: "ゼ", ソ: "ゾ",
+  タ: "ダ", チ: "ヂ", ツ: "ヅ", テ: "デ", ト: "ド",
+  ハ: "バ", ヒ: "ビ", フ: "ブ", ヘ: "ベ", ホ: "ボ"
+};
 const SMALL_YOUON = new Set(["ゃ", "ゅ", "ょ", "ャ", "ュ", "ョ"]);
 const YOUON_VOWEL = { ゃ: "a", ゅ: "u", ょ: "o", ャ: "a", ュ: "u", ョ: "o" };
 const I_ROW_FOR_YOUON = new Set([
@@ -39,6 +53,28 @@ const VOWEL_LOOKUP = new Map();
 Object.entries(VOWEL_GROUPS).forEach(([vowel, kanaList]) => {
   kanaList.forEach((kana) => VOWEL_LOOKUP.set(kana, vowel));
 });
+
+// 漢字はモーラ分解できない(読みの情報を持たないため)。この変形エンジンが
+// 対象にできるのはあくまで「読み」であって「表記」ではないので、練習文の
+// 日本語訳に登場する既知の漢字語彙だけ、変形の前にひらがな読みへ変換しておく。
+// 未知の漢字はそのまま(変形されない=安全側にフォールバック)。
+const KANJI_READINGS = {
+  住んでいます: "すんでいます",
+  住んでいる: "すんでいる",
+  暮らしています: "くらしています",
+  暮らしている: "くらしている",
+  電話番号: "でんわばんごう",
+  検討します: "けんとうします",
+  大好きです: "だいすきです"
+};
+
+function toReadableKana(text) {
+  let output = String(text || "");
+  Object.entries(KANJI_READINGS).forEach(([kanji, reading]) => {
+    output = output.split(kanji).join(reading);
+  });
+  return output;
+}
 
 function scriptOf(char) {
   if (/[぀-ゟ]/.test(char)) return "hiragana";
@@ -93,7 +129,7 @@ function vowelOnlyKanaFor(token) {
 // medium と strong ははっきり強度が違うようにする: medium は中間のモーラを1つだけ
 // 弱め、strong は冒頭以外のほぼ全体を弱める。
 function weakenJapaneseMoraText(text, strength = "medium") {
-  const tokens = splitIntoMorae(text);
+  const tokens = splitIntoMorae(toReadableKana(text));
   const weakenableIdx = tokens.map((token, index) => (token.kind === "consonant" ? index : -1)).filter((index) => index >= 0);
   if (!weakenableIdx.length) return String(text || "");
   const first = weakenableIdx[0];
@@ -117,7 +153,7 @@ function weakenJapaneseMoraText(text, strength = "medium") {
 
 // モーラの母音を重ねて伸ばす(例: ますか→まあすか, とって→とってえ)。
 function elongateJapaneseMoraText(text, strength = "medium") {
-  const tokens = splitIntoMorae(text);
+  const tokens = splitIntoMorae(toReadableKana(text));
   const elongatableIdx = tokens
     .map((token, index) => (token.kind === "consonant" || token.kind === "vowelOnly" ? index : -1))
     .filter((index) => index >= 0);
@@ -138,6 +174,17 @@ function elongateJapaneseMoraText(text, strength = "medium") {
   }).join("");
 }
 
+// r/l のように「子音が別の子音に置き換わって聞こえる」タイプの崩れを、
+// 語頭モーラの清音→濁音のずらしで表現する(例: 住んでいる→ずんでいる,
+// 暮らしている→ぐらしている)。weaken(母音だけにする)と違い、「別の音に
+// なった」感覚を残す。濁音化できるモーラが無い場合はそのまま返す。
+function muddleJapaneseMoraText(text) {
+  const tokens = splitIntoMorae(toReadableKana(text));
+  const targetIndex = tokens.findIndex((token) => token.kind === "consonant" && DEVOICE_MAP[token.text]);
+  if (targetIndex === -1) return String(text || "");
+  return tokens.map((token, index) => (index === targetIndex ? DEVOICE_MAP[token.text] : token.text)).join("");
+}
+
 // 軽い区切り(間)だけを表現する(例: もらえますか→もら えま すか)。
 // 音そのものは変えず、モーラを軽くグループ分けして間を空ける。
 function segmentPauseJapaneseMoraText(text) {
@@ -154,5 +201,6 @@ module.exports = {
   splitIntoMorae,
   weakenJapaneseMoraText,
   elongateJapaneseMoraText,
+  muddleJapaneseMoraText,
   segmentPauseJapaneseMoraText
 };
