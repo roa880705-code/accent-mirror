@@ -2880,6 +2880,26 @@ function hasKatakanaDeliveryForRole(transferPlan, role) {
   return localEventsForRole(transferPlan, role, ["katakana_delivery", "pause_or_unlinked"]).length > 0;
 }
 
+// カタカナ的な母音付加(katakana_delivery)と、連結による子音の弱化・脱落(linking /
+// consonant_or_phonics)は別の現象であり、同じ role に両方の候補が出ることがある
+// (例: Could you を強く連結して「クッユー」寄りに発音しつつ、別の理由で語のどこかが
+// 長く伸びてもいる場合)。以前は if/else の並び順でカタカナを常に最優先していたため、
+// 実際にはより強い根拠(severity high)を持つ連結の弱化・脱落があっても、母音付加の
+// 表現に上書きされてしまっていた(実機フィードバックで確認: 「クッユー」「ヘプミー」の
+// ように聞こえる、子音欠落寄りの発音をしたのに、母音を足す形でしかミラーに反映され
+// ない)。ここでは role ごとに、各カテゴリの中で最も強い severity を比較し、根拠が
+// 明確に強い方を優先する。同点の場合は従来通りカタカナ→子音→連結の順を維持する。
+function dominantLocalTransformForRole(transferPlan, role) {
+  const maxRank = (events) => events.reduce((max, event) => Math.max(max, severityRank(event.severity)), -1);
+  const katakanaRank = maxRank(localEventsForRole(transferPlan, role, ["katakana_delivery", "pause_or_unlinked"]));
+  const consonantRank = maxRank(localEventsForRole(transferPlan, role, ["consonant_or_phonics"]));
+  const linkingRank = maxRank(localEventsForRole(transferPlan, role, ["linking"]));
+  if (katakanaRank < 0 && consonantRank < 0 && linkingRank < 0) return "none";
+  if (katakanaRank >= consonantRank && katakanaRank >= linkingRank && katakanaRank >= 0) return "katakana";
+  if (consonantRank >= linkingRank) return "consonant";
+  return "linking";
+}
+
 function katakanaDeliveryStrengthForRole(transferPlan, role) {
   const events = localEventsForRole(transferPlan, role, ["katakana_delivery", "pause_or_unlinked"]);
   if (!events.length) return "none";
@@ -3121,9 +3141,10 @@ function addLengthDragForVoice(text, transferPlan, role = "") {
 
 function applyAccentTransferToVoiceText(text, articulation, transferPlan, role = "") {
   const localSound = shouldApplyLocalSoundEffect(transferPlan, role);
-  const localConsonant = hasLocalConsonantEventForRole(transferPlan, role);
-  const localLinking = hasLocalLinkingEventForRole(transferPlan, role);
-  const localKatakanaDelivery = hasKatakanaDeliveryForRole(transferPlan, role);
+  const dominantTransform = dominantLocalTransformForRole(transferPlan, role);
+  const localConsonant = dominantTransform === "consonant";
+  const localLinking = dominantTransform === "linking";
+  const localKatakanaDelivery = dominantTransform === "katakana";
   const localLength = shouldApplyLocalLengthEffect(transferPlan, role) && !localConsonant && !localLinking;
   const lengthAdjusted = localLength ? addLengthDragForVoice(text, transferPlan, role) : String(text || "");
   const consonantEffect = (transferPlan?.effects || []).find((effect) => effect.type === "soften_consonants");
