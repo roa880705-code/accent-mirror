@@ -2171,7 +2171,18 @@ function buildSoundSignature(words) {
   const weakest = weakPhones.slice().sort((a, b) => a.score - b.score)[0] || null;
   const strongCount = weakPhones.filter((item) => item.score < 55).length;
   const longPhones = allPhones.filter((item) => Number(item.durationMs || 0) >= 240);
-  const longVowels = allPhones.filter((item) => item.class === "vowel" && Number(item.durationMs || 0) >= 220);
+
+  // 二重母音・r音化母音(aɪ, oʊ, ɪɹ, ɜːr など、IPA表記が2文字以上になる母音)は、
+  // 単純母音(ɪ, ɛ, æ など)よりも発音として自然に長くなる(グライドする分の時間が
+  // かかる)。実機フィードバックで、score94〜97の綺麗な発音でも "i"(aɪ) や
+  // "here"(ɪɹ) が文末の自然な音の長さだけでカタカナ判定されてしまう実害が
+  // 繰り返し確認されたため、複合母音には単純母音より緩い(長い)閾値を使う。
+  const isComplexVowelPhone = (phoneName) => String(phoneName || "").length >= 2;
+  // 実機で繰り返し確認された "here"(ɪɹ) の自然な長さは330〜410ms(すべてscore97)
+  // だったため、それより十分高い閾値にする。
+  const vowelDurationBar = (item) => (isComplexVowelPhone(item.phone) ? 450 : 220);
+  const isLongVowel = (item) => item.class === "vowel" && Number(item.durationMs || 0) >= vowelDurationBar(item);
+  const longVowels = allPhones.filter(isLongVowel);
   const longStops = allPhones.filter((item) => item.class === "stop" && Number(item.durationMs || 0) >= 120);
 
   // カタカナ発音(母音追加)は「単語1つの中で複数の音が伸びる/保持される」パターンで、
@@ -2182,8 +2193,8 @@ function buildSoundSignature(words) {
   // という違いが確認された。単語内で「長い音」がisLong的が2つ以上ある場合のみ、
   // その単語をカタカナ発音候補とする(1音だけの長さは伸長の根拠にしない)。
   const isLongForWordSignature = (item) => {
+    if (item.class === "vowel") return isLongVowel(item);
     const dur = Number(item.durationMs || 0);
-    if (item.class === "vowel") return dur >= 220;
     if (item.class === "stop") return dur >= 120;
     return dur >= 100;
   };
@@ -2197,7 +2208,7 @@ function buildSoundSignature(words) {
   const wordDurationTotals = {};
   new Set(allPhones.map((item) => item.word)).forEach((wordKey) => {
     const wordPhones = allPhones.filter((item) => item.word === wordKey);
-    const wordLongVowels = wordPhones.filter((item) => item.class === "vowel" && Number(item.durationMs || 0) >= 220);
+    const wordLongVowels = wordPhones.filter(isLongVowel);
     const wordLongPhones = wordPhones.filter(isLongForWordSignature);
     if (wordLongVowels.length >= 1 || wordLongPhones.length >= 2) katakanaHeavyWords.add(wordKey);
     wordDurationTotals[wordKey] = {
