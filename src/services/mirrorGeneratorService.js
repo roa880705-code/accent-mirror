@@ -1439,8 +1439,10 @@ function buildLengthAndPronunciationSignals(words) {
     const finalVowelMs = finalVowel ? phoneMs(finalVowel) : null;
     // 語尾の母音(here の ɪɹ など)はr音化・文末伸長で自然に長くなるため、絶対的な
     // 閾値だけでは際限なく誤検出が起きる(katakanaHeavyWords と同じ問題)。
-    // Azure自身のスコアが高い場合はよほど極端な長さでない限り疑わない。
-    const finalVowelScoreIsHigh = finalScore >= 92;
+    // Azure自身のスコアが高い場合はよほど極端な長さでない限り疑わない。r音化母音は
+    // 音素単体のスコアが単語全体のスコアより低めに出やすい(実機フィードバック:
+    // word score 97でもɪɹ単体は86止まり)ため、単語スコアと音素スコアの高い方で判定する。
+    const finalVowelScoreIsHigh = Math.max(finalScore, Number(word.score ?? 100)) >= 92;
     const finalVowelDurationBar = finalVowelScoreIsHigh ? 650 : 360;
     if (finalVowel && finalVowelMs !== null && finalVowelMs >= finalVowelDurationBar) {
       signals.push(`${word.word}-final-vowel-long`);
@@ -2155,6 +2157,7 @@ function buildSoundSignature(words) {
         original: word.original || word.word,
         phone: phoneName,
         score: Math.round(score),
+        wordScore: Number(word.score ?? 100),
         durationMs: phoneMs(phone),
         class: soundClassForPhone(phoneName),
         position: phone === word.phones[word.phones.length - 1] ? "final" : "inside"
@@ -2193,11 +2196,15 @@ function buildSoundSignature(words) {
   const vowelDurationBar = (item) => (isComplexVowelPhone(item.phone) ? 340 : 220);
   const HIGH_PHONE_SCORE_BAR = 92;
   const EXTREME_DURATION_MS = { vowel: 650, stop: 260, other: 220 };
+  // r音化母音(ɪɹ など)はAzureの音素単体スコアが実際の発音の良し悪しより低めに
+  // 出やすい(実機フィードバック: word score 97でもɪɹ単体は86止まりだった)。
+  // 単語全体としてAzureが高評価している場合は、その音素単体のスコアだけで
+  // 「質に疑いあり」と判断しない(単語スコアと音素スコアの高い方を採用する)。
+  const isPhoneEffectivelyHighScore = (item) => Math.max(Number(item.score ?? 100), Number(item.wordScore ?? 100)) >= HIGH_PHONE_SCORE_BAR;
   const isLongVowel = (item) => {
     if (item.class !== "vowel") return false;
     const dur = Number(item.durationMs || 0);
-    const scoreIsHigh = Number(item.score ?? 100) >= HIGH_PHONE_SCORE_BAR;
-    return scoreIsHigh ? dur >= EXTREME_DURATION_MS.vowel : dur >= vowelDurationBar(item);
+    return isPhoneEffectivelyHighScore(item) ? dur >= EXTREME_DURATION_MS.vowel : dur >= vowelDurationBar(item);
   };
   const longVowels = allPhones.filter(isLongVowel);
   const longStops = allPhones.filter((item) => item.class === "stop" && Number(item.durationMs || 0) >= 120);
@@ -2212,7 +2219,7 @@ function buildSoundSignature(words) {
   const isLongForWordSignature = (item) => {
     if (item.class === "vowel") return isLongVowel(item);
     const dur = Number(item.durationMs || 0);
-    const scoreIsHigh = Number(item.score ?? 100) >= HIGH_PHONE_SCORE_BAR;
+    const scoreIsHigh = isPhoneEffectivelyHighScore(item);
     if (item.class === "stop") return scoreIsHigh ? dur >= EXTREME_DURATION_MS.stop : dur >= 120;
     return scoreIsHigh ? dur >= EXTREME_DURATION_MS.other : dur >= 100;
   };
