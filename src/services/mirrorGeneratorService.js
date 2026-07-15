@@ -763,12 +763,25 @@ function alternateWordMeaningFromPronunciation({ contrastSet, words, mirroredWor
   const referenceKey = sentenceMeaningKey(contrastSet?.text);
   const freeKey = sentenceMeaningKey(freeRecognizedText);
 
+  // 自由認識(自然発話向けの制約なし認識)は、Azureの言語モデルが「よくある単語」に
+  // 引っ張られる傾向があり、参照文にきちんと沿った発音をしていても、別の紛らわしい
+  // 単語として誤認識されることがある(実機フィードバック: leaveをscore97で発音した
+  // のに、自由認識だけで「live」判定になり、文全体の意味が入れ替わってしまった)。
+  // 自由認識の一致だけを唯一の根拠にせず、対象語のscoreがそこそこ甘い(=本当に
+  // 曖昧だった可能性がある)ことも合わせて要求することで、綺麗に発音できている時は
+  // 自由認識の誤認識に振り回されないようにする。scoreベースの判定(過去に検証済み、
+  // より厳しい閾値)は従来通り単独でも成立させる。
+  const freeRecognitionCorroborated = (score, weakest, softScoreBar, softWeakestBar) =>
+    score < softScoreBar || (weakest !== null && weakest < softWeakestBar);
+
   if (referenceKey === "she is here") {
     const she = findWordByName(words, "she");
     const sheScore = Number(she?.score ?? 100);
     const sheWeakest = weakestPhoneScore(she || {});
-    const heardSea = ["sea is here", "see is here"].includes(freeKey)
-      || hasAlternateWordCandidate(mirroredWords, "she", "sea")
+    const heardSea = (
+      (["sea is here", "see is here"].includes(freeKey) || hasAlternateWordCandidate(mirroredWords, "she", "sea"))
+      && freeRecognitionCorroborated(sheScore, sheWeakest, 92, 86)
+    )
       || sheScore < 86
       || (sheWeakest !== null && sheWeakest < 80);
     if (heardSea) {
@@ -789,8 +802,10 @@ function alternateWordMeaningFromPronunciation({ contrastSet, words, mirroredWor
     const live = findWordByName(words, "live");
     const liveScore = Number(live?.score ?? 100);
     const liveWeakest = weakestPhoneScore(live || {});
-    const heardLeave = freeKey === "i leave here"
-      || hasAlternateWordCandidate(mirroredWords, "live", "leave")
+    const heardLeave = (
+      (freeKey === "i leave here" || hasAlternateWordCandidate(mirroredWords, "live", "leave"))
+      && freeRecognitionCorroborated(liveScore, liveWeakest, 92, 84)
+    )
       || liveScore < 86
       || (liveWeakest !== null && liveWeakest < 78);
     if (heardLeave) {
@@ -811,8 +826,10 @@ function alternateWordMeaningFromPronunciation({ contrastSet, words, mirroredWor
     const leave = findWordByName(words, "leave");
     const leaveScore = Number(leave?.score ?? 100);
     const leaveWeakest = weakestPhoneScore(leave || {});
-    const heardLive = freeKey === "i live here"
-      || hasAlternateWordCandidate(mirroredWords, "leave", "live")
+    const heardLive = (
+      (freeKey === "i live here" || hasAlternateWordCandidate(mirroredWords, "leave", "live"))
+      && freeRecognitionCorroborated(leaveScore, leaveWeakest, 92, 84)
+    )
       || leaveScore < 86
       || (leaveWeakest !== null && leaveWeakest < 78);
     if (heardLive) {
@@ -833,8 +850,10 @@ function alternateWordMeaningFromPronunciation({ contrastSet, words, mirroredWor
     const consider = findWordByName(words, "consider");
     const considerScore = Number(consider?.score ?? 100);
     const considerWeakest = weakestPhoneScore(consider || {});
-    const heardCider = ["i will con cider it", "i will cider it"].includes(freeKey)
-      || hasAlternateWordCandidate(mirroredWords, "consider", "con cider")
+    const heardCider = (
+      (["i will con cider it", "i will cider it"].includes(freeKey) || hasAlternateWordCandidate(mirroredWords, "consider", "con cider"))
+      && freeRecognitionCorroborated(considerScore, considerWeakest, 90, 82)
+    )
       || considerScore < 84
       || (considerWeakest !== null && considerWeakest < 76);
     if (heardCider) {
@@ -854,21 +873,57 @@ function alternateWordMeaningFromPronunciation({ contrastSet, words, mirroredWor
   return null;
 }
 
+// alternateWordMeaningFromPronunciationと同じ紛らわしい単語ペアについて、
+// 対象語の発音スコア自体が高いかどうかを判定する。alternateWordMeaningFromPronunciation
+// が「対象語のscoreが甘くない限り自由認識だけでは言い換えない」よう既に直っているのに、
+// getMeaning側の自由認識フォールバックがこれを無視して言い換えてしまうと意味が無いため、
+// 同じ基準をgetMeaning呼び出し側でも使う。
+const MINIMAL_PAIR_SCORE_BARS = {
+  "she is here": { word: "she", scoreBar: 92, weakestBar: 86 },
+  "i live here": { word: "live", scoreBar: 92, weakestBar: 84 },
+  "i leave here": { word: "leave", scoreBar: 92, weakestBar: 84 },
+  "i will consider it": { word: "consider", scoreBar: 90, weakestBar: 82 }
+};
+
+function minimalPairCriticalWordIsClean(contrastSet, words) {
+  const config = MINIMAL_PAIR_SCORE_BARS[sentenceMeaningKey(contrastSet?.text)];
+  if (!config) return false;
+  const target = findWordByName(words, config.word);
+  if (!target) return false;
+  const score = Number(target.score ?? 100);
+  const weakest = weakestPhoneScore(target);
+  return score >= config.scoreBar && (weakest === null || weakest >= config.weakestBar);
+}
+
 function getMeaning(contrastSet, freeRecognizedText, utteranceCheck, options = {}) {
   const referenceMeaning = findMeaning(contrastSet.text);
   const freeMeaning = findMeaning(freeRecognizedText);
   const mismatch = utteranceCheck?.status === "possible_mismatch";
-  const useFreeMeaning = mismatch && freeMeaning;
+  // utteranceCheck は自由認識テキストと参照文の単純な文字列一致だけで判定しており、
+  // 発音の質は一切見ていない。leave/live, she/sea のような紛らわしい単語ペアでは、
+  // Azureの自由認識(言語モデル)が「よくある方の単語」に寄ってしまい、scripted
+  // モードでの発音スコアが高くても mismatch 扱いになることがある(実機フィードバック:
+  // leaveをscore97で発音しても、自由認識だけで「live」判定され文全体の意味が
+  // 入れ替わってしまった)。preferReference は、そのような「対象語の発音自体は
+  // 綺麗だった」ケースで、自由認識の言い換えより参照文の意味を優先するためのフラグ。
+  const preferReference = Boolean(options.preferReference) && Boolean(referenceMeaning);
+  const useFreeMeaning = mismatch && freeMeaning && !preferReference;
   const useReferenceFallback = mismatch && !freeMeaning && referenceMeaning && options.allowReferenceFallback;
-  const meaning = useFreeMeaning ? freeMeaning : useReferenceFallback ? referenceMeaning : mismatch ? null : referenceMeaning;
+  const meaning = useFreeMeaning
+    ? freeMeaning
+    : preferReference || useReferenceFallback
+      ? referenceMeaning
+      : mismatch ? null : referenceMeaning;
 
   if (meaning) {
     return {
       ...meaning,
-      listenerBase: useReferenceFallback
-        ? `${meaning.listenerBase} ただし、自由認識では「${freeRecognizedText || "別の英文"}」寄りに聞こえているため、日本語訳は参照文ベースの確認用ミラーです。`
-        : meaning.listenerBase,
-      source: useFreeMeaning ? "freeRecognition" : useReferenceFallback ? "referenceFallback" : "reference",
+      listenerBase: preferReference
+        ? `${meaning.listenerBase} 参照文なし認識では「${freeRecognizedText || "別の英文"}」寄りに聞こえていますが、対象語の発音スコア自体は高いため、選択英文の意味を優先しています。`
+        : useReferenceFallback
+          ? `${meaning.listenerBase} ただし、自由認識では「${freeRecognizedText || "別の英文"}」寄りに聞こえているため、日本語訳は参照文ベースの確認用ミラーです。`
+          : meaning.listenerBase,
+      source: useFreeMeaning ? "freeRecognition" : preferReference ? "reference" : useReferenceFallback ? "referenceFallback" : "reference",
       sourceText: useFreeMeaning ? freeRecognizedText : contrastSet.text,
       referenceText: contrastSet.text,
       freeRecognizedText: freeRecognizedText || ""
@@ -2427,27 +2482,48 @@ function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature
     // カタカナ扱いに引きずられないようにする)。hasExpectedLinkingBreak は単語同士の
     // つながり方についての文全体の信号のため、従来通り広い範囲を対象にする。
     const katakanaHeavyWords = [...(soundSignature?.katakanaHeavyWords || [])];
-    const wordScopedRoles = new Set(katakanaHeavyWords.flatMap((word) => [...japaneseRolesForEnglishWord(word, meaningJapanese)]));
-    const targetRoles = hasExpectedLinkingBreak || !wordScopedRoles.size
-      ? ["request-action", "request-ending", "predicate", "predicate-ending", "object", "request-object"]
-      : [...wordScopedRoles];
 
-    localEvents.push({
-      id: "katakana-delivery",
-      source: hasExpectedLinkingBreak ? "expectedLinkingBreak" : "soundSignature",
-      issueType: "katakana_delivery",
-      word: null,
-      timeRangeMs: null,
-      syllablePosition: { scope: "phrase", fraction: 0.5, slot3: null, syllables: 1 },
-      severity: "medium",
-      confidence: "medium",
-      targetRoles,
-      englishEvidence: hasExpectedLinkingBreak
-        ? "本来つながりやすい英語フレーズが、1語ずつ粒立って聞こえる候補です。"
-        : "母音や語尾が日本語的に残り、カタカナ英語寄りに聞こえる候補です。",
-      mirrorAction: "子音欠落ではなく、母音つき・粒立ち・短い区切りとして日本語ミラーに反映する。",
-      preserveMeaning: true
-    });
+    if (hasExpectedLinkingBreak) {
+      // 文全体のリズム信号(単語間のつながり方)なので、特定の単語には紐づけない。
+      localEvents.push({
+        id: "katakana-delivery",
+        source: "expectedLinkingBreak",
+        issueType: "katakana_delivery",
+        word: null,
+        timeRangeMs: null,
+        syllablePosition: { scope: "phrase", fraction: 0.5, slot3: null, syllables: 1 },
+        severity: "medium",
+        confidence: "medium",
+        targetRoles: ["request-action", "request-ending", "predicate", "predicate-ending", "object", "request-object"],
+        englishEvidence: "本来つながりやすい英語フレーズが、1語ずつ粒立って聞こえる候補です。",
+        mirrorAction: "子音欠落ではなく、母音つき・粒立ち・短い区切りとして日本語ミラーに反映する。",
+        preserveMeaning: true
+      });
+    } else if (katakanaHeavyWords.length) {
+      // soundSignature由来(単語ごとの音の長さから直接算出)の場合は、単語1つずつに
+      // イベントを分けて word を設定する。以前は word:null の1件にまとめていたため、
+      // 単語カード側(buildWordGroups)にはこの反映が一切表示されず、「その単語には
+      // 癖なしと出ているのに読み上げ文だけ変化する」という実機フィードバックの
+      // 混乱の原因になっていた。
+      katakanaHeavyWords.forEach((heavyWord) => {
+        const sourceWord = byWord.get(heavyWord);
+        const wordRoles = [...japaneseRolesForEnglishWord(heavyWord, meaningJapanese)];
+        localEvents.push({
+          id: `katakana-delivery-${heavyWord}`,
+          source: "soundSignature",
+          issueType: "katakana_delivery",
+          word: sourceWord?.original || heavyWord,
+          timeRangeMs: sourceWord ? timeRangeMsForWord(sourceWord) : null,
+          syllablePosition: { scope: "phrase", fraction: 0.5, slot3: null, syllables: 1 },
+          severity: "medium",
+          confidence: "medium",
+          targetRoles: wordRoles.length ? wordRoles : ["request-action", "request-ending", "predicate", "predicate-ending", "object", "request-object"],
+          englishEvidence: `${sourceWord?.original || heavyWord} の母音や語尾が日本語的に残り、カタカナ英語寄りに聞こえる候補です。`,
+          mirrorAction: "子音欠落ではなく、母音つき・粒立ち・短い区切りとして日本語ミラーに反映する。",
+          preserveMeaning: true
+        });
+      });
+    }
   }
 
   return {
@@ -3753,7 +3829,8 @@ function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonan
     || ["medium", "high"].includes(maxSeverity)
   );
   const pronunciationAlternateMeaning = alternateWordMeaningFromPronunciation({ contrastSet, words, mirroredWords, freeRecognizedText });
-  const meaning = pronunciationAlternateMeaning || getMeaning(contrastSet, freeRecognizedText, utteranceCheck, { allowReferenceFallback });
+  const preferReference = !pronunciationAlternateMeaning && minimalPairCriticalWordIsClean(contrastSet, words);
+  const meaning = pronunciationAlternateMeaning || getMeaning(contrastSet, freeRecognizedText, utteranceCheck, { allowReferenceFallback, preferReference });
   const useFreeMeaningNaturalMirror = utteranceMismatch && meaning.source === "freeRecognition";
   const voiceSpeechFeatures = useFreeMeaningNaturalMirror ? neutralizeReferenceAssessmentForFreeMeaning(speechFeatures) : speechFeatures;
   const voiceSoundSignature = useFreeMeaningNaturalMirror ? neutralSoundSignature() : soundSignature;
@@ -3765,7 +3842,9 @@ function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonan
   const listenerExperience = utteranceMismatch
     ? meaning.source === "referenceFallback"
       ? `${meaning.listenerBase} Mirror Voiceは、選択中の例文の意味を保ったまま、子音の弱さや音の崩れを反映する確認用のミラーです。`
-      : `${meaning.listenerBase} 参照文なし認識では「${freeRecognizedText || "別の英文"}」として聞こえている可能性があるため、カタカナと日本語訳は自由認識ベースの仮説として表示しています。`
+      : meaning.source === "reference"
+        ? meaning.listenerBase
+        : `${meaning.listenerBase} 参照文なし認識では「${freeRecognizedText || "別の英文"}」として聞こえている可能性があるため、カタカナと日本語訳は自由認識ベースの仮説として表示しています。`
     : makeListenerExperience({ meaning, phoneticText, severity: maxSeverity, reasons, couldBlindSpot, muffled, conservative, linking });
   const voiceText = makeVoiceText({ meaning, severity: voiceSeverity, couldBlindSpot: useFreeMeaningNaturalMirror ? false : couldBlindSpot, muffled: useFreeMeaningNaturalMirror ? false : muffled, voicePlan, speechFeatures: voiceSpeechFeatures });
   const deviationModel = buildDeviationModel({ contrastSet, words, scores, consonantMin, muffled, couldBlindSpot, speechFeatures });
