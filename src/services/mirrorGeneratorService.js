@@ -1,4 +1,5 @@
 ﻿const pitchThresholds = require("../config/pitchThresholds");
+const { weakenJapaneseMoraText, elongateJapaneseMoraText, segmentPauseJapaneseMoraText } = require("./japaneseMoraTransform");
 
 const WORD_MIRRORS = {
   could: {
@@ -2921,89 +2922,47 @@ function katakanaDeliveryStrengthForRole(transferPlan, role) {
   return weakerReflectionTier(severityTier, coverageTier);
 }
 
+// カタカナ的な母音付加(語尾・母音を伸ばす)は、モーラの母音を重ねる汎用エンジンで
+// 表現する。以前は「手伝って」「もらえますか」など特定の単語のべた書き置換だったため、
+// 練習文の日本語訳に登場する単語ごとに手作業でパターンを追加する必要があった。
+// モーラ単位の変形にしたことで、どんな日本語テキストにも自動的に適用できる。
 function katakanaDeliveryForVoice(text, strength = "light") {
   const source = String(text || "");
-  if (strength === "strong" || strength === "medium") {
-    return source
-      .replace(/手伝って/g, strength === "strong" ? "てえつだあって" : "てつだあって")
-      .replace(/取って/g, strength === "strong" ? "とおって" : "とってえ")
-      .replace(/教えて/g, strength === "strong" ? "おしええて" : "おしえてえ")
-      .replace(/して/g, strength === "strong" ? "しいて" : "してえ")
-      .replace(/もらえますか/g, strength === "strong" ? "もらえまあすうかあ" : "もらえまあすか")
-      .replace(/もらえ/g, strength === "strong" ? "もらえ" : "もらえ")
-      .replace(/ますか/g, strength === "strong" ? "まあすうかあ" : "まあすか")
-      .replace(/ます/g, strength === "strong" ? "まあすう" : "まあす")
-      .replace(/か？/g, strength === "strong" ? "かあ？" : "か？")
-      .replace(/できますか/g, strength === "strong" ? "でえきまあすうかあ" : "できまあすか")
-      .replace(/ください/g, strength === "strong" ? "くうださい" : "くださあい");
-  }
-  return source
-    .replace(/もらえますか/g, "もらえ ます か")
-    .replace(/してもらえますか/g, "して もらえ ます か")
-    .replace(/できますか/g, "でき ます か");
+  if (strength === "strong" || strength === "medium") return elongateJapaneseMoraText(source, strength);
+  return segmentPauseJapaneseMoraText(source);
 }
 
+// 子音の弱さ・欠落は、モーラの子音を落として母音だけにする汎用エンジンで表現する。
+// severity/ratio による強さの判定(いつ・どれだけ反映するか)はロールごとに既に汎用化
+// 済みなので、ここでは「何を(どの単語)」ではなく「どれだけ(強さ)」だけを使う。
 function localConsonantOmissionForVoice(text, transferPlan, role = "") {
   const source = String(text || "");
-  const roleText = String(role || "");
   const events = localEventsForRole(transferPlan, role, ["consonant_or_phonics"]);
   if (!events.length) return source;
-
-  const words = new Set(events.map((event) => String(event.word || event.key || "").toLowerCase()));
 
   // イベントを発生させた単語自身(例: help)のうち、実際に弱かった音の時間が
   // 1/3未満(light)であれば、その単語の大部分は崩れていないはずなので、
   // 子音欠落表現をミラーへ反映しない(絶対ルール: 崩れていない部分にまで癖を反映しない)。
-  // 該当単語が見つからない場合(ratio=null)は、従来通りのseverityベース判定にフォールバックする。
-  const ratio = phoneCoverageRatioForWords([...words], transferPlan?.soundSignature, "weakMs");
-  if (reflectionTierFromRatio(ratio) === "light") return source;
+  const words = [...new Set(events.map((event) => String(event.word || event.key || "").toLowerCase()))];
+  const ratio = phoneCoverageRatioForWords(words, transferPlan?.soundSignature, "weakMs");
+  const coverageTier = reflectionTierFromRatio(ratio);
+  if (coverageTier === "light") return source;
 
-  let output = source;
-
-  if ([...words].some((word) => word.includes("help"))) {
-    if (roleText.includes("request-action") || roleText.includes("predicate")) {
-      output = output
-        .replace(/手伝って/g, "てうあって")
-        .replace(/手伝う/g, "てうあう")
-        .replace(/して/g, "いて")
-        .replace(/助けて/g, "あうけて")
-        .replace(/教えて/g, "おえて");
-    }
-  }
-
-  if ([...words].some((word) => word.includes("could") || word.includes("can"))) {
-    if (roleText.includes("request-ending") || roleText.includes("predicate-ending")) {
-      output = output
-        .replace(/もらえ/g, "もあえ")
-        .replace(/ますか/g, "まうか")
-        .replace(/ます/g, "まう")
-        .replace(/ですか/g, "でうか")
-        .replace(/ください/g, "くあさい");
-    }
-  }
-
-  return output;
+  const severityTier = events.some((event) => severityRank(event.severity) >= 3) ? "strong" : "medium";
+  const strength = coverageTier === "strong" || coverageTier === "medium" ? coverageTier : severityTier;
+  return weakenJapaneseMoraText(source, strength);
 }
 
+// 連結による子音の弱化・脱落(例: Could you を強く連結して「クッユー」寄りに聞こえる)も、
+// 同じ「子音を落として母音だけ残す」モーラ変形で表現する。以前は"could"/"can"などの
+// 単語名を直接キーワード判定していたため、他の単語の連結には一切対応できなかった。
 function localLinkingForVoice(text, transferPlan, role = "") {
   const source = String(text || "");
-  const roleText = String(role || "");
   const events = localEventsForRole(transferPlan, role, ["linking"]);
   if (!events.length) return source;
 
-  const eventText = events
-    .map((event) => [event.key, event.englishEvidence, ...(event.targetRoles || [])].join(" "))
-    .join(" ")
-    .toLowerCase();
-  const couldYouLinking = eventText.includes("could-you") || eventText.includes("could") || eventText.includes("クッ");
-  if (!couldYouLinking) return source;
-  if (!roleText.includes("request-ending") && !roleText.includes("predicate-ending")) return source;
-
-  return source
-    .replace(/もらえ/g, "もあえ")
-    .replace(/ますか/g, "まうか")
-    .replace(/ます/g, "まう")
-    .replace(/か([？?])?$/u, "か$1");
+  const strength = events.some((event) => eventIsStrong(event) || severityRank(event.severity) >= 3) ? "strong" : "medium";
+  return weakenJapaneseMoraText(source, strength);
 }
 
 function hasLocalPronunciationEventForRole(transferPlan, role) {
