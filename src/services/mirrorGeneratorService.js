@@ -1300,6 +1300,13 @@ function buildLengthAndPronunciationSignals(words) {
       const lScore = Number(lPhone?.score ?? 100);
       const pScore = Number(pPhone?.score ?? 100);
       const lMs = phoneMs(lPhone);
+      // level が trace/low(軽微)なのに、常に「エルプ」「ヘプ」のような強い(=別の聞こえ方に
+      // 変わったと断定する)言い回しを使うと、同じ単語のカタカナ聞こえ方(別ロジックで算出)の
+      // 判定と矛盾して見える(実機フィードバックで指摘: score 79 で「出だしが抜けて」は言い過ぎ、
+      // かつカタカナ側は「ヘプ」= hは残っている、と矛盾)。medium/high のときだけ具体的な
+      // 別の聞こえ方を断定し、trace/low は「輪郭が弱いが大きくは崩れていない」という
+      // 軽微な表現に留める。
+      const isNotableWeakness = (level) => level === "high" || level === "medium";
       if (hPhone && hScore < 90) {
         const level = hScore < 45 ? "high" : hScore < 62 ? "medium" : hScore < 78 ? "low" : "trace";
         signals.push("help-h-weak");
@@ -1310,7 +1317,9 @@ function buildLengthAndPronunciationSignals(words) {
           strength: hScore < 55 ? "strong" : "weak",
           level,
           label: "help の h が弱い",
-          detail: `h が score ${Math.round(hScore)}。出だしが抜けて「エルプ」寄りに届く候補です。`,
+          detail: isNotableWeakness(level)
+            ? `h が score ${Math.round(hScore)}。出だしが抜けて「エルプ」寄りに届く候補です。`
+            : `h が score ${Math.round(hScore)}。出だしの子音がやや弱いものの、大きくは崩れていない軽微な候補です。`,
           action: "help の h を息だけで流さず、語頭の輪郭を軽く残す。"
         });
       }
@@ -1325,9 +1334,11 @@ function buildLengthAndPronunciationSignals(words) {
           strength: lScore < 45 || durationWeak ? "weak" : "weak",
           level,
           label: "help の l が弱い",
-          detail: durationWeak
-            ? `l は score ${Math.round(lScore)}ですが約${lMs}msと短く、聞き手には「ヘプ」寄りに届く候補です。`
-            : `l が score ${Math.round(lScore)}。聞き手には「ヘプ」寄りに届く候補です。`,
+          detail: isNotableWeakness(level)
+            ? (durationWeak
+              ? `l は score ${Math.round(lScore)}ですが約${lMs}msと短く、聞き手には「ヘプ」寄りに届く候補です。`
+              : `l が score ${Math.round(lScore)}。聞き手には「ヘプ」寄りに届く候補です。`)
+            : `l が score ${Math.round(lScore)}${lMs !== null ? ` / 約${lMs}ms` : ""}。やや短め・弱めですが、大きくは崩れていない軽微な候補です。`,
           action: "help の l を消さず、舌先の接触を残す。"
         });
       }
@@ -1342,7 +1353,9 @@ function buildLengthAndPronunciationSignals(words) {
           strength: pScore < 45 ? "strong" : "weak",
           level,
           label: "help の p が弱い",
-          detail: `p が score ${Math.round(pScore)}。語尾が閉じず、意味がぼやける候補です。`,
+          detail: isNotableWeakness(level)
+            ? `p が score ${Math.round(pScore)}。語尾が閉じず、意味がぼやける候補です。`
+            : `p が score ${Math.round(pScore)}。語尾の閉じがやや弱いものの、大きくは崩れていない軽微な候補です。`,
           action: "help の p を日本語の母音付き「プ」にせず、唇で短く閉じる。"
         });
       }
