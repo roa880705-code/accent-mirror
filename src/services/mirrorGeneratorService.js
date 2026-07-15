@@ -2795,21 +2795,20 @@ function roleMatchesTarget(role, targetRoles = []) {
   return targetRoles.some((target) => target === "sentence" || value === target || value.includes(target));
 }
 
-// 「英語側で実際に崩れていた割合」を、日本語ミラーの role (=色分けグループ) 単位で
-// 求める。role に紐づく英単語すべての発話時間を分母、そのうち weak/long と判定された
-// 音素の時間を分子とすることで、英文の一部だけが崩れている場合に、対応する日本語の
-// 反映もその割合に応じて弱められるようにする(絶対ルール: 崩れていない部分にまで
-// 崩れを反映しない)。該当する単語が見つからない場合は null を返し、呼び出し側は
-// 既存の(severityベースの)判定にフォールバックする。
-function phoneCoverageRatioForRole(role, words, soundSignature, metric) {
+// 「英語側で実際に崩れていた割合」を求める。分母・分子とも、実際にそのイベントを
+// 発生させた単語(wordKeys)自身の発話時間だけを使う。
+// 注意: 分母を「role を共有する単語すべて」(could/you/me など)まで広げると、
+// you/me のようにほぼ崩れない単語が混ざるだけで割合が薄まり、Could をどれだけ
+// 崩して発音しても閾値を超えられず、読み上げ文に一切反映されなくなる実害があった
+// (実機フィードバックで確認)。それを避けるため、判定対象の単語自身に限定する。
+// 該当する単語が見つからない場合は null を返し、呼び出し側は既存の
+// (severityベースの)判定にフォールバックする。
+function phoneCoverageRatioForWords(wordKeys, soundSignature, metric) {
   const totals = soundSignature?.wordDurationTotals || {};
   let totalMs = 0;
   let coveredMs = 0;
-  (words || []).forEach((word) => {
-    const key = String(word.word || word.original || "").toLowerCase();
-    const wordRoles = japaneseRolesForEnglishWord(key, "");
-    if (!roleMatchesTarget(role, wordRoles)) return;
-    const entry = totals[key];
+  (wordKeys || []).forEach((key) => {
+    const entry = totals[String(key || "").toLowerCase()];
     if (!entry) return;
     totalMs += entry.totalMs;
     coveredMs += entry[metric] || 0;
@@ -2889,12 +2888,14 @@ function katakanaDeliveryStrengthForRole(transferPlan, role) {
 
   // hasExpectedLinkingBreak 由来(文全体のリズム信号)のイベントは特定の単語の
   // 音の長さに紐づかないため、severity ベースの判定をそのまま使う。soundSignature
-  // 由来(単語ごとの音の長さから直接算出)の場合だけ、その role に対応する英単語群の
-  // うちどれだけの時間が実際に「長い(カタカナ的)」音だったかの割合で強さを弱める側に
-  // 補正する(強める側には補正しない)。
+  // 由来(単語ごとの音の長さから直接算出)の場合だけ、実際に「長い(カタカナ的)」と
+  // 判定された単語自身(katakanaHeavyWords)のうち、この role に対応するものの
+  // 発話時間に占める長い音の割合で強さを弱める側に補正する(強める側には補正しない)。
   const wordScoped = events.every((event) => event.source === "soundSignature");
   if (!wordScoped) return severityTier;
-  const ratio = phoneCoverageRatioForRole(role, transferPlan?.words, transferPlan?.soundSignature, "longMs");
+  const heavyWords = [...(transferPlan?.soundSignature?.katakanaHeavyWords || [])]
+    .filter((word) => roleMatchesTarget(role, japaneseRolesForEnglishWord(word, "")));
+  const ratio = phoneCoverageRatioForWords(heavyWords, transferPlan?.soundSignature, "longMs");
   const coverageTier = reflectionTierFromRatio(ratio);
   if (!coverageTier) return severityTier;
   return weakerReflectionTier(severityTier, coverageTier);
@@ -2928,14 +2929,15 @@ function localConsonantOmissionForVoice(text, transferPlan, role = "") {
   const events = localEventsForRole(transferPlan, role, ["consonant_or_phonics"]);
   if (!events.length) return source;
 
-  // 該当role(=色分けグループ)に属する英単語群のうち、実際に弱かった音の時間が
-  // 1/3未満(light)であれば、対応する日本語部分の大部分は崩れていないはずなので、
+  const words = new Set(events.map((event) => String(event.word || event.key || "").toLowerCase()));
+
+  // イベントを発生させた単語自身(例: help)のうち、実際に弱かった音の時間が
+  // 1/3未満(light)であれば、その単語の大部分は崩れていないはずなので、
   // 子音欠落表現をミラーへ反映しない(絶対ルール: 崩れていない部分にまで癖を反映しない)。
   // 該当単語が見つからない場合(ratio=null)は、従来通りのseverityベース判定にフォールバックする。
-  const ratio = phoneCoverageRatioForRole(role, transferPlan?.words, transferPlan?.soundSignature, "weakMs");
+  const ratio = phoneCoverageRatioForWords([...words], transferPlan?.soundSignature, "weakMs");
   if (reflectionTierFromRatio(ratio) === "light") return source;
 
-  const words = new Set(events.map((event) => String(event.word || event.key || "").toLowerCase()));
   let output = source;
 
   if ([...words].some((word) => word.includes("help"))) {
@@ -2994,7 +2996,7 @@ function shouldApplyLocalLengthEffect(transferPlan, role) {
   return localEventsForRole(transferPlan, role, ["length"]).length > 0;
 }
 
-function buildAccentTransferPlan({ speechFeatures, mirrorTimeline, voicePlan, soundSignature, mirrorLocalEvents, words }) {
+function buildAccentTransferPlan({ speechFeatures, mirrorTimeline, voicePlan, soundSignature, mirrorLocalEvents }) {
   const events = speechFeatures?.pronunciationEvents || [];
   const hasType = (type) => events.some((event) => event.type === type);
   const strongEvents = events.filter(eventIsStrong);
@@ -3070,7 +3072,6 @@ function buildAccentTransferPlan({ speechFeatures, mirrorTimeline, voicePlan, so
   return {
     version: "accent-transfer-0.1",
     events,
-    words: words || [],
     localEvents: mirrorLocalEvents || { version: "local-mirror-events-0.1", events: [], summary: "局所イベントなし" },
     voiceMirrorLevel,
     articulationMirrorLevel,
@@ -3241,12 +3242,12 @@ function applyIntonationPunctuation(text, index, parts, transferPlan) {
   return value;
 }
 
-function timelineToVoiceScript({ meaning, mirrorTimeline, voicePlan, speechFeatures, soundSignature, mirrorLocalEvents, words }) {
+function timelineToVoiceScript({ meaning, mirrorTimeline, voicePlan, speechFeatures, soundSignature, mirrorLocalEvents }) {
   const maxPause = maxTimelinePauseMs(mirrorTimeline);
   const weakness = timelineWeaknessLevel(mirrorTimeline);
   const speedLevel = mirrorTimeline?.rhythm?.speedLevel || "unknown";
   const linking = hasTimelineLinking(mirrorTimeline);
-  const transferPlan = buildAccentTransferPlan({ speechFeatures, mirrorTimeline, voicePlan, soundSignature, mirrorLocalEvents, words });
+  const transferPlan = buildAccentTransferPlan({ speechFeatures, mirrorTimeline, voicePlan, soundSignature, mirrorLocalEvents });
   const parts = splitForPitchContour(
     splitForLocalSyllableMapping(
       splitForSegmentedDelivery(splitMeaningForVoice(meaning.japanese), transferPlan),
@@ -3645,7 +3646,7 @@ function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonan
   const voiceSeverity = useFreeMeaningNaturalMirror ? "ok" : maxSeverity;
   const mirrorLocalEvents = buildMirrorLocalEvents({ meaning, words, mirroredWords, speechFeatures: voiceSpeechFeatures, soundSignature: voiceSoundSignature });
   const voicePlan = buildVoicePlan({ meaning, severity: voiceSeverity, muffled: useFreeMeaningNaturalMirror ? false : muffled, speechFeatures: voiceSpeechFeatures, soundSignature: voiceSoundSignature });
-  const voiceScript = timelineToVoiceScript({ meaning, mirrorTimeline: voiceMirrorTimeline, voicePlan, speechFeatures: voiceSpeechFeatures, soundSignature: voiceSoundSignature, mirrorLocalEvents, words });
+  const voiceScript = timelineToVoiceScript({ meaning, mirrorTimeline: voiceMirrorTimeline, voicePlan, speechFeatures: voiceSpeechFeatures, soundSignature: voiceSoundSignature, mirrorLocalEvents });
   const listenerExperience = utteranceMismatch
     ? meaning.source === "referenceFallback"
       ? `${meaning.listenerBase} Mirror Voiceは、選択中の例文の意味を保ったまま、子音の弱さや音の崩れを反映する確認用のミラーです。`
