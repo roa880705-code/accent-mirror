@@ -183,6 +183,7 @@ function clearResult({ keepRecording = false } = {}) {
   $("mirrorListener").textContent = "まだありません。";
   $("mirrorVoiceText").textContent = "まだありません。";
   $("mirrorSpeechFeatures").textContent = "まだありません。";
+  $("pitchContourChart").textContent = "まだありません。";
   $("mirrorDeviationModel").textContent = "まだありません。";
   $("mirrorWordBreakdown").textContent = "まだありません。";
   $("mirrorEvidence").textContent = "まだありません。";
@@ -1384,6 +1385,72 @@ function phoneHasDetectedIssue(phone) {
   return score < 90 || durationMs >= 240;
 }
 
+// モデル音声とユーザー音声のピッチ輪郭(半音・単語ごとに開始/中間/終了の3点)を
+// 折れ線グラフとして描画する。五線譜(離散的な音程)ではなく、連続的に動く
+// 発話ピッチにより近い「線」で表現する。model-relative(モデル比較)データが
+// ある場合のみ描画できる(自己相対フォールバック時は比較対象がないため不可)。
+function buildPitchContourSvg(intonationFeatures) {
+  const words = intonationFeatures?.words || [];
+  if (!intonationFeatures?.available) {
+    return `<div class="minor">ピッチデータを取得できませんでした。</div>`;
+  }
+  if (intonationFeatures?.basis !== "model-relative" || !words.length) {
+    return `<div class="minor">モデル音声との比較データがないため、グラフを表示できません（自己相対フォールバックのため）。</div>`;
+  }
+
+  const points = [];
+  words.forEach((word, index) => {
+    [
+      { frac: 0.15, model: word.modelSemitone?.start, user: word.userSemitone?.start },
+      { frac: 0.5, model: word.modelSemitone?.mid, user: word.userSemitone?.mid },
+      { frac: 0.85, model: word.modelSemitone?.end, user: word.userSemitone?.end }
+    ].forEach((slot) => {
+      if (!Number.isFinite(slot.model) || !Number.isFinite(slot.user)) return;
+      points.push({ x: index + slot.frac, model: slot.model, user: slot.user });
+    });
+  });
+  if (points.length < 2) {
+    return `<div class="minor">有声区間が少なく、グラフを描画できませんでした。</div>`;
+  }
+
+  const allValues = points.flatMap((point) => [point.model, point.user]);
+  const minVal = Math.min(...allValues, -1);
+  const maxVal = Math.max(...allValues, 1);
+  const pad = Math.max(1, (maxVal - minVal) * 0.15);
+  const yMin = minVal - pad;
+  const yMax = maxVal + pad;
+
+  const width = 640;
+  const height = 220;
+  const marginLeft = 34;
+  const marginRight = 14;
+  const marginTop = 16;
+  const marginBottom = 32;
+  const plotWidth = width - marginLeft - marginRight;
+  const plotHeight = height - marginTop - marginBottom;
+  const xMax = words.length;
+
+  const xToPx = (x) => marginLeft + (xMax > 0 ? (x / xMax) * plotWidth : 0);
+  const yToPx = (y) => marginTop + (1 - (y - yMin) / (yMax - yMin)) * plotHeight;
+
+  const modelPath = points.map((point) => `${xToPx(point.x).toFixed(1)},${yToPx(point.model).toFixed(1)}`).join(" ");
+  const userPath = points.map((point) => `${xToPx(point.x).toFixed(1)},${yToPx(point.user).toFixed(1)}`).join(" ");
+  const zeroY = yToPx(0).toFixed(1);
+
+  const wordLabels = words.map((word, index) => {
+    const cx = xToPx(index + 0.5).toFixed(1);
+    return `<text x="${cx}" y="${height - 10}" text-anchor="middle" font-size="12" fill="#666">${escapeHtml(word.word || "")}</text>`;
+  }).join("");
+
+  return `<svg viewBox="0 0 ${width} ${height}" class="pitch-chart" preserveAspectRatio="xMidYMid meet">
+    <line x1="${marginLeft}" y1="${zeroY}" x2="${width - marginRight}" y2="${zeroY}" stroke="#c9d0dc" stroke-width="1" stroke-dasharray="4 3" />
+    <polyline points="${modelPath}" fill="none" stroke="#8a93a6" stroke-width="2.5" stroke-dasharray="6 4" />
+    <polyline points="${userPath}" fill="none" stroke="#c0272d" stroke-width="2.5" />
+    ${wordLabels}
+  </svg>
+  <div class="pitch-chart-legend"><span class="pitch-legend-model">●</span> モデル音声　<span class="pitch-legend-user">●</span> 自分の声</div>`;
+}
+
 function renderMirror(mirror) {
   if (!mirror) {
     $("mirrorPhonetic").textContent = "まだありません";
@@ -1395,6 +1462,7 @@ function renderMirror(mirror) {
     $("mirrorListener").textContent = "まだありません。";
     $("mirrorVoiceText").textContent = "まだありません。";
     $("mirrorSpeechFeatures").textContent = "まだありません。";
+    $("pitchContourChart").textContent = "まだありません。";
     $("mirrorDeviationModel").textContent = "まだありません。";
     $("mirrorWordBreakdown").textContent = "まだありません。";
     $("mirrorEvidence").textContent = "まだありません。";
@@ -1431,6 +1499,7 @@ function renderMirror(mirror) {
   $("mirrorSpeechFeatures").textContent = features
     ? `全体WPM: ${features.wpm ?? "--"} / 発音中WPM: ${features.articulationWpm ?? "--"} / 全体速度: ${features.speedLabel || "--"} / ミラー速度: ${features.voiceSpeedLabel || features.speedLabel || "--"} / 区切り: ${features.boundaryPauseLabel || "--"} / 波形区切り: ${features.rhythmHints?.localPauseCount ?? 0}箇所・最大${features.rhythmHints?.localMaxPauseMs ?? 0}ms / 子音弱さ: ${features.consonantWeaknessLabel || "--"} / 曖昧さ: ${features.ambiguityLevel || "--"} / 音声反映: ${features.voiceMirrorLevel || "--"} / 長短: ${features.lengthSignal || "--"} / 音調: ${pitchText}`
     : "まだありません。";
+  $("pitchContourChart").innerHTML = buildPitchContourSvg(pitch);
   const freeRecognitionNote = mirror.meaningSource === "freeRecognition" && latestAssessment?.utteranceCheck?.status !== "match"
     ? `<div class="notice"><strong>自由認識を優先中</strong>: 選択文と違う英文として聞こえたため、ミラー音声は自由認識された意味を優先します。下の参照文ベース詳細は診断参考で、ミラー音声の直接材料ではありません。</div>`
     : "";

@@ -19,6 +19,7 @@ button{width:100%;box-sizing:border-box;border:none;border-radius:12px;padding:1
 .corr-line{margin-bottom:10px}.corr-text{font-weight:800}.corr{font-weight:900;border-bottom:3px solid currentColor;padding-bottom:1px}
 .corr-0{color:#c0272d}.corr-1{color:#1d4ed8}.corr-2{color:#0f766e}.corr-3{color:#b45309}.corr-4{color:#7c3aed}.corr-5{color:#be185d}.corr-6{color:#15803d}.corr-7{color:#0369a1}
 .corr-swap-from{text-decoration:line-through;opacity:.5;font-weight:700}.corr-swap-arrow{margin:0 3px;opacity:.6;font-weight:700}
+.pitch-chart{width:100%;height:auto;display:block;background:#fbfcff;border-radius:12px}.pitch-chart-legend{margin-top:6px;font-size:13px;color:#555}.pitch-legend-model{color:#8a93a6;font-weight:900}.pitch-legend-user{color:#c0272d;font-weight:900}
 .badge{display:inline-block;border-radius:999px;background:#eef0f5;padding:7px 10px;margin:4px 4px 4px 0;font-size:13px;font-weight:800}.badge.alert{background:#ffe0df;color:#9b1c14}.badge.ok{background:#def7e8;color:#116b32}.badge.warn{background:#fff0c7;color:#805700}
 .judgment{font-size:26px;font-weight:900;line-height:1.6;background:#fff2c7;border-radius:14px;padding:18px;margin-top:12px}
 .mirror-output{font-size:34px;font-weight:950;line-height:1.5;background:#eef7ff;border-radius:14px;padding:18px;margin:10px 0 8px}
