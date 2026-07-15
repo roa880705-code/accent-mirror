@@ -2223,9 +2223,8 @@ const CONFUSABLE_WORD_PAIRS = {
   load: { alternate: "road", alternateJapanese: "道" }
 };
 
-function japaneseRolesForEnglishWord(word, meaningJapanese) {
+function japaneseRolesForEnglishWord(word) {
   const value = String(word || "").toLowerCase();
-  const meaning = String(meaningJapanese || "");
   const roles = new Set();
 
   if (["help", "teach", "pass", "work", "see", "live", "leave", "consider", "love"].includes(value)) {
@@ -2249,7 +2248,10 @@ function japaneseRolesForEnglishWord(word, meaningJapanese) {
     roles.add("request-ending");
     roles.add("predicate-ending");
   }
-  if (["i", "she"].includes(value) || meaning.startsWith("私は") || meaning.startsWith("彼女")) {
+  // 以前は meaning が「私は」「彼女」で始まるだけで、文中の全ての単語に
+  // subject roleを付けてしまっていた(i/sheでない単語にまで主語セグメントへの
+  // 反映が付いてしまう実害があった)。単語自体が i/she の場合だけに限定する。
+  if (["i", "she"].includes(value)) {
     roles.add("subject");
   }
   if (!roles.size) roles.add("sentence");
@@ -2539,6 +2541,24 @@ function splitMeaningForVoice(meaningJapanese) {
       { text: "今日は", role: "time" },
       { text: "働かなければ", role: "predicate-head" },
       { text: "なりません。", role: "predicate-ending" }
+    ];
+  }
+  // live/leave の言い換え文。動詞(住んでいます/去ります)を独立したpredicate
+  // セグメントにしておかないと、"leave"などのローカルイベント(targetRolesに
+  // predicateを含む)が「私は」側にしか付けられる場所がなく、意図しない箇所
+  // (主語)に反映されてしまう(実機フィードバックで確認)。
+  if (text.includes("私はここに住んでいます")) {
+    return [
+      { text: "私は", role: "subject" },
+      { text: "ここに", role: "time" },
+      { text: "住んでいます。", role: "predicate" }
+    ];
+  }
+  if (text.includes("私はここを去ります")) {
+    return [
+      { text: "私は", role: "subject" },
+      { text: "ここを", role: "time" },
+      { text: "去ります。", role: "predicate" }
     ];
   }
   return [{ text, role: "sentence" }];
@@ -2855,6 +2875,14 @@ function affectedJapaneseRolesForIssues(transferPlan, issueTypes = []) {
 
 function roleMatchesTarget(role, targetRoles = []) {
   const value = String(role || "");
+  // role が "sentence"(splitMeaningForVoiceが専用の分割パターンを持たない文で、
+  // 文全体が1セグメントになっている場合)のときは、どのtargetRoleでも一致させる。
+  // これが無いと、request-action/predicate のような細かいroleを持つローカル
+  // イベント(子音の弱さ、r/l混同など)が、1セグメントしかない文(多くの平叙文、
+  // および他語からの言い換えで文構造が変わった場合)には一切反映されない
+  // (実機フィードバックで確認: leaveのl→r崩れが、live代替文への切り替え後は
+  // 一度もミラー音声に反映されなかった)。
+  if (value === "sentence") return true;
   return targetRoles.some((target) => target === "sentence" || value === target || value.includes(target));
 }
 
