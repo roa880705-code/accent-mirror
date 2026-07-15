@@ -1,3 +1,4 @@
+const speechSdk = require("microsoft-cognitiveservices-speech-sdk");
 const { assertAzureConfig } = require("./azurePronunciationService");
 
 const JA_COMMA_PERIOD = "\u3001\u3002";
@@ -73,6 +74,36 @@ function renderVoiceScript(voiceScript, fallbackRate, fallbackPitch) {
       breakAfterMs ? `<break time="${breakAfterMs}ms"/>` : ""
     ].join("");
   }).join("");
+}
+
+// 日本語ミラーのピッチ比較用: 各セグメントの開始位置に <bookmark> を挿入し、
+// 合成音声中での実際のセグメント境界(ms)を bookmarkReached イベントから取得できるようにする。
+// 通常再生用の renderVoiceScript とは別に用意し、既存の再生パスには影響を与えない。
+function renderVoiceScriptWithBookmarks(voiceScript, fallbackRate, fallbackPitch) {
+  const segments = Array.isArray(voiceScript?.segments) ? voiceScript.segments : [];
+  return segments.map((segment, index) => {
+    const segmentRate = segment.rate || fallbackRate;
+    const segmentPitch = segment.pitch || fallbackPitch;
+    const segmentVolume = segment.volume || "default";
+    const breakAfterMs = Math.max(0, Math.min(900, Math.round(Number(segment.breakAfterMs || 0))));
+    return [
+      `<bookmark mark="seg${index}"/>`,
+      renderSegmentText(segment.text || "", segmentRate, segmentPitch, segmentVolume),
+      breakAfterMs ? `<break time="${breakAfterMs}ms"/>` : ""
+    ].join("");
+  }).join("");
+}
+
+function buildSsmlWithBookmarks({ voiceScript, voice, rate, pitch, style, language = "ja-JP" }) {
+  const body = renderVoiceScriptWithBookmarks(voiceScript, rate, pitch);
+  const styledBody = style ? `<mstts:express-as style="${escapeXml(style)}">${body}</mstts:express-as>` : body;
+  return [
+    `<speak version="1.0" xml:lang="${escapeXml(language)}" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts">`,
+    `<voice name="${escapeXml(voice)}">`,
+    styledBody,
+    `</voice>`,
+    `</speak>`
+  ].join("");
 }
 
 function buildProsodyBody({ text, rate, pitch, pausePattern, voiceScript }) {
@@ -226,4 +257,86 @@ async function synthesizeEnglishModelSpeechWav({
   });
 }
 
-module.exports = { synthesizeJapaneseSpeech, synthesizeEnglishModelSpeech, synthesizeEnglishModelSpeechWav, buildSsml };
+// REST合成にはタイミング情報がないため、Speech SDK の SpeechSynthesizer + <bookmark> を使い、
+// bookmarkReached イベントからセグメント境界(ms)を取得する。日本語ミラーのピッチ比較専用。
+function synthesizeSpeechWithBookmarks({ ssml }) {
+  const { key, region } = assertAzureConfig();
+
+  return new Promise((resolve, reject) => {
+    let synthesizer;
+    try {
+      const speechConfig = speechSdk.SpeechConfig.fromSubscription(key, region);
+      speechConfig.speechSynthesisOutputFormat = speechSdk.SpeechSynthesisOutputFormat.Riff24Khz16BitMonoPcm;
+      synthesizer = new speechSdk.SpeechSynthesizer(speechConfig, null);
+      const bookmarks = [];
+
+      synthesizer.bookmarkReached = (_sender, event) => {
+        bookmarks.push({ mark: event.text, offsetMs: Number(event.audioOffset || 0) / 10000 });
+      };
+
+      synthesizer.speakSsmlAsync(
+        ssml,
+        (result) => {
+          synthesizer.close();
+          if (result.reason === speechSdk.ResultReason.SynthesizingAudioCompleted) {
+            resolve({
+              audio: Buffer.from(result.audioData),
+              bookmarks,
+              durationMs: Number(result.audioDuration || 0) / 10000
+            });
+            return;
+          }
+          reject(new Error(`Azure TTS synthesis failed: ${result.reason} ${result.errorDetails || ""}`.trim()));
+        },
+        (error) => {
+          synthesizer.close();
+          reject(new Error(String(error)));
+        }
+      );
+    } catch (error) {
+      if (synthesizer) synthesizer.close();
+      reject(error);
+    }
+  });
+}
+
+// 模範日本語ミラー vs ミラー音声のピッチ比較用: 同じセグメント構成のvoiceScriptから、
+// セグメントごとの実際の開始/終了時刻(ms)付きでWAVを合成する。
+async function synthesizeJapaneseSpeechWithSegmentTimings({
+  voiceScript,
+  voice = process.env.MIRROR_TTS_VOICE || "ja-JP-NanamiNeural",
+  style = process.env.MIRROR_TTS_STYLE || ""
+}) {
+  const segments = Array.isArray(voiceScript?.segments) ? voiceScript.segments : [];
+  if (!segments.length) {
+    const error = new Error("voiceScript.segments is required");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const ssml = buildSsmlWithBookmarks({ voiceScript, voice, rate: "-4%", pitch: "+0Hz", style, language: "ja-JP" });
+  const { audio, bookmarks, durationMs } = await synthesizeSpeechWithBookmarks({ ssml });
+
+  const spans = segments.map((segment, index) => {
+    const startMs = bookmarks.find((bookmark) => bookmark.mark === `seg${index}`)?.offsetMs ?? 0;
+    const nextOffsetMs = bookmarks.find((bookmark) => bookmark.mark === `seg${index + 1}`)?.offsetMs;
+    const endMs = Number.isFinite(nextOffsetMs) ? nextOffsetMs : durationMs;
+    return {
+      word: segment.sourceText || segment.text || "",
+      role: segment.role || "",
+      startMs,
+      durationMs: Math.max(1, endMs - startMs),
+      endMs: Math.max(startMs + 1, endMs)
+    };
+  });
+
+  return { audio, spans, durationMs };
+}
+
+module.exports = {
+  synthesizeJapaneseSpeech,
+  synthesizeEnglishModelSpeech,
+  synthesizeEnglishModelSpeechWav,
+  synthesizeJapaneseSpeechWithSegmentTimings,
+  buildSsml
+};

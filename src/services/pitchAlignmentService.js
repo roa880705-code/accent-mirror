@@ -74,20 +74,23 @@ function buildDeviationContour(words) {
   return { moves, directionChanges, rangeSemitones, pattern };
 }
 
-// Step 1-3 一式: モデル音声とユーザー音声のWAV+Azureタイムスタンプから、
+// Step 1-3 一式: モデル側とユーザー側のWAV+区間(span)一覧から、
 // deviation(t) = userSemitone(t) - modelSemitone(t) の区間ごとの系列を組み立てる。
 // 返り値は既存の intonationFeatures (audioPitchService.analyzePitchFromWav の出力) と
 // 同じ形状 { available, riseSemitones, contour, confidence } を持たせ、
 // mirrorGeneratorService 側の分類ロジックをそのまま再利用できるようにする。
-function buildDeviationTimeline({ modelWavBuffer, modelRaw, userWavBuffer, userRaw }) {
+// span は { word, startMs, durationMs, endMs } の配列であればよく、Azureの単語タイムスタンプ
+// (buildWordSpansFromRaw) だけでなく、TTS合成時のbookmarkから得たセグメント区間も渡せる
+// (模範日本語ミラー vs ミラー音声のピッチ比較で利用)。
+function buildDeviationTimelineFromSpans({ modelWavBuffer, modelSpans, userWavBuffer, userSpans }) {
   const modelTrack = extractPitchTrack(modelWavBuffer);
   if (!modelTrack.available) return { available: false, reason: `model:${modelTrack.reason}` };
 
   const userTrack = extractPitchTrack(userWavBuffer);
   if (!userTrack.available) return { available: false, reason: `user:${userTrack.reason}` };
 
-  const modelWords = buildWordSpansFromRaw(modelRaw);
-  const userWords = buildWordSpansFromRaw(userRaw);
+  const modelWords = Array.isArray(modelSpans) ? modelSpans : [];
+  const userWords = Array.isArray(userSpans) ? userSpans : [];
   const pairCount = Math.min(modelWords.length, userWords.length);
   if (pairCount < 1) return { available: false, reason: "no-aligned-words" };
 
@@ -143,4 +146,15 @@ function buildDeviationTimeline({ modelWavBuffer, modelRaw, userWavBuffer, userR
   };
 }
 
-module.exports = { buildDeviationTimeline, buildWordSpansFromRaw };
+// 英語モデル音声 vs 録音音声用: Azure Pronunciation Assessment の単語タイムスタンプ(raw)から
+// spanを組み立てたうえで buildDeviationTimelineFromSpans を呼び出す、既存呼び出し元向けの薄いラッパー。
+function buildDeviationTimeline({ modelWavBuffer, modelRaw, userWavBuffer, userRaw }) {
+  return buildDeviationTimelineFromSpans({
+    modelWavBuffer,
+    modelSpans: buildWordSpansFromRaw(modelRaw),
+    userWavBuffer,
+    userSpans: buildWordSpansFromRaw(userRaw)
+  });
+}
+
+module.exports = { buildDeviationTimeline, buildDeviationTimelineFromSpans, buildWordSpansFromRaw };

@@ -1553,6 +1553,37 @@ function classifyIntonationAgainstTarget(intonationFeatures, intonationTarget = 
     : classifyIntonationAgainstTargetLegacy(intonationFeatures, intonationTarget);
 }
 
+// 模範日本語ミラー vs ミラー音声のピッチ比較用: buildIntonationSignals(英語モデル音声 vs 録音用)
+// とは文言を分け、「モデル音声」ではなく「模範日本語ミラー」を基準に説明する。
+function buildJapaneseMirrorPitchAnalysis(intonationFeatures) {
+  if (!intonationFeatures?.available) {
+    return {
+      available: false,
+      reason: intonationFeatures?.reason || "unavailable",
+      summary: "ピッチデータを取得できませんでした。",
+      classification: { status: "unknown", level: "unknown", label: "pitch unavailable" }
+    };
+  }
+
+  const classification = classifyIntonationDeviation(intonationFeatures, {});
+  const rise = Number(intonationFeatures.riseSemitones || 0);
+  const summaries = {
+    natural: `模範日本語ミラーとほぼ同じ音高の動きです（差は約${Math.abs(rise).toFixed(1)}半音）。`,
+    trace: `模範日本語ミラーとの差は約${Math.abs(rise).toFixed(1)}半音で、軽いズレの範囲内です。`,
+    over_rising: `ミラー音声は模範日本語ミラーと比べて、音高が全体的に約${rise.toFixed(1)}半音高く動いています。癖の反映（音程の上げ下げ）が強すぎる可能性があります。`,
+    falling_question: `ミラー音声は模範日本語ミラーと比べて、音高が全体的に約${Math.abs(rise).toFixed(1)}半音低く動いています。`,
+    flat_question: `模範日本語ミラーでは上昇する箇所ですが、ミラー音声では約${Math.abs(rise).toFixed(1)}半音分その上昇が弱く、平坦寄りに聞こえます。`,
+    borderline: `模範日本語ミラーとの音高差は約${rise.toFixed(1)}半音です。`
+  };
+
+  return {
+    available: true,
+    classification,
+    riseSemitones: rise,
+    summary: summaries[classification.status] || summaries.borderline
+  };
+}
+
 function buildIntonationSignals(intonationFeatures, intonationTarget) {
   if (!intonationFeatures?.available) {
     return { level: "unknown", label: "pitch unavailable", signals: [], events: [] };
@@ -3542,6 +3573,30 @@ function timelineToVoiceScript({ meaning, mirrorTimeline, voicePlan, speechFeatu
   };
 }
 
+// 模範日本語ミラー(癖を反映しない比較用)を、実際のミラー音声とセグメント構成
+// (区切り位置・順序・数)を揃えて生成する。ピッチ比較でセグメント単位で対応づけるため、
+// accentTransferを適用する前の sourceText (each segment's pre-transform text) を使う。
+function buildNeutralVoiceScriptFromSegments(voiceScript) {
+  const segments = Array.isArray(voiceScript?.segments) ? voiceScript.segments : [];
+  return {
+    version: "timeline-voice-neutral-0.1",
+    source: "neutral",
+    segments: segments.map((segment) => {
+      const text = segment.sourceText || segment.text || "";
+      return {
+        text,
+        sourceText: text,
+        role: segment.role,
+        rate: "+0%",
+        pitch: "+0Hz",
+        volume: "default",
+        articulation: "clear",
+        breakAfterMs: segment.breakAfterMs || 0
+      };
+    })
+  };
+}
+
 function makeVoiceText({ meaning, severity, couldBlindSpot, muffled, voicePlan, speechFeatures }) {
   if (voicePlan?.text) return voicePlan.text;
   return meaning.japanese;
@@ -3934,4 +3989,4 @@ function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonan
   };
 }
 
-module.exports = { generateJapaneseMirror };
+module.exports = { generateJapaneseMirror, buildNeutralVoiceScriptFromSegments, buildJapaneseMirrorPitchAnalysis };

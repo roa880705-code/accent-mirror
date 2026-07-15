@@ -194,6 +194,9 @@ function clearResult({ keepRecording = false } = {}) {
   $("modelMirrorVoiceStatus").textContent = "模範日本語ミラーはまだありません。";
   $("modelMirrorVoicePlayback").className = "audio hidden";
   $("modelMirrorVoicePlayback").removeAttribute("src");
+  $("mirrorPitchContourStatus").textContent = "まだ分析していません。";
+  $("mirrorPitchContourChart").textContent = "まだありません。";
+  $("mirrorPitchContourAnalysis").textContent = "まだありません。";
   $("mirrorReasons").textContent = "まだありません。";
   $("mirrorTargetActions").textContent = "まだありません。";
   $("mirrorTarget").textContent = "まだありません。";
@@ -1389,13 +1392,13 @@ function phoneHasDetectedIssue(phone) {
 // 折れ線グラフとして描画する。五線譜(離散的な音程)ではなく、連続的に動く
 // 発話ピッチにより近い「線」で表現する。model-relative(モデル比較)データが
 // ある場合のみ描画できる(自己相対フォールバック時は比較対象がないため不可)。
-function buildPitchContourSvg(intonationFeatures) {
+function buildPitchContourSvg(intonationFeatures, legend = { model: "モデル音声", user: "自分の声" }) {
   const words = intonationFeatures?.words || [];
   if (!intonationFeatures?.available) {
     return `<div class="minor">ピッチデータを取得できませんでした。</div>`;
   }
   if (intonationFeatures?.basis !== "model-relative" || !words.length) {
-    return `<div class="minor">モデル音声との比較データがないため、グラフを表示できません（自己相対フォールバックのため）。</div>`;
+    return `<div class="minor">${escapeHtml(legend.model)}との比較データがないため、グラフを表示できません（自己相対フォールバックのため）。</div>`;
   }
 
   const points = [];
@@ -1448,7 +1451,7 @@ function buildPitchContourSvg(intonationFeatures) {
     <polyline points="${userPath}" fill="none" stroke="#c0272d" stroke-width="2.5" />
     ${wordLabels}
   </svg>
-  <div class="pitch-chart-legend"><span class="pitch-legend-model">●</span> モデル音声　<span class="pitch-legend-user">●</span> 自分の声</div>`;
+  <div class="pitch-chart-legend"><span class="pitch-legend-model">●</span> ${escapeHtml(legend.model)}　<span class="pitch-legend-user">●</span> ${escapeHtml(legend.user)}</div>`;
 }
 
 function renderMirror(mirror) {
@@ -1473,6 +1476,9 @@ function renderMirror(mirror) {
     $("modelMirrorVoiceStatus").textContent = "模範日本語ミラーはまだありません。";
     $("modelMirrorVoicePlayback").className = "audio hidden";
     $("modelMirrorVoicePlayback").removeAttribute("src");
+    $("mirrorPitchContourStatus").textContent = "まだ分析していません。";
+    $("mirrorPitchContourChart").textContent = "まだありません。";
+    $("mirrorPitchContourAnalysis").textContent = "まだありません。";
     $("mirrorReasons").textContent = "まだありません。";
     $("mirrorTargetActions").textContent = "まだありません。";
     $("mirrorTarget").textContent = "まだありません。";
@@ -1522,6 +1528,9 @@ function renderMirror(mirror) {
   $("modelMirrorVoiceStatus").textContent = "模範日本語ミラーを生成できます。発音の癖を入れない比較用です。";
   $("modelMirrorVoicePlayback").className = "audio hidden";
   $("modelMirrorVoicePlayback").removeAttribute("src");
+  $("mirrorPitchContourStatus").textContent = "まだ分析していません。";
+  $("mirrorPitchContourChart").textContent = "まだありません。";
+  $("mirrorPitchContourAnalysis").textContent = "まだありません。";
   $("mirrorReasons").innerHTML = (mirror.reasons || []).length
     ? `<ul>${mirror.reasons.map((reason) => `<li>${reason}</li>`).join("")}</ul>`
     : "大きな理由はまだ検出されていません。";
@@ -1653,6 +1662,51 @@ async function playModelMirrorVoice() {
   }
 }
 
+async function analyzeMirrorPitchContour() {
+  if (!latestAssessment?.mirror) {
+    $("mirrorPitchContourStatus").textContent = "先に診断してください。";
+    return;
+  }
+
+  const mirror = latestAssessment.mirror;
+  const voiceScript = mirror.voiceScript;
+  if (!voiceScript?.segments?.length) {
+    $("mirrorPitchContourStatus").textContent = "音声読み上げ文のセグメントがまだありません。";
+    return;
+  }
+
+  const button = $("mirrorPitchContourButton");
+  button.disabled = true;
+  $("mirrorPitchContourStatus").textContent = "模範日本語ミラーとミラー音声を合成して、ピッチを分析中です（数秒かかります）。";
+
+  try {
+    const response = await fetch("/api/mirror-pitch-contour", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        voiceScript,
+        voice: mirrorVoiceForProfile()
+      })
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || body.error || "Mirror pitch contour failed");
+    }
+
+    const result = await response.json();
+    $("mirrorPitchContourChart").innerHTML = buildPitchContourSvg(result.intonationFeatures, { model: "模範日本語ミラー", user: "ミラー音声" });
+    $("mirrorPitchContourAnalysis").textContent = result.analysis?.summary || "まだありません。";
+    $("mirrorPitchContourStatus").textContent = result.intonationFeatures?.available
+      ? "分析できました。"
+      : "分析データが不足しているため、参考表示のみです。";
+  } catch (error) {
+    $("mirrorPitchContourStatus").textContent = `ピッチ分析エラー: ${error.message}`;
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function azureDiagnose() {
   const button = $("azureButton");
   const gain = wordCountForText(currentSet()?.text);
@@ -1685,6 +1739,7 @@ $("modelVoiceButton").onclick = playModelVoice;
 $("azureButton").onclick = azureDiagnose;
 $("mirrorVoiceButton").onclick = playMirrorVoice;
 $("modelMirrorVoiceButton").onclick = playModelMirrorVoice;
+$("mirrorPitchContourButton").onclick = analyzeMirrorPitchContour;
 $("saveValidationButton").onclick = saveCurrentValidationLog;
 $("exportValidationButton").onclick = exportValidationLogs;
 $("clearValidationButton").onclick = clearValidationLogs;

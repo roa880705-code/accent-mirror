@@ -6,9 +6,10 @@ const { contrastSets, getContrastSet } = require("./src/config/contrastSets");
 const { analyzeAzureRaw } = require("./src/services/contrastAnalysisService");
 const { assessPronunciationFromWav, recognizeEnglishFromWav, assertAzureConfig } = require("./src/services/azurePronunciationService");
 const { compareAttempts } = require("./src/services/contrastSessionService");
-const { synthesizeJapaneseSpeech, synthesizeEnglishModelSpeech, synthesizeEnglishModelSpeechWav } = require("./src/services/azureTtsService");
+const { synthesizeJapaneseSpeech, synthesizeEnglishModelSpeech, synthesizeEnglishModelSpeechWav, synthesizeJapaneseSpeechWithSegmentTimings } = require("./src/services/azureTtsService");
 const { analyzePitchFromWav } = require("./src/services/audioPitchService");
-const { buildDeviationTimeline } = require("./src/services/pitchAlignmentService");
+const { buildDeviationTimeline, buildDeviationTimelineFromSpans } = require("./src/services/pitchAlignmentService");
+const { buildNeutralVoiceScriptFromSegments, buildJapaneseMirrorPitchAnalysis } = require("./src/services/mirrorGeneratorService");
 const app = express();
 const PORT = Number(process.env.PORT || 3003);
 // Azure App Service 等でGitHub連携デプロイを使う場合、デプロイのたびにアプリコード
@@ -274,4 +275,35 @@ app.post("/api/mirror-voice", async (req, res) => {
     res.status(e.statusCode || 500).json({ error: "Mirror voice failed", detail: String(e.message || e) });
   }
 });
+app.post("/api/mirror-pitch-contour", async (req, res) => {
+  try {
+    const voiceScript = req.body?.voiceScript;
+    if (!voiceScript || !Array.isArray(voiceScript.segments) || !voiceScript.segments.length) {
+      return res.status(400).json({ error: "voiceScript with segments is required" });
+    }
+
+    const voice = req.body?.voice || process.env.MIRROR_TTS_VOICE || "ja-JP-NanamiNeural";
+    const neutralVoiceScript = buildNeutralVoiceScriptFromSegments(voiceScript);
+
+    const [neutral, mirror] = await Promise.all([
+      synthesizeJapaneseSpeechWithSegmentTimings({ voiceScript: neutralVoiceScript, voice }),
+      synthesizeJapaneseSpeechWithSegmentTimings({ voiceScript, voice })
+    ]);
+
+    const intonationFeatures = buildDeviationTimelineFromSpans({
+      modelWavBuffer: neutral.audio,
+      modelSpans: neutral.spans,
+      userWavBuffer: mirror.audio,
+      userSpans: mirror.spans
+    });
+
+    res.json({
+      intonationFeatures,
+      analysis: buildJapaneseMirrorPitchAnalysis(intonationFeatures)
+    });
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ error: "Mirror pitch contour failed", detail: String(e.message || e) });
+  }
+});
+
 app.listen(PORT, () => console.log(`Accent Mirror v0.12.0 Timeline Voice Script: http://localhost:${PORT}`));
