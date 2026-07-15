@@ -779,7 +779,8 @@ function alternateWordMeaningFromPronunciation({ contrastSet, words, mirroredWor
         sourceText: freeRecognizedText || "sea/see is here",
         referenceText: contrastSet.text,
         freeRecognizedText: freeRecognizedText || "",
-        alternateWordHearing: true
+        alternateWordHearing: true,
+        alternateWordSwap: { from: "she", to: "sea" }
       };
     }
   }
@@ -800,7 +801,8 @@ function alternateWordMeaningFromPronunciation({ contrastSet, words, mirroredWor
         sourceText: freeRecognizedText || "I leave here",
         referenceText: contrastSet.text,
         freeRecognizedText: freeRecognizedText || "",
-        alternateWordHearing: true
+        alternateWordHearing: true,
+        alternateWordSwap: { from: "live", to: "leave" }
       };
     }
   }
@@ -821,7 +823,8 @@ function alternateWordMeaningFromPronunciation({ contrastSet, words, mirroredWor
         sourceText: freeRecognizedText || "I live here",
         referenceText: contrastSet.text,
         freeRecognizedText: freeRecognizedText || "",
-        alternateWordHearing: true
+        alternateWordHearing: true,
+        alternateWordSwap: { from: "leave", to: "live" }
       };
     }
   }
@@ -842,7 +845,8 @@ function alternateWordMeaningFromPronunciation({ contrastSet, words, mirroredWor
         sourceText: freeRecognizedText || "con cider",
         referenceText: contrastSet.text,
         freeRecognizedText: freeRecognizedText || "",
-        alternateWordHearing: true
+        alternateWordHearing: true,
+        alternateWordSwap: { from: "consider", to: "con cider" }
       };
     }
   }
@@ -3775,6 +3779,16 @@ function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonan
     meaningJapanese: meaning.japanese,
     meaningSource: meaning.source,
     meaningSourceText: meaning.sourceText,
+    // 参照英文の単語ではなく、実際にそう聞こえた(あるいはそう扱われた)単語を
+    // 表示側で示せるようにする一覧。文全体が言い換わったケース(she/sea,
+    // live/leaveなど)と、単語単位で別語として扱ったケース(alternate_word_local)
+    // の両方をまとめる。
+    wordHearingOverrides: [
+      ...(meaning.alternateWordSwap ? [meaning.alternateWordSwap] : []),
+      ...mirrorLocalEvents.events
+        .filter((event) => event.issueType === "alternate_word_local")
+        .map((event) => ({ from: String(event.word || "").toLowerCase(), to: event.alternateWord }))
+    ],
     freeRecognizedText: freeRecognizedText || "",
     utteranceCheck,
     listenerExperience,

@@ -1230,12 +1230,22 @@ function referenceTrailingPunctuation(referenceText) {
   return match ? match[1] : "";
 }
 
+// 参照英文そのものではなく、実際にそう聞こえた(扱われた)単語を表示する。
+// 例: leave を live 寄りに発音して意味が言い換わった場合、色対応も「leave」では
+// なく実際に聞こえた「live」を基準にしないと、色の対応関係が実態と合わなくなる。
 function buildColoredReferenceHtml(mirror, wordIndexToColorClass) {
   const items = mirror?.mirrorTimeline?.phonemeTimeline || [];
   if (!items.length) return "";
+  const overrides = new Map((mirror?.wordHearingOverrides || [])
+    .map((item) => [String(item.from || "").toLowerCase(), item.to])
+    .filter(([, to]) => to));
   const spans = items.map((item) => {
     const colorClass = wordIndexToColorClass.get(item.wordIndex);
-    const text = escapeHtml(item.word || "");
+    const key = String(item.word || "").toLowerCase();
+    const heardAs = overrides.get(key);
+    const text = heardAs
+      ? `<span class="corr-swap-from">${escapeHtml(item.word || "")}</span><span class="corr-swap-arrow">→</span>${escapeHtml(heardAs)}`
+      : escapeHtml(item.word || "");
     return colorClass ? `<span class="corr ${colorClass}">${text}</span>` : `<span>${text}</span>`;
   });
   const trailing = escapeHtml(referenceTrailingPunctuation(currentSet()?.text || mirror?.referenceText || ""));
