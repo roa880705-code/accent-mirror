@@ -1437,7 +1437,12 @@ function buildLengthAndPronunciationSignals(words) {
 
     const finalVowel = finalPhone && isVowelPhone(finalPhone.phone) ? finalPhone : null;
     const finalVowelMs = finalVowel ? phoneMs(finalVowel) : null;
-    if (finalVowel && finalVowelMs !== null && finalVowelMs >= 360) {
+    // 語尾の母音(here の ɪɹ など)はr音化・文末伸長で自然に長くなるため、絶対的な
+    // 閾値だけでは際限なく誤検出が起きる(katakanaHeavyWords と同じ問題)。
+    // Azure自身のスコアが高い場合はよほど極端な長さでない限り疑わない。
+    const finalVowelScoreIsHigh = finalScore >= 92;
+    const finalVowelDurationBar = finalVowelScoreIsHigh ? 650 : 360;
+    if (finalVowel && finalVowelMs !== null && finalVowelMs >= finalVowelDurationBar) {
       signals.push(`${word.word}-final-vowel-long`);
       events.push({
         key: `${word.word}:final-vowel-long:${finalVowel.phone}`,
@@ -2174,14 +2179,26 @@ function buildSoundSignature(words) {
 
   // 二重母音・r音化母音(aɪ, oʊ, ɪɹ, ɜːr など、IPA表記が2文字以上になる母音)は、
   // 単純母音(ɪ, ɛ, æ など)よりも発音として自然に長くなる(グライドする分の時間が
-  // かかる)。実機フィードバックで、score94〜97の綺麗な発音でも "i"(aɪ) や
-  // "here"(ɪɹ) が文末の自然な音の長さだけでカタカナ判定されてしまう実害が
-  // 繰り返し確認されたため、複合母音には単純母音より緩い(長い)閾値を使う。
+  // かかる)。加えて、文末の語(here など)は英語として自然な文末伸長(phrase-final
+  // lengthening)が起きる。この2つは絶対的な閾値だけではいくら上げても際限なく
+  // 誤検出が起きる(実機フィードバックで、220ms→340ms→450msと閾値を上げても、
+  // score94〜97の綺麗な発音の"i"/"here"がそのたびにカタカナ判定される実害が
+  // 3回連続で確認された)。根本的に、絶対長さは「日本語のモーラが足されたのか」
+  // 「単に英語として自然に長い音なのか」を区別できない。
+  //
+  // そのため、Azure自身の音素スコアが高い(=音の質そのものは正しいとAzureが
+  // 判断している)場合は、よほど極端な長さでない限り疑わない方針に切り替える。
+  // スコアが低め(質そのものに疑いがある)場合は、これまで通りの閾値で反映する。
   const isComplexVowelPhone = (phoneName) => String(phoneName || "").length >= 2;
-  // 実機で繰り返し確認された "here"(ɪɹ) の自然な長さは330〜410ms(すべてscore97)
-  // だったため、それより十分高い閾値にする。
-  const vowelDurationBar = (item) => (isComplexVowelPhone(item.phone) ? 450 : 220);
-  const isLongVowel = (item) => item.class === "vowel" && Number(item.durationMs || 0) >= vowelDurationBar(item);
+  const vowelDurationBar = (item) => (isComplexVowelPhone(item.phone) ? 340 : 220);
+  const HIGH_PHONE_SCORE_BAR = 92;
+  const EXTREME_DURATION_MS = { vowel: 650, stop: 260, other: 220 };
+  const isLongVowel = (item) => {
+    if (item.class !== "vowel") return false;
+    const dur = Number(item.durationMs || 0);
+    const scoreIsHigh = Number(item.score ?? 100) >= HIGH_PHONE_SCORE_BAR;
+    return scoreIsHigh ? dur >= EXTREME_DURATION_MS.vowel : dur >= vowelDurationBar(item);
+  };
   const longVowels = allPhones.filter(isLongVowel);
   const longStops = allPhones.filter((item) => item.class === "stop" && Number(item.durationMs || 0) >= 120);
 
@@ -2195,8 +2212,9 @@ function buildSoundSignature(words) {
   const isLongForWordSignature = (item) => {
     if (item.class === "vowel") return isLongVowel(item);
     const dur = Number(item.durationMs || 0);
-    if (item.class === "stop") return dur >= 120;
-    return dur >= 100;
+    const scoreIsHigh = Number(item.score ?? 100) >= HIGH_PHONE_SCORE_BAR;
+    if (item.class === "stop") return scoreIsHigh ? dur >= EXTREME_DURATION_MS.stop : dur >= 120;
+    return scoreIsHigh ? dur >= EXTREME_DURATION_MS.other : dur >= 100;
   };
   const katakanaHeavyWords = new Set();
   // 「英語側でどのくらいの割合が実際に崩れていたか」を、対応する日本語ミラーの
