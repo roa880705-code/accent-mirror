@@ -18,6 +18,10 @@ let mirrorProfile = {
 const $ = (id) => document.getElementById(id);
 const FRIEND_COUNT_KEY = "accentMirrorFriendCount";
 
+// 英単語・フレーズと、日本語ミラー文の対応部分を同じ色で結びつけるための配色。
+// 対応ペアの数がこれを超える場合は先頭から繰り返し使う。
+const CORRESPONDENCE_PALETTE = ["#c0272d", "#1d4ed8", "#0f766e", "#b45309", "#7c3aed", "#be185d", "#15803d", "#0369a1"];
+
 // 文全体レベルの固定フィードバック項目。単語・フレーズごとの項目は
 // buildDynamicValidationItems() が診断結果ごとに動的に生成する。
 const VALIDATION_ITEMS = [
@@ -1204,6 +1208,52 @@ function buildWordGroups(mirror) {
   return groups;
 }
 
+// buildWordGroups() が作る「英単語(members) → 日本語ミラー(segments)」の対応を使い、
+// 対応が取れているグループごとに色を1つ割り当てる。phrase-sentence グループ（文全体の
+// カタカナ・連結・文末音程など特定の英単語に紐づかない反映）は対応語が無いため対象外。
+function buildCorrespondenceColorMaps(mirror) {
+  const wordIndexToColorClass = new Map();
+  const segmentToColorClass = new Map();
+  const groups = buildWordGroups(mirror).filter((group) => group.kind === "word" && group.segments.length && (group.members || []).length);
+  groups.forEach((group, index) => {
+    const colorClass = `corr-${index % CORRESPONDENCE_PALETTE.length}`;
+    group.members.forEach((member) => wordIndexToColorClass.set(member.wordIndex, colorClass));
+    group.segments.forEach((segment) => segmentToColorClass.set(segment, colorClass));
+  });
+  return { wordIndexToColorClass, segmentToColorClass };
+}
+
+function referenceTrailingPunctuation(referenceText) {
+  const match = String(referenceText || "").match(/([.?!]+)\s*$/);
+  return match ? match[1] : "";
+}
+
+function buildColoredReferenceHtml(mirror, wordIndexToColorClass) {
+  const items = mirror?.mirrorTimeline?.phonemeTimeline || [];
+  if (!items.length) return "";
+  const spans = items.map((item) => {
+    const colorClass = wordIndexToColorClass.get(item.wordIndex);
+    const text = escapeHtml(item.word || "");
+    return colorClass ? `<span class="corr ${colorClass}">${text}</span>` : `<span>${text}</span>`;
+  });
+  const trailing = escapeHtml(referenceTrailingPunctuation(currentSet()?.text || mirror?.referenceText || ""));
+  return spans.join(" ") + trailing;
+}
+
+function buildColoredSpokenHtml(mirror, segmentToColorClass) {
+  const segments = mirror?.voiceScript?.segments || [];
+  if (!segments.length) return escapeHtml(spokenMirrorTextForDisplay(mirror));
+  return segments.map((segment, index) => {
+    const text = escapeHtml(segment.text || "");
+    const colorClass = segmentToColorClass.get(segment);
+    const spanHtml = colorClass ? `<span class="corr ${colorClass}">${text}</span>` : `<span>${text}</span>`;
+    if (index === segments.length - 1) return spanHtml;
+    const breakMs = Number(segment.breakAfterMs || 0);
+    const spaceCount = breakMs > 0 ? Math.max(1, Math.min(9, Math.round(breakMs / 100))) : 0;
+    return spanHtml + " ".repeat(spaceCount);
+  }).join("");
+}
+
 function buildDynamicValidationItems(mirror) {
   if (!mirror) return [];
   return buildWordGroups(mirror).map((group) => ({
@@ -1298,8 +1348,17 @@ function spokenMirrorTextForDisplay(mirror) {
 function renderVoiceTextSummary(mirror) {
   const baseText = mirror?.voiceText || mirror?.meaningJapanese || "まだありません。";
   const spokenText = spokenMirrorTextForDisplay(mirror);
-  if (!spokenText || spokenText.trim() === baseText) return escapeHtml(baseText);
-  return `<div><b>実際に読み上げる音</b><br><span class="spoken-text-preview">${escapeHtml(spokenText)}</span></div>
+  const { wordIndexToColorClass, segmentToColorClass } = buildCorrespondenceColorMaps(mirror);
+  const referenceHtml = buildColoredReferenceHtml(mirror, wordIndexToColorClass);
+  const referenceBlock = referenceHtml
+    ? `<div class="corr-line"><b>参照英文</b><br><span class="corr-text">${referenceHtml}</span></div>`
+    : "";
+  if (!spokenText || spokenText.trim() === baseText) {
+    return referenceBlock ? `${referenceBlock}<div>${escapeHtml(baseText)}</div>` : escapeHtml(baseText);
+  }
+  const spokenHtml = buildColoredSpokenHtml(mirror, segmentToColorClass);
+  return `${referenceBlock}
+    <div><b>実際に読み上げる音</b><br><span class="spoken-text-preview corr-text">${spokenHtml}</span></div>
     <div class="minor">基本の和訳: ${escapeHtml(baseText)}</div>`;
 }
 

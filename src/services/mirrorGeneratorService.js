@@ -1998,7 +1998,11 @@ function buildPhonemeTimeline(words) {
       errorType: word.errorType || "None",
       startMs: start100ns === null ? null : Math.round(start100ns / 10000),
       durationMs: duration100ns > 0 ? Math.round(duration100ns / 10000) : null,
-      phones
+      phones,
+      // 英単語がどの日本語ミラーの「役割(role)」に対応するかの静的な対応表。
+      // voiceScript.segments[].role と突き合わせることで、フロントエンドが
+      // 英語原文とミラー読み上げ文の対応箇所を色分けできるようにする。
+      roles: japaneseRolesForEnglishWord(word.word, "")
     };
   });
 }
