@@ -527,8 +527,15 @@ function eventCanAffectMirrorVoice(event) {
   if (event.voiceEligible === false) return false;
   if (event.issueType === "subtle_phonics_trace") return false;
   if (event.severity === "trace" || event.level === "trace") return false;
-  if (event.issueType === "linking") return eventIsStrong(event) || severityRank(event.severity || event.level) >= 2;
-  return eventIsStrong(event) || severityRank(event.severity || event.level) >= 2;
+  // severity(深刻度)は confidence(確信度)とは別軸: "low" は「実測はされたが軽微」を
+  // 意味し、"trace"(上の行で既に除外済み)のような「不確かな仮説」とは異なる。
+  // 以前はここを medium 以上(severityRank>=2)に限定していたため、実際に測定された
+  // 軽微な弱さ(例: help の l が score100でも約30msしかない、liquid low)が単語カードの
+  // 分析には正しく出るのに、実際のミラー音声には一切反映されない、というギャップが
+  // 起きていた(実機フィードバック: "分析は正しい。ミラーへ反映されていない。")。
+  // low(rank1)も対象に含め、実測済みの軽微な弱さは軽い反映として扱う。
+  if (event.issueType === "linking") return eventIsStrong(event) || severityRank(event.severity || event.level) >= 1;
+  return eventIsStrong(event) || severityRank(event.severity || event.level) >= 1;
 }
 
 function normalizeText(text) {
@@ -1358,11 +1365,19 @@ function buildLengthAndPronunciationSignals(words) {
           action: "Could の母音を短くして /kəd/ に近づける。"
         });
       }
-      if (dPhone && (dScore < 72 || (dMs !== null && dMs >= 85))) {
+      // d の長さが極端に短い(30msなど)場合、スコア自体は悪くなくても、実際には
+      // 破裂・閉じがほとんど無く、聞き手には d がほぼ聞こえなかった可能性が高い
+      // (実機フィードバック: "dを発音していないのに"と、score78/約30msの d が
+      // 「軽微な非ネイティブ感」止まりに分類され、ミラーへ反映されなかった)。
+      // スコアより長さそのものの方が客観的な手がかりのため、極端に短い場合は
+      // スコアが高くても弱い/存在感の薄いdとして扱い、高スコア語だからと確認
+      // 止まりに格下げしない。
+      const dVeryShort = dMs !== null && dMs < 50;
+      if (dPhone && (dScore < 72 || dVeryShort || (dMs !== null && dMs >= 85))) {
         handledFinalPhones.add("d");
-        const dIsShortOrWeak = dScore < 72 && (dMs === null || dMs < 70);
-        const conservativeCouldD = isHighAzureWord(word) && dScore >= 50;
-        const couldDCheckOnly = conservativeCouldD || (isHighAzureWord(word) && dIsShortOrWeak);
+        const dIsShortOrWeak = dVeryShort || (dScore < 72 && (dMs === null || dMs < 70));
+        const conservativeCouldD = isHighAzureWord(word) && dScore >= 50 && !dVeryShort;
+        const couldDCheckOnly = conservativeCouldD || (isHighAzureWord(word) && dIsShortOrWeak && !dVeryShort);
         signals.push(couldDCheckOnly ? "could-final-d-check" : dIsShortOrWeak ? "could-final-d-weak" : "could-final-d-heavy-strong");
         events.push({
           key: couldDCheckOnly ? "could:final-d-check" : dIsShortOrWeak ? "could:final-d-weak" : "could:final-d-heavy",
@@ -3250,15 +3265,17 @@ function localConsonantOmissionForVoice(text, transferPlan, role = "") {
   const events = localEventsForRole(transferPlan, role, ["consonant_or_phonics"]);
   if (!events.length) return source;
 
-  // イベントを発生させた単語自身(例: help)のうち、実際に弱かった音の時間が
-  // 1/3未満(light)であれば、その単語の大部分は崩れていないはずなので、
-  // 子音欠落表現をミラーへ反映しない(絶対ルール: 崩れていない部分にまで癖を反映しない)。
+  // イベントを発生させた単語自身(例: help)のうち、実際に弱かった音の時間の割合(coverageTier)は、
+  // 反映の「強さ」を決める目安として使う(語の大部分が崩れていれば strong寄りに)。
+  // ただし割合が低い(light)ことを理由に反映自体を取りやめると、個々の音素としては
+  // 明確に弱い(severityが高い)候補まで無反映になってしまう問題があった
+  // (実機フィードバック: "分析は正しい。ミラーへ反映されていない。")。
+  // そのためcoverageTierは強さの補正にのみ使い、反映するかどうかの判定には使わない
+  // (反映するかどうかは、既にeventCanAffectMirrorVoice()のseverity判定で行っている)。
   const words = [...new Set(events.map((event) => String(event.word || event.key || "").toLowerCase()))];
   const ratio = phoneCoverageRatioForWords(words, transferPlan?.soundSignature, "weakMs");
   const coverageTier = reflectionTierFromRatio(ratio);
-  if (coverageTier === "light") return source;
-
-  const severityTier = events.some((event) => severityRank(event.severity) >= 3) ? "strong" : "medium";
+  const severityTier = events.some((event) => severityRank(event.severity) >= 3) ? "strong" : events.some((event) => severityRank(event.severity) >= 2) ? "medium" : "light";
   const strength = coverageTier === "strong" || coverageTier === "medium" ? coverageTier : severityTier;
   return weakenJapaneseMoraText(source, strength);
 }
@@ -3266,15 +3283,13 @@ function localConsonantOmissionForVoice(text, transferPlan, role = "") {
 // r/l の弱さ・混同は、清音→濁音のずらし(muddle)で表現する。consonant_or_phonics の
 // 母音化(weaken)とは別の操作 — 絶対ルール: 別種類の癖に置き換えない、を守るため、
 // 「子音が落ちる」パターンと「別の子音に聞こえる」パターンを混同しない。
+// muddleJapaneseMoraText は常に最初の1モーラだけを軽く濁らせる控えめな変形のため、
+// (localConsonantOmissionForVoiceと違って)反映の強さを補正する必要がなく、
+// イベントが存在する(=severity判定を既に通過している)なら常に適用する。
 function localLiquidConfusionForVoice(text, transferPlan, role = "") {
   const source = String(text || "");
   const events = localEventsForRole(transferPlan, role, ["liquid_confusion"]);
   if (!events.length) return source;
-
-  const words = [...new Set(events.map((event) => String(event.word || event.key || "").toLowerCase()))];
-  const ratio = phoneCoverageRatioForWords(words, transferPlan?.soundSignature, "weakMs");
-  if (reflectionTierFromRatio(ratio) === "light") return source;
-
   return muddleJapaneseMoraText(source);
 }
 
