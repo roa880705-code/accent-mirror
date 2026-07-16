@@ -3228,6 +3228,20 @@ function hasKatakanaDeliveryForRole(transferPlan, role) {
   return localEventsForRole(transferPlan, role, ["katakana_delivery", "pause_or_unlinked"]).length > 0;
 }
 
+// 同じ role(=同じ日本語の対応範囲)の中に、単語に紐づいた具体的な母音追加
+// (katakana_delivery, 例: help の p)と、別の音の本当の弱化・脱落(liquid_confusion /
+// consonant_or_phonics, 例: 同じ help の l)が両方観測されることがある(実機
+// フィードバック: "子音の欠落なのに、ミラーでは母音の追加がある"。help の l は
+// 約30msと短く脱落気味、p は約190msと長く母音が付いていた、という同じ単語内の
+// 混在)。dominantLocalTransformForRole は severity が高い方だけを選ぶため、
+// このケースでは母音追加(katakana)側に全部寄せてしまい、本当に弱かった側の
+// 反映が消えてしまう。ここで両方の証拠があるかどうかを検出し、
+// applyAccentTransferToVoiceText 側で弱化→母音追加の順に重ねられるようにする。
+function coOccurringWeaknessEventsForRole(transferPlan, role) {
+  return localEventsForRole(transferPlan, role, ["liquid_confusion", "consonant_or_phonics"])
+    .filter((event) => event.source === "pronunciationEvents" && event.word);
+}
+
 // カタカナ的な母音付加(katakana_delivery)と、連結による子音の弱化・脱落(linking /
 // consonant_or_phonics)は別の現象であり、同じ role に両方の候補が出ることがある
 // (例: Could you を強く連結して「クッユー」寄りに発音しつつ、別の理由で語のどこかが
@@ -3517,7 +3531,15 @@ function applyAccentTransferToVoiceText(text, articulation, transferPlan, role =
     ? lengthAdjusted
     : softenJapaneseConsonantsForVoice(lengthAdjusted, shouldDeformText ? articulation : "clear");
   if (localKatakanaDelivery) {
-    softened = katakanaDeliveryForVoice(softened, katakanaDeliveryStrengthForRole(transferPlan, role));
+    // 同じ role 内に、母音追加(katakana)とは別の音の本当の弱化・脱落が
+    // 共存している場合は、母音追加だけに寄せず、まず弱化を軽く反映してから
+    // 母音追加を重ねる(絶対ルール: 別種類の癖に置き換えない、を両方の証拠が
+    // ある場合にも守るため)。
+    const coOccurringWeakness = coOccurringWeaknessEventsForRole(transferPlan, role);
+    const katakanaBase = coOccurringWeakness.length
+      ? weakenJapaneseMoraText(softened, coOccurringWeakness.some((event) => severityRank(event.severity) >= 3) ? "strong" : "medium")
+      : softened;
+    softened = katakanaDeliveryForVoice(katakanaBase, katakanaDeliveryStrengthForRole(transferPlan, role));
   } else if (localLiquid) {
     softened = localLiquidConfusionForVoice(softened, transferPlan, role);
   } else if (localConsonant) {
