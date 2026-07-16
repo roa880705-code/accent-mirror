@@ -1245,53 +1245,20 @@ function buildColoredSpokenHtml(mirror, segmentToColorClass) {
 function buildMirrorAnalysisSummary(mirror) {
   if (!mirror) return "まだありません。";
 
-  const badgeHtml = `<div class="summary-badges">`
-    + `<span class="badge ${mirror.severity === "high" || mirror.severity === "medium" ? "alert" : mirror.severity === "low" ? "warn" : "ok"}">深刻度: ${escapeHtml(mirror.severity || "--")}</span> `
-    + `<span class="badge ${mirror.confidence?.level === "high" ? "alert" : mirror.confidence?.level === "medium" ? "warn" : "ok"}">確信度: ${escapeHtml(mirror.confidence?.label || mirror.confidence?.level || "--")}</span>`
-    + `</div>`;
-
-  const paragraphs = [];
-
-  const phoneticText = mirror.phoneticText || mirror.heardAsJapanese;
-  if (phoneticText) {
-    paragraphs.push(`<p>録音の音は全体として「${escapeHtml(phoneticText)}」のように聞こえました。</p>`);
-  }
-
-  if (mirror.listenerExperience) {
-    paragraphs.push(`<p>${escapeHtml(mirror.listenerExperience)}</p>`);
-  }
-
   const groups = buildWordGroups(mirror);
-  let anyWordExplained = false;
+  const sentences = [];
   groups.forEach((group) => {
     const events = (group.events || []).filter((event) => event.englishEvidence);
     if (!events.length) return;
     const mirrorText = (group.segments || []).map((segment) => segment.text).join("");
-    const kanaNote = group.kana && timelineHasDetectedIssue(group.kana)
-      ? `「${escapeHtml(group.kana.kana)}」のように聞こえ、`
-      : "";
-    const evidenceText = events.map((event) => event.englishEvidence).join(" ");
-    if (group.kind === "phrase") {
-      paragraphs.push(`<p><b>文全体としては、</b>${escapeHtml(evidenceText)}</p>`);
-    } else {
-      anyWordExplained = true;
-      paragraphs.push(`<p><b>「${escapeHtml(group.label)}」</b>は${kanaNote}${escapeHtml(evidenceText)}${mirrorText ? ` そのため、日本語ミラーでは「${escapeHtml(mirrorText)}」のように反映しています。` : ""}</p>`);
-    }
+    const evidenceText = events.map((event) => event.englishEvidence).join("");
+    const subject = group.kind === "phrase" ? "文全体では、" : `「${escapeHtml(group.label)}」は、`;
+    const reflection = mirrorText ? `日本語ミラーでは「${escapeHtml(mirrorText)}」のように反映しています。` : "";
+    sentences.push(`${subject}${escapeHtml(evidenceText)}${reflection}`);
   });
 
-  if (!anyWordExplained) {
-    paragraphs.push(`<p>単語・音ごとに大きな弱さの候補はまだ見つかっていません。</p>`);
-  }
-
-  if (mirror.confidence?.warning) {
-    paragraphs.push(`<p class="minor"><b>注意</b>: ${escapeHtml(mirror.confidence.warning)}</p>`);
-  }
-
-  if ((mirror.targetActions || []).length) {
-    paragraphs.push(`<div class="minor"><b>次に意識するとよい点</b><ol>${mirror.targetActions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}</ol></div>`);
-  }
-
-  return badgeHtml + paragraphs.join("");
+  if (!sentences.length) return "単語・音ごとに大きな弱さの候補はまだ見つかっていません。";
+  return sentences.join(" ");
 }
 
 function spokenMirrorText(mirror) {
@@ -1330,10 +1297,6 @@ function renderVoiceTextSummary(mirror) {
   return `${referenceBlock}
     <div><b>実際に読み上げる音</b><br><span class="spoken-text-preview corr-text">${spokenHtml}</span></div>
     <div class="minor">基本の和訳: ${escapeHtml(baseText)}</div>`;
-}
-
-function timelineHasDetectedIssue(item) {
-  return Boolean(item?.reason) || !["ok", "none"].includes(String(item?.severity || "ok"));
 }
 
 // モデル音声とユーザー音声のピッチ輪郭(半音・単語ごとに開始/中間/終了の3点)を
