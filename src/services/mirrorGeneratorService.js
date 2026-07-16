@@ -1378,25 +1378,33 @@ function buildLengthAndPronunciationSignals(words) {
         const dIsShortOrWeak = dVeryShort || (dScore < 72 && (dMs === null || dMs < 70));
         const conservativeCouldD = isHighAzureWord(word) && dScore >= 50 && !dVeryShort;
         const couldDCheckOnly = conservativeCouldD || (isHighAzureWord(word) && dIsShortOrWeak && !dVeryShort);
-        signals.push(couldDCheckOnly ? "could-final-d-check" : dIsShortOrWeak ? "could-final-d-weak" : "could-final-d-heavy-strong");
+        // d が短く弱い(dIsShortOrWeak)場合は d 自体がほとんど聞こえない欠落。
+        // 逆にある程度以上の長さで残っている場合は、d が弱いのではなく d の
+        // 後ろに母音が付いて「クド」のように聞こえている可能性が高い(実機
+        // フィードバック: "dが強いというよりは、dという子音に母音をつけて
+        // しまったような感じ")。その場合は子音の弱化(omission)ではなく
+        // 母音追加(katakana_delivery)として扱う。
+        const dVowelAdded = !dIsShortOrWeak && !couldDCheckOnly;
+        signals.push(couldDCheckOnly ? "could-final-d-check" : dIsShortOrWeak ? "could-final-d-weak" : "could-final-d-vowel-added");
         events.push({
-          key: couldDCheckOnly ? "could:final-d-check" : dIsShortOrWeak ? "could:final-d-weak" : "could:final-d-heavy",
+          key: couldDCheckOnly ? "could:final-d-check" : dIsShortOrWeak ? "could:final-d-weak" : "could:final-d-vowel-added",
           type: "final-consonant",
+          vowelAdded: dVowelAdded,
           word: word.original,
           strength: couldDCheckOnly || dIsShortOrWeak ? "weak" : "strong",
           level: couldDCheckOnly ? "low" : dIsShortOrWeak ? "medium" : "high",
           voiceEligible: !couldDCheckOnly,
-          label: couldDCheckOnly ? "Could の d を確認" : dIsShortOrWeak ? "Could の d が弱い" : "Could の d が強く残る",
+          label: couldDCheckOnly ? "Could の d を確認" : dIsShortOrWeak ? "Could の d が弱い" : "Could の d に母音が付いている",
           detail: dIsShortOrWeak && !couldDCheckOnly
             ? `d が score ${Math.round(dScore)}${dMs !== null ? ` / 約${dMs}ms` : ""}。語尾の閉じが短く、Could の輪郭が弱く聞こえる候補です。`
             : couldDCheckOnly
-            ? `Could は単語スコアが高いため断定しません。d が score ${Math.round(dScore)}${dMs !== null ? ` / 約${dMs}ms` : ""} なので、語尾が少し強く残っていないか確認する候補です。`
-            : `d が score ${Math.round(dScore)}${dMs !== null ? ` / 約${dMs}ms` : ""}。語尾が残り、「クドゥ」寄りに聞こえる候補です。母音も長い場合だけ「クルド」寄りとして扱います。`,
+            ? `Could は単語スコアが高いため断定しません。d が score ${Math.round(dScore)}${dMs !== null ? ` / 約${dMs}ms` : ""} なので、語尾に母音が付いていないか確認する候補です。`
+            : `d が score ${Math.round(dScore)}${dMs !== null ? ` / 約${dMs}ms` : ""}。d の後ろに母音が付いて「クド」寄りに聞こえる候補です。`,
           action: dIsShortOrWeak && !couldDCheckOnly
             ? "Could の d を完全に消さず、短く弱い閉じを残す。"
             : couldDCheckOnly
-            ? "録音を聞き直し、Could の d が日本語の「ド」まで強く残っていないか確認する。"
-            : "Could の d を日本語の「ド」にせず、短く弱く閉じる。"
+            ? "録音を聞き直し、Could の d の後ろに母音が付いていないか確認する。"
+            : "Could の d の後ろに母音を付けず、短く止める。"
         });
       }
     }
@@ -1409,6 +1417,7 @@ function buildLengthAndPronunciationSignals(words) {
       const lScore = Number(lPhone?.score ?? 100);
       const pScore = Number(pPhone?.score ?? 100);
       const lMs = phoneMs(lPhone);
+      const pMs = phoneMs(pPhone);
       // level が trace/low(軽微)なのに、常に「エルプ」「ヘプ」のような強い(=別の聞こえ方に
       // 変わったと断定する)言い回しを使うと、同じ単語のカタカナ聞こえ方(別ロジックで算出)の
       // 判定と矛盾して見える(実機フィードバックで指摘: score 79 で「出だしが抜けて」は言い過ぎ、
@@ -1435,37 +1444,57 @@ function buildLengthAndPronunciationSignals(words) {
       if (lPhone && (lScore < 90 || (lMs !== null && lMs <= 60))) {
         const durationWeak = lMs !== null && lMs <= 60;
         const level = lScore < 45 ? "high" : lScore < 62 ? "medium" : lScore < 72 || durationWeak ? "low" : "trace";
-        signals.push("help-l-weak");
+        // l の長さがある程度以上残っている場合、l そのものが欠落しているのでは
+        // なく、l の後ろに母音が付いて「ル」のように聞こえている可能性が高い
+        // (実機フィードバック: "lも子音だけのはずが「ル」とはっきり発音した
+        // 場合は、母音をつけてしまっているということ")。その場合は子音の弱化
+        // (liquid_confusion=omission)ではなく母音追加(katakana_delivery)と
+        // して扱う。長さが不明(lMs===null)の場合はこれまで通り弱化扱いのまま。
+        const lVowelAdded = lMs !== null && lMs > 60;
+        signals.push(lVowelAdded ? "help-l-vowel-added" : "help-l-weak");
         events.push({
-          key: "help:l-weak",
+          key: lVowelAdded ? "help:l-vowel-added" : "help:l-weak",
           type: "liquid",
+          vowelAdded: lVowelAdded,
           word: word.original,
-          strength: lScore < 45 || durationWeak ? "weak" : "weak",
+          strength: "weak",
           level,
-          label: "help の l が弱い",
-          detail: isNotableWeakness(level)
-            ? (durationWeak
-              ? `l は score ${Math.round(lScore)}ですが約${lMs}msと短く、聞き手には「ヘプ」寄りに届く候補です。`
-              : `l が score ${Math.round(lScore)}。聞き手には「ヘプ」寄りに届く候補です。`)
-            : `l が score ${Math.round(lScore)}${lMs !== null ? ` / 約${lMs}ms` : ""}。やや短め・弱めですが、大きくは崩れていない軽微な候補です。`,
-          action: "help の l を消さず、舌先の接触を残す。"
+          label: lVowelAdded ? "help の l に母音が付いている" : "help の l が弱い",
+          detail: lVowelAdded
+            ? `l が score ${Math.round(lScore)} / 約${lMs}ms。l の後ろに母音が付いて「ル」寄りに聞こえる候補です。`
+            : isNotableWeakness(level)
+              ? (durationWeak
+                ? `l は score ${Math.round(lScore)}ですが約${lMs}msと短く、聞き手には「ヘプ」寄りに届く候補です。`
+                : `l が score ${Math.round(lScore)}。聞き手には「ヘプ」寄りに届く候補です。`)
+              : `l が score ${Math.round(lScore)}${lMs !== null ? ` / 約${lMs}ms` : ""}。やや短め・弱めですが、大きくは崩れていない軽微な候補です。`,
+          action: lVowelAdded
+            ? "help の l の後ろに母音を付けず、舌先の接触だけで止める。"
+            : "help の l を消さず、舌先の接触を残す。"
         });
       }
       if (pPhone && pScore < 88) {
         const level = pScore < 45 ? "high" : pScore < 62 ? "medium" : pScore < 72 ? "low" : "trace";
+        // could の d、help の l と同じ理由で、p がある程度以上の長さで残って
+        // いる場合は欠落ではなく母音追加(「プ」寄り)として扱う。
+        const pVowelAdded = pMs !== null && pMs >= 70;
         handledFinalPhones.add("p");
-        signals.push("help-final-p-weak");
+        signals.push(pVowelAdded ? "help-final-p-vowel-added" : "help-final-p-weak");
         events.push({
-          key: "help:final-p-weak",
+          key: pVowelAdded ? "help:final-p-vowel-added" : "help:final-p-weak",
           type: "final-consonant",
+          vowelAdded: pVowelAdded,
           word: word.original,
           strength: pScore < 45 ? "strong" : "weak",
           level,
-          label: "help の p が弱い",
-          detail: isNotableWeakness(level)
-            ? `p が score ${Math.round(pScore)}。語尾が閉じず、意味がぼやける候補です。`
-            : `p が score ${Math.round(pScore)}。語尾の閉じがやや弱いものの、大きくは崩れていない軽微な候補です。`,
-          action: "help の p を日本語の母音付き「プ」にせず、唇で短く閉じる。"
+          label: pVowelAdded ? "help の p に母音が付いている" : "help の p が弱い",
+          detail: pVowelAdded
+            ? `p が score ${Math.round(pScore)}${pMs !== null ? ` / 約${pMs}ms` : ""}。p の後ろに母音が付いて「プ」寄りに聞こえる候補です。`
+            : isNotableWeakness(level)
+              ? `p が score ${Math.round(pScore)}。語尾が閉じず、意味がぼやける候補です。`
+              : `p が score ${Math.round(pScore)}。語尾の閉じがやや弱いものの、大きくは崩れていない軽微な候補です。`,
+          action: pVowelAdded
+            ? "help の p の後ろに母音を付けず、唇だけで短く閉じる。"
+            : "help の p を日本語の母音付き「プ」にせず、唇で短く閉じる。"
         });
       }
     }
@@ -2459,6 +2488,14 @@ function japaneseRolesForEnglishWord(word) {
 
 function issueTypeForPronunciationEvent(event) {
   const type = String(event?.type || "");
+  // 子音が「弱い/欠落している」のではなく、子音の後ろに母音が付いて
+  // 聞こえている(例: could の d が「ド」、help の l/p が「ル」「プ」と
+  // はっきり聞こえる)場合は、子音の弱化・欠落(omission)ではなく、
+  // カタカナ発音の母音追加として扱う(絶対ルール: カタカナ英語は母音追加・
+  // 粒立ちで表現し、子音欠落に置き換えない)。event.vowelAdded は、この
+  // 判定を各ハードコード分岐(could の d、help の l/p など)側で長さを見て
+  // 行った結果を受け取るフラグ。
+  if (event?.vowelAdded) return "katakana_delivery";
   if (type === "word_boundary_pause" || type === "expected_linking_break") return "pause_or_unlinked";
   // r/l の弱さは「別の子音に置き換わって聞こえる」性質が強く、他の子音弱化
   // (h/p/sなどが単に落ちる)とは別カテゴリとして扱う(絶対ルール: 別種類の
@@ -2564,7 +2601,7 @@ function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature
 
   (soundSignature?.weakPhones || []).slice(0, 8).forEach((phone, index) => {
     const alreadyCovered = localEvents.some((event) => String(event.word || "").toLowerCase() === String(phone.word || "").toLowerCase()
-      && ["consonant_or_phonics", "subtle_phonics_trace", "liquid_confusion"].includes(event.issueType));
+      && ["consonant_or_phonics", "subtle_phonics_trace", "liquid_confusion", "katakana_delivery"].includes(event.issueType));
     if (alreadyCovered) return;
     const issueType = phone.class === "vowel" ? "vowel_weakness" : phone.class === "liquid" ? "liquid_confusion" : "consonant_or_phonics";
     localEvents.push({
