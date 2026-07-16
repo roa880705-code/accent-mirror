@@ -1,5 +1,5 @@
 ﻿const pitchThresholds = require("../config/pitchThresholds");
-const { weakenJapaneseMoraText, elongateJapaneseMoraText, muddleJapaneseMoraText, segmentPauseJapaneseMoraText } = require("./japaneseMoraTransform");
+const { weakenJapaneseMoraText, elongateJapaneseMoraText, segmentPauseJapaneseMoraText } = require("./japaneseMoraTransform");
 const { phoneticKatakanaForWord, spellingToKatakana, coalescedLinkingKatakana, droppedStopLinkingKatakana } = require("./englishKatakanaEngine");
 
 const WORD_MIRRORS = {
@@ -2476,7 +2476,7 @@ function mirrorActionForLocalEvent(issueType, event) {
   if (issueType === "pause_or_unlinked") return "該当する日本語の区切りだけに短い間を入れる。全体を遅くしない。";
   if (issueType === "katakana_delivery") return "子音を欠落させず、該当する日本語を粒立てて母音つきに聞こえるようにする。";
   if (issueType === "consonant_or_phonics") return "該当する語句だけ子音の輪郭を少し弱める。別種類の癖には置き換えない。";
-  if (issueType === "liquid_confusion") return "該当する語句の子音を、別の子音に置き換わって聞こえる形(清音→濁音)で反映する。母音だけにする弱化とは区別する。";
+  if (issueType === "liquid_confusion") return "該当する語句のr/lの輪郭を少し弱める(母音だけ残す欠落)。他の子音弱化と同じ扱いにする。";
   if (issueType === "length") return "該当する母音・語尾だけを少し伸ばす。文全体を崩さない。";
   if (issueType === "linking") return "該当する語句だけを少し連結して聞こえるようにする。";
   if (issueType === "intonation") return String(event?.key || "").includes("zigzag")
@@ -3280,17 +3280,22 @@ function localConsonantOmissionForVoice(text, transferPlan, role = "") {
   return weakenJapaneseMoraText(source, strength);
 }
 
-// r/l の弱さ・混同は、清音→濁音のずらし(muddle)で表現する。consonant_or_phonics の
-// 母音化(weaken)とは別の操作 — 絶対ルール: 別種類の癖に置き換えない、を守るため、
-// 「子音が落ちる」パターンと「別の子音に聞こえる」パターンを混同しない。
-// muddleJapaneseMoraText は常に最初の1モーラだけを軽く濁らせる控えめな変形のため、
-// (localConsonantOmissionForVoiceと違って)反映の強さを補正する必要がなく、
-// イベントが存在する(=severity判定を既に通過している)なら常に適用する。
+// r/l の弱さは、他の子音弱化(h/p/sなどが単に落ちる)と同じ「子音が抜けて母音だけ
+// 残る」欠落(omission)で表現する。以前はここを「別の子音に置き換わって聞こえる」
+// muddle(清音→濁音のずらし)で表現していたが、実際にこのイベントが発火しているのは
+// r/lが単に弱い・短いという一般的な子音弱化のケースであり、語が別の(存在しない)
+// 語に聞こえるほどの明確な置き換わりの証拠があるわけではない
+// (実機フィードバック: 「子音の弱さは濁点ではなく、入れ歯が抜けたような欠落のはず」)。
+// muddleは特定の音に置き換わって聞こえる強い根拠がある場合向けの表現のため、
+// 一般的な弱さには他の子音弱化と同じomissionを使う。診断上のラベル
+// (issueType: liquid_confusion, "r/lの弱さ・混同")は、どの音の弱さかを特定する
+// 情報として引き続き分けて表示する。
 function localLiquidConfusionForVoice(text, transferPlan, role = "") {
   const source = String(text || "");
   const events = localEventsForRole(transferPlan, role, ["liquid_confusion"]);
   if (!events.length) return source;
-  return muddleJapaneseMoraText(source);
+  const severityTier = events.some((event) => severityRank(event.severity) >= 3) ? "strong" : events.some((event) => severityRank(event.severity) >= 2) ? "medium" : "light";
+  return weakenJapaneseMoraText(source, severityTier);
 }
 
 // 連結による子音の弱化・脱落(例: Could you を強く連結して「クッユー」寄りに聞こえる)も、
@@ -3521,9 +3526,14 @@ function segmentArticulationForRole(baseArticulation, role, transferPlan) {
   return isAffected ? baseArticulation : "clear";
 }
 
-function segmentVolumeForArticulation(baseVolume, segmentArticulation) {
-  if (segmentArticulation === "unclear") return "x-soft";
-  if (segmentArticulation === "soft") return "soft";
+// articulation(unclear/soft)を音量の急落として表現すると、同じ文の中で
+// articulationが変わる境目(例: "clear"な単語の直後に"unclear"な単語が来る)で
+// 音量が一段・二段と不自然に落ちる/戻るアーティファクトになり、TTSの不具合の
+// ように聞こえてしまう(実機フィードバック: "平坦読みをすると途中から音量が
+// 一気に下がっているエラー")。articulationの弱さは既に速度・音程・子音の
+// 弱化/欠落のテキスト変形で十分に表現されているため、音量は常にdefaultのまま
+// にする。
+function segmentVolumeForArticulation() {
   return "default";
 }
 
