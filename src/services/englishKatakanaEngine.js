@@ -231,4 +231,175 @@ function phoneticKatakanaForWord(word) {
   return text || null;
 }
 
-module.exports = { phoneticKatakanaForWord, buildKatakanaFromPhones, VOWEL_KATAKANA, CONSONANT_ROWS };
+// --- 自由認識(参照文なし)用: 音素スコアがない場合のスペリング→カタカナ ---
+// Azureの音素データが得られない(自由発話認識のみの)単語向けに、綴りから
+// おおまかな発音を推定してから、上と同じ音素→カタカナの組み立てに渡す。
+// 英語の綴りは例外が多く完全な精度は望めないが、固定の単語辞書(モグラ叩き)
+// より遥かに広い範囲の単語に、一定水準の近似を与えられる。
+const SPELLING_MULTI_LETTER_PATTERNS = [
+  ["tion", ["ʃ", "ə", "n"]],
+  ["sion", ["ʒ", "ə", "n"]],
+  ["eigh", ["eɪ"]],
+  ["ough", ["ʌ", "f"]],
+  ["igh", ["aɪ"]],
+  ["tch", ["tʃ"]],
+  ["dge", ["dʒ"]],
+  ["ck", ["k"]],
+  ["ph", ["f"]],
+  ["wh", ["w"]],
+  ["th", ["θ"]],
+  ["sh", ["ʃ"]],
+  ["ch", ["tʃ"]],
+  ["ng", ["ŋ"]],
+  ["qu", ["k", "w"]],
+  ["ee", ["iː"]],
+  ["ea", ["iː"]],
+  ["oo", ["uː"]],
+  ["ou", ["aʊ"]],
+  ["oy", ["ɔɪ"]],
+  ["oi", ["ɔɪ"]],
+  ["ai", ["eɪ"]],
+  ["ay", ["eɪ"]],
+  ["ue", ["uː"]],
+  ["au", ["ɔː"]],
+  ["aw", ["ɔː"]],
+  ["ar", ["ɑːɹ"]],
+  ["or", ["ɔːɹ"]],
+  ["er", ["ɝː"]],
+  ["ir", ["ɝː"]],
+  ["ur", ["ɝː"]],
+  ["gh", []]
+];
+
+const SPELLING_SINGLE_LETTER = {
+  a: "æ", e: "ɛ", i: "ɪ", o: "ɔ", u: "ʌ",
+  b: "b", d: "d", f: "f", h: "h", k: "k", l: "l", m: "m", n: "n",
+  p: "p", r: "ɹ", t: "t", v: "v", w: "w", z: "z", j: "dʒ"
+};
+
+function guessPhonesFromSpelling(rawWord) {
+  let word = String(rawWord || "").toLowerCase().replace(/[^a-z]/g, "");
+  if (!word) return [];
+
+  // 英語の綴りは二重子音(pass/will/tomorrowのss/ll/rrなど)が1つの音しか表さないため、
+  // 連続する同じ子音字は1文字に畳む。
+  word = word.replace(/([bcdfghjklmnpqrstvwxyz])\1+/g, "$1");
+
+  // 語末の e は、その直前が子音であれば大半は無音(例: leave, please, name)。
+  // 短い機能語(be/he/me/we など)は自由認識辞書側で個別に対応済みのため、
+  // ここでは4文字以上の場合だけ無音として扱う。
+  if (word.length >= 4 && word.endsWith("e") && !/[aeiou]/.test(word[word.length - 2])) {
+    word = word.slice(0, -1);
+  }
+
+  const phones = [];
+  let i = 0;
+  while (i < word.length) {
+    const multi = SPELLING_MULTI_LETTER_PATTERNS.find(([pattern]) => word.startsWith(pattern, i));
+    if (multi) {
+      phones.push(...multi[1]);
+      i += multi[0].length;
+      continue;
+    }
+
+    const ch = word[i];
+    if (ch === "c") {
+      const next = word[i + 1];
+      phones.push(next === "e" || next === "i" || next === "y" ? "s" : "k");
+      i += 1;
+      continue;
+    }
+    if (ch === "g") {
+      const next = word[i + 1];
+      phones.push(next === "e" || next === "i" || next === "y" ? "dʒ" : "g");
+      i += 1;
+      continue;
+    }
+    if (ch === "s") {
+      phones.push("s");
+      i += 1;
+      continue;
+    }
+    if (ch === "y") {
+      const isVowelPosition = i === 0 ? false : true;
+      if (isVowelPosition) {
+        const remaining = word.length - i;
+        phones.push(remaining <= 2 ? "aɪ" : "ɪ");
+      } else {
+        phones.push("j");
+      }
+      i += 1;
+      continue;
+    }
+    if (ch === "x") {
+      phones.push("k", "s");
+      i += 1;
+      continue;
+    }
+    if (SPELLING_SINGLE_LETTER[ch]) {
+      phones.push(SPELLING_SINGLE_LETTER[ch]);
+      i += 1;
+      continue;
+    }
+    i += 1;
+  }
+
+  return phones.filter(Boolean).map((phone) => ({ phone, score: 100, ms: null }));
+}
+
+// 音素スコアがない(自由認識のみの)単語のカタカナ近似。取得できなければ null。
+function spellingToKatakana(word) {
+  const phones = guessPhonesFromSpelling(word);
+  if (!phones.length) return null;
+  const morae = buildKatakanaFromPhones(phones);
+  const text = morae.join("");
+  return text || null;
+}
+
+// --- 単語間の連結(リエゾン)の一般化 ---
+// 特定の単語ペア("could you"など)専用の分岐ではなく、音の並びの一般則
+// (yod-coalescence: 語末の t/d + 次語頭の j が同化してtʃ/dʒになる。
+// 例: could you→クッジュー, want you→ワンチュー)として、どの単語ペアにも
+// 同じ判定を適用する。
+function coalescedLinkingKatakana(currentPhones, nextPhones) {
+  const current = (currentPhones || []).map((phone) => ({ phone: normalizePhone(phone.phone), score: Number(phone.score ?? 100), ms: phoneDurationMs(phone) }));
+  const next = (nextPhones || []).map((phone) => ({ phone: normalizePhone(phone.phone), score: Number(phone.score ?? 100), ms: phoneDurationMs(phone) }));
+  if (!current.length || next.length < 2) return null;
+  const lastCurrent = current[current.length - 1];
+  if (lastCurrent.phone !== "t" && lastCurrent.phone !== "d") return null;
+  if (next[0].phone !== "j") return null;
+  const followingVowel = next[1];
+  if (!VOWEL_KATAKANA[followingVowel.phone]) return null;
+
+  const coalesced = lastCurrent.phone === "d" ? "dʒ" : "tʃ";
+  const row = CONSONANT_ROWS[coalesced];
+  const column = VOWEL_COLUMN[followingVowel.phone] || "u";
+  const mergedMora = applyVowelLength(`${row[column] || row.coda}${VOWEL_GLIDE_SUFFIX[followingVowel.phone] || ""}`, followingVowel);
+
+  const beforeMorae = buildKatakanaFromPhones(current.slice(0, -1));
+  const afterMorae = buildKatakanaFromPhones(next.slice(2));
+  // 同化する前の t/d は完全には消えず、破裂の閉じが一瞬残ることが多いため、
+  // 促音(小さい「ッ」)として挟む(例: could you → クッジュー)。
+  return [...beforeMorae, "ッ", mergedMora, ...afterMorae].join("");
+}
+
+// t/d がほぼ聞こえないほど弱い場合は、tʃ/dʒへの同化ではなく、単に語尾の子音が
+// 抜けて次の語へ緩くつながって聞こえる(例: could you → クッユー、dが同化先の
+// 破擦音にすらならない場合)。
+function droppedStopLinkingKatakana(currentPhones, nextPhones) {
+  const current = currentPhones || [];
+  const beforeMorae = buildKatakanaFromPhones(current.slice(0, -1));
+  const afterText = phoneticKatakanaForWord({ phones: nextPhones });
+  if (!afterText) return null;
+  return [...beforeMorae, "ッ", afterText].join("");
+}
+
+module.exports = {
+  phoneticKatakanaForWord,
+  buildKatakanaFromPhones,
+  spellingToKatakana,
+  coalescedLinkingKatakana,
+  droppedStopLinkingKatakana,
+  VOWEL_KATAKANA,
+  CONSONANT_ROWS
+};

@@ -1,6 +1,6 @@
 ﻿const pitchThresholds = require("../config/pitchThresholds");
 const { weakenJapaneseMoraText, elongateJapaneseMoraText, muddleJapaneseMoraText, segmentPauseJapaneseMoraText } = require("./japaneseMoraTransform");
-const { phoneticKatakanaForWord } = require("./englishKatakanaEngine");
+const { phoneticKatakanaForWord, spellingToKatakana, coalescedLinkingKatakana, droppedStopLinkingKatakana } = require("./englishKatakanaEngine");
 
 const WORD_MIRRORS = {
   could: {
@@ -541,7 +541,11 @@ function sentenceMeaningKey(text) {
 
 function freeRecognitionPhoneticText(text) {
   const words = sentenceMeaningKey(text).split(/\s+/).filter(Boolean);
-  const kana = words.map((word) => FREE_RECOGNITION_KANA[word] || word);
+  // FREE_RECOGNITION_KANA は、綴りから発音を機械的に推測しづらい高頻度の不規則語
+  // (could/have/theなど)だけの小さな例外表とし、それ以外の単語は綴りベースの
+  // 一般エンジン(spellingToKatakana)にフォールバックする。自由認識には音素スコアが
+  // 付かないため、フルの音素データを使う phoneticKatakanaForWord は使えない。
+  const kana = words.map((word) => FREE_RECOGNITION_KANA[word] || spellingToKatakana(word) || word);
   return kana.length ? kana.join(" ") : "";
 }
 
@@ -1126,46 +1130,56 @@ function findPhone(word, matcher) {
   return (word.phones || []).find((phone) => matcher(String(phone.phone || "").toLowerCase()));
 }
 
-const EXPECTED_LINKING_PAIRS = new Map([
-  ["could-you", { label: "Could you", mirror: "クドゥ / ユー", action: "Could you を完全に切らず、軽くつなげて読む。" }],
-  ["can-you", { label: "Can you", mirror: "キャン / ユー", action: "Can you を完全に切らず、軽くつなげて読む。" }],
-  ["could-help", { label: "Could help", mirror: "クドゥ / ヘルプ", action: "Could の後で止めすぎず、help へ軽く流す。" }],
-  ["you-help", { label: "You help", mirror: "ユー / ヘルプ", action: "you から help へ意味のまとまりで読む。" }],
-  ["help-me", { label: "Help me", mirror: "ヘルプ / ミー", action: "help と me を1語ずつ置かず、依頼のまとまりで読む。" }],
-  ["you-teach", { label: "You teach", mirror: "ユー / ティーチ", action: "you teach を意味のまとまりで読む。" }],
-  ["teach-me", { label: "Teach me", mirror: "ティーチ / ミー", action: "teach me を1語ずつ置かず、依頼のまとまりで読む。" }],
-  ["pass-me", { label: "Pass me", mirror: "パス / ミー", action: "pass me を意味のまとまりで読む。" }],
-  ["me-the", { label: "Me the", mirror: "ミー / ザ", action: "me the を文中で止めずに読む。" }],
-  ["the-salt", { label: "The salt", mirror: "ザ / ソルト", action: "the salt を名詞句としてまとめて読む。" }],
-  ["can-i", { label: "Can I", mirror: "キャン / アイ", action: "Can I を完全に切らず、軽くつなげて読む。" }],
-  ["have-your", { label: "Have your", mirror: "ハヴ / ユア", action: "have your を意味のまとまりで読む。" }],
-  ["your-phone", { label: "Your phone", mirror: "ユア / フォン", action: "your phone を名詞句としてまとめて読む。" }],
-  ["phone-number", { label: "Phone number", mirror: "フォン / ナンバー", action: "phone number を名詞句としてまとめて読む。" }],
-  ["will-see", { label: "Will see", mirror: "ウィル / シー", action: "will see を意味のまとまりで読む。" }],
-  ["see-you", { label: "See you", mirror: "シー / ユー", action: "see you を自然なまとまりで読む。" }],
-  ["you-tomorrow", { label: "You tomorrow", mirror: "ユー / トゥモロー", action: "you tomorrow を文末へ流して読む。" }],
-  ["have-to", { label: "Have to", mirror: "ハヴ / トゥ", action: "have to を意味のまとまりで読む。" }],
-  ["to-work", { label: "To work", mirror: "トゥ / ワーク", action: "to work を意味のまとまりで読む。" }]
+// 特定の単語ペア("could you"や"the salt"など)を丸暗記するのではなく、英語で
+// 一般に無強勢・機能語となりやすいクラス(法助動詞・be/have・代名詞・所有格・
+// 冠詞・前置詞・接続詞)を基準に「連結しやすい語」を判定する。どちらかの語が
+// このクラスに属していれば、その語境界は通常つながって読まれるため、そこに
+// 間があると粒立って聞こえやすい候補として扱う。新しい練習文の単語の組み合わせ
+// にも、個別追加なしでそのまま適用できる。
+const LINKING_FUNCTION_WORDS = new Set([
+  "could", "can", "will", "would", "should", "must", "may", "might", "shall",
+  "do", "does", "did", "have", "has", "had", "am", "is", "are", "was", "were", "be",
+  "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them",
+  "my", "your", "his", "its", "our", "their",
+  "the", "a", "an",
+  "to", "for", "of", "in", "on", "at", "with", "from", "by", "as",
+  "and", "or", "but"
 ]);
 
+function wordKatakanaForLinking(word) {
+  return WORD_MIRRORS[word.word]?.target || phoneticKatakanaForWord(word) || spellingToKatakana(word.word) || word.original || word.word;
+}
+
 function expectedLinkingPair(current, next) {
-  return EXPECTED_LINKING_PAIRS.get(`${current.word}-${next.word}`) || null;
+  if (!LINKING_FUNCTION_WORDS.has(current.word) && !LINKING_FUNCTION_WORDS.has(next.word)) return null;
+  return {
+    label: `${current.original} ${next.original}`,
+    mirror: `${wordKatakanaForLinking(current)} / ${wordKatakanaForLinking(next)}`,
+    action: `${current.original} ${next.original} を完全に切らず、意味のまとまりとして軽くつなげて読む。`
+  };
 }
 
 function buildLinkingSignals(words) {
   const signals = [];
   const events = [];
 
+  // 特定の単語ペア("could you"のみ)専用の分岐ではなく、語末が t/d で次語頭が j
+  // (you/your/yetなど)という音の並び(yod-coalescence)自体を判定基準にする。
+  // どの単語の組み合わせでもこのパターンに当てはまれば同じ判定を行うため、
+  // 新しい練習文の"want you"や"did you"のような組み合わせにも対応できる。
   for (let i = 0; i < words.length - 1; i += 1) {
     const current = words[i];
     const next = words[i + 1];
-    if (current.word !== "could" || next.word !== "you") continue;
 
-    const dPhone = findPhone(current, (phone) => phone.includes("d"));
-    const yPhone = findPhone(next, (phone) => phone.includes("j") || phone.includes("y") || phone.includes("ʒ") || phone.includes("dʒ"));
-    const dScore = Number(dPhone?.score ?? 100);
-    const yScore = Number(yPhone?.score ?? next.score ?? 100);
-    const dMs = phoneMs(dPhone);
+    const finalPhone = (current.phones || [])[(current.phones || []).length - 1];
+    const finalPhoneName = String(finalPhone?.phone || "").toLowerCase();
+    if (finalPhoneName !== "t" && finalPhoneName !== "d") continue;
+    const nextFirstPhone = (next.phones || [])[0];
+    if (String(nextFirstPhone?.phone || "").toLowerCase() !== "j") continue;
+
+    const dScore = Number(finalPhone?.score ?? 100);
+    const yScore = Number(nextFirstPhone?.score ?? next.score ?? 100);
+    const dMs = phoneMs(finalPhone);
     const gapMs = wordGapMs(current, next);
     const clearlySeparated = gapMs !== null && gapMs >= 55;
     const highWords = isHighAzureWord(current) && isHighAzureWord(next);
@@ -1174,24 +1188,29 @@ function buildLinkingSignals(words) {
     if (!likelyLinked) continue;
 
     const dDropped = dScore < 72 || (dMs !== null && dMs <= 80);
-    const mirrorText = dDropped
-      ? highWords ? "クッユー(?)" : "クッユー"
-      : highWords ? "クッジュー(?)" : "クッジュー";
-    const mirrorHint = dDropped ? "くっゆー / クッユー" : "くっぢゅー / クッジュー";
-    signals.push(highWords ? "could-you-linking-check" : "could-you-linking-strong");
+    const coalesced = dDropped
+      ? droppedStopLinkingKatakana(current.phones, next.phones)
+      : coalescedLinkingKatakana(current.phones, next.phones);
+    if (!coalesced) continue;
+
+    const mirrorText = highWords ? `${coalesced}(?)` : coalesced;
+    const pairLabel = `${current.original} ${next.original}`;
+    signals.push(highWords ? `${current.word}-${next.word}-linking-check` : `${current.word}-${next.word}-linking-strong`);
     events.push({
-      key: "could-you:linking",
+      key: `${current.word}-${next.word}:linking`,
       type: "linking",
       words: [current.original, next.original],
+      wordIndex: i,
+      nextWordIndex: i + 1,
       strength: highWords ? "weak" : "strong",
       mirrorText,
-      label: highWords ? "Could you の連結を確認" : "Could you の連結が強い",
+      label: highWords ? `${pairLabel} の連結を確認` : `${pairLabel} の連結が強い`,
       detail: highWords
-        ? `Could と you は高スコアです。ただし連結して「${mirrorHint}」寄りに聞こえていないか確認する候補です。${dPhone ? `d は score ${Math.round(dScore)}${dMs !== null ? ` / 約${dMs}ms` : ""}。` : ""}${gapMs !== null ? `単語間は約${gapMs}ms。` : ""}`
-        : `Could you が強く連結し、「${mirrorHint}」寄りに聞こえる候補です。${gapMs !== null ? `単語間は約${gapMs}ms。` : ""}`,
+        ? `${current.original} と ${next.original} は高スコアです。ただし連結して「${coalesced}」寄りに聞こえていないか確認する候補です。${finalPhone ? `${finalPhoneName} は score ${Math.round(dScore)}${dMs !== null ? ` / 約${dMs}ms` : ""}。` : ""}${gapMs !== null ? `単語間は約${gapMs}ms。` : ""}`
+        : `${pairLabel} が強く連結し、「${coalesced}」寄りに聞こえる候補です。${gapMs !== null ? `単語間は約${gapMs}ms。` : ""}`,
       action: highWords
-        ? `Could you が一語の「${mirrorText.replace(/[()?]/g, "")}」になりすぎていないか録音で確認する。`
-        : "Could you をつなげすぎず、Could と you の境目を軽く残す。"
+        ? `${pairLabel} が一語の「${coalesced.replace(/[()?]/g, "")}」になりすぎていないか録音で確認する。`
+        : `${pairLabel} をつなげすぎず、境目を軽く残す。`
     });
   }
 
@@ -2057,20 +2076,22 @@ function buildTargetActions(speechFeatures, severeWords, conservative) {
 }
 
 function buildMirroredWords(words, speechFeatures, context) {
-  const linkingEvent = (speechFeatures.pronunciationEvents || []).find((event) => event.key === "could-you:linking");
+  const linkingEvents = (speechFeatures.pronunciationEvents || []).filter((event) => event.type === "linking" && Number.isInteger(event.wordIndex));
   const mirroredWords = [];
 
   for (let i = 0; i < words.length; i += 1) {
     const current = words[i];
     const next = words[i + 1];
-    if (linkingEvent && current?.word === "could" && next?.word === "you") {
-      const text = linkingEvent.mirrorText || "クッユー(?)";
+    const linkingEvent = linkingEvents.find((event) => event.wordIndex === i && event.nextWordIndex === i + 1);
+    if (linkingEvent && current && next) {
+      const text = linkingEvent.mirrorText || `${current.original}${next.original}(?)`;
+      const pairLabel = `${current.original} ${next.original}`;
       mirroredWords.push({
-        word: "could-you",
-        original: "Could you",
+        word: `${current.word}-${next.word}`,
+        original: pairLabel,
         text,
         severity: linkingEvent.strength === "weak" ? "low" : "medium",
-        reason: `Could you の連結が「${text.replace(/[()?]/g, "")}」寄りに聞こえる候補です。`,
+        reason: `${pairLabel} の連結が「${text.replace(/[()?]/g, "")}」寄りに聞こえる候補です。`,
         conservative: linkingEvent.strength === "weak",
         linking: true,
         sourceWordIndex: i,
