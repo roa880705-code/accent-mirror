@@ -1567,6 +1567,23 @@ function buildJapaneseMirrorPitchAnalysis(intonationFeatures) {
 
   const classification = classifyIntonationDeviation(intonationFeatures, {});
   const rise = Number(intonationFeatures.riseSemitones || 0);
+  const contour = intonationFeatures?.contour || {};
+  // classification(status)は最後のセグメントの偏差だけを見ているため、「全体的に高い/低い」という
+  // 単調な文言になりがちだが、文中に複数回の上げ下げがある場合はそれを言い当てられない。
+  // 実測のcontour.pattern(zigzag/phrase_movement)がある場合は、それを優先して文言を差し替える。
+  if (contour.pattern === "zigzag" || contour.pattern === "phrase_movement") {
+    const rangeSemitones = Number(contour.rangeSemitones || 0);
+    const changeCount = Number(contour.directionChanges || 0);
+    return {
+      available: true,
+      classification: { ...classification, status: contour.pattern, label: `${contour.pattern} ${changeCount}` },
+      riseSemitones: rise,
+      summary: contour.pattern === "zigzag"
+        ? `ミラー音声は模範日本語ミラーと比べて、文中の上げ下げの切り替わりが${changeCount}回、音域差が約${rangeSemitones.toFixed(1)}半音あります。全体的な上げ下げではなく、区間ごとに音程がジグザグに動いている可能性があります。`
+        : `ミラー音声は模範日本語ミラーと比べて、文中で音域差が約${rangeSemitones.toFixed(1)}半音動く区間があります。文全体を一様に上げ下げするのではなく、一部の区間だけ音程が動いている可能性があります。`
+    };
+  }
+
   const summaries = {
     natural: `模範日本語ミラーとほぼ同じ音高の動きです（差は約${Math.abs(rise).toFixed(1)}半音）。`,
     trace: `模範日本語ミラーとの差は約${Math.abs(rise).toFixed(1)}半音で、軽いズレの範囲内です。`,
@@ -3476,26 +3493,26 @@ function intonationPitchPattern(transferPlan, partCount = 0) {
   return pattern;
 }
 
-// 短い機能語(例: "I")は3点サンプルのピッチ推定がノイズに弱く、そのまま使うと
-// 前後の語と無関係に飛び跳ねた値になりやすい。自分自身と前後の語を、語の長さ(ms)を
-// 信頼度の重みとして加重平均する(1-2-1型の平滑化、ただし重みは均等ではなく長さ依存)。
-// 実測により真に大きく動いている(zigzagなど)場合は、複数語にまたがって値が残るため
-// 平滑化されても消えない。孤立した1語だけの突発的なノイズを主に減衰させる。
+// 語の長さ(ms)がこれ未満だと、3点サンプルのピッチ推定はノイズの影響を受けやすい
+// (例: "I" 約150ms)。一方、これ以上の長さがあれば実測値をそのまま信頼できる。
+const INTONATION_WORD_RELIABLE_DURATION_MS = 220;
+
+// 短い機能語だけを前後の(信頼できる)語の平均に寄せて平滑化する。重要なのは、
+// 十分な長さがある語同士(例: "live"と"here")は互いに一切影響し合わないこと。
+// 以前の実装は全語を対称に加重平均していたため、末尾の語は片側にしか隣接語が
+// ないぶん、その隣接語の値を相対的に強く受け取ってしまい、実際には中間の語
+// (例: "live")がピークなのに、平滑化後は末尾の語(例: "here")の方が高くなる
+// 逆転が起きていた。信頼できる語は一切変更しないことで、この逆転を防ぐ。
 function smoothIntonationDeviationWords(words) {
-  if (!Array.isArray(words) || words.length < 3) return words;
+  if (!Array.isArray(words) || words.length < 2) return words;
   return words.map((word, index) => {
-    const selfWeight = Math.max(60, Number(word.durationMs) || 150) * 1.6;
-    const samples = [{ value: word.avgDeviation, weight: selfWeight }];
-    [words[index - 1], words[index + 1]].forEach((neighbor) => {
-      if (neighbor && Number.isFinite(neighbor.avgDeviation)) {
-        samples.push({ value: neighbor.avgDeviation, weight: Math.max(60, Number(neighbor.durationMs) || 150) });
-      }
-    });
-    const usable = samples.filter((sample) => Number.isFinite(sample.value));
-    if (!usable.length) return word;
-    const totalWeight = usable.reduce((sum, sample) => sum + sample.weight, 0);
-    const smoothed = usable.reduce((sum, sample) => sum + sample.value * sample.weight, 0) / totalWeight;
-    return { ...word, avgDeviation: smoothed };
+    const ownDurationMs = Number(word.durationMs) || 0;
+    if (ownDurationMs >= INTONATION_WORD_RELIABLE_DURATION_MS || !Number.isFinite(word.avgDeviation)) return word;
+    const neighbors = [words[index - 1], words[index + 1]].filter((neighbor) => neighbor && Number.isFinite(neighbor.avgDeviation));
+    if (!neighbors.length) return word;
+    const neighborAvg = neighbors.reduce((sum, neighbor) => sum + neighbor.avgDeviation, 0) / neighbors.length;
+    const ownWeight = Math.max(0.15, Math.min(1, ownDurationMs / INTONATION_WORD_RELIABLE_DURATION_MS));
+    return { ...word, avgDeviation: word.avgDeviation * ownWeight + neighborAvg * (1 - ownWeight) };
   });
 }
 
