@@ -133,9 +133,21 @@ function analyzeAzureRaw(raw, contrastSet, options = {}) {
   // 低く採点した場合、その1語だけで発話全体のconsonantAvg/consonantMinが大きく押し下がり、
   // 実際には1語しか弱くないのに「こもり」判定になってしまう。複数語で弱さが確認できた
   // 場合のみ「こもり」とし、1語だけの場合は該当語のカード(単語ごとの分析)にのみ表す。
+  // ただしこれは区切り発音(単語間にポーズがある)でAzureが境界音素を低く採点しやすい
+  // 状況を想定した割引なので、ポーズの証拠がない(速い連続発話)場合は1語だけの弱さでも
+  // そのまま信頼する(実機フィードバック: ポーズなしの高速発話で1語だけ弱いケースが
+  // 過小評価されていた)。
   const weakConsonantWordCount = wordDiagnostics.filter((word) => word.consonantMin !== null && word.consonantMin < 55).length;
+  const hasPauseEvidence = (Number(options.rhythmHints?.localPauseCount || 0) >= 1 && Number(options.rhythmHints?.localMaxPauseMs || 0) >= 150)
+    || wordDiagnostics.some((word, index) => {
+      if (index === 0) return false;
+      const previous = wordDiagnostics[index - 1];
+      const previousEnd = Number(previous.offset100ns || 0) + Number(previous.duration100ns || 0);
+      const gapMs = (Number(word.offset100ns || 0) - previousEnd) / 10000;
+      return gapMs >= 150;
+    });
   const muffled = ((consonantAvg !== null && consonantMin !== null && consonantAvg < 70 && consonantMin < 50)
-    || (consonantMin !== null && consonantMin < 35)) && weakConsonantWordCount >= 2;
+    || (consonantMin !== null && consonantMin < 35)) && (!hasPauseEvidence || weakConsonantWordCount >= 2);
   const couldBlindSpot = critical.includes("could") && criticalOk.some((word) => word.word === "could");
 
   let blindSpotJudgment;

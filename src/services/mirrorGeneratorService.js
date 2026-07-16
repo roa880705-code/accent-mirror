@@ -1083,15 +1083,18 @@ function effectiveVoiceSpeedLevel(speechFeatures) {
   return voice;
 }
 
-function classifyConsonantWeakness(consonantAvg, consonantMin, weakWordCount = 0) {
+function classifyConsonantWeakness(consonantAvg, consonantMin, weakWordCount = 0, hasPauseEvidence = false) {
   const avg = consonantAvg === null || consonantAvg === undefined ? null : Number(consonantAvg);
   const min = consonantMin === null || consonantMin === undefined ? null : Number(consonantMin);
   const highTierTriggered = (min !== null && min < 55) || (avg !== null && avg < 62);
-  // 「強い」は、発話全体のavg/minがどちらも単語1つだけの境界音素(区切り発音の語頭/語尾など、
-  // Azureが低く採点しやすい箇所)に引きずられているだけの可能性を避けるため、2語以上で
-  // 弱さが確認できた場合のみ許可する。1語だけの場合は「中」に留める(該当語自体の弱さは
-  // 単語ごとの分析カードに引き続き表示される)。
-  if (highTierTriggered) return weakWordCount >= 2 ? { level: "high", label: "強い" } : { level: "medium", label: "中" };
+  // 「強い」は、発話全体のavg/minがどちらも単語1つだけの境界音素に引きずられているだけの
+  // 可能性を避けたい。ただしこれは区切り発音(単語間にポーズがある)のときにAzureが境界の
+  // 音素を低く採点しやすいという特定の状況を想定した割引であり、ポーズなしの速い連続発話
+  // でも一律に割り引くと、逆に本物の弱さまで見逃してしまう(実機フィードバック: 高速な
+  // 連続発話でcouldのdが1語だけ弱かったケースで「強い」→「中」に緩みすぎた)。
+  // そのため、ポーズの証拠がある場合だけ2語以上の裏付けを要求し、ポーズがない場合は
+  // 1語だけの弱さでもそのまま信頼する。
+  if (highTierTriggered) return (!hasPauseEvidence || weakWordCount >= 2) ? { level: "high", label: "強い" } : { level: "medium", label: "中" };
   if ((min !== null && min < 65) || (avg !== null && avg < 76)) return { level: "medium", label: "中" };
   if ((min !== null && min < 78) || (avg !== null && avg < 84)) return { level: "low", label: "軽い" };
   return { level: "none", label: "少ない" };
@@ -1822,7 +1825,11 @@ function buildSpeechFeatures({ words, scores, consonantAvg, consonantMin, muffle
   const speed = classifySpeed(wpm);
   const articulationSpeed = classifySpeed(articulationWpm);
   const weakConsonantWordCount = words.filter((word) => word.consonantMin !== null && word.consonantMin !== undefined && Number(word.consonantMin) < 55).length;
-  const consonants = classifyConsonantWeakness(consonantAvg, consonantMin, weakConsonantWordCount);
+  // 区切り発音(単語間にポーズがある)の証拠があるかどうか。この証拠がある場合だけ、
+  // 単語1つだけの弱さを境界アーティファクトの可能性として割り引く(下のclassifyConsonantWeakness参照)。
+  const hasPauseEvidenceForConsonants = (Number(rhythmHints?.localPauseCount || 0) >= 1 && Number(rhythmHints?.localMaxPauseMs || 0) >= 150)
+    || words.some((word, index) => index > 0 && Number(wordGapMs(words[index - 1], word) ?? 0) >= 150);
+  const consonants = classifyConsonantWeakness(consonantAvg, consonantMin, weakConsonantWordCount, hasPauseEvidenceForConsonants);
   const length = buildLengthAndPronunciationSignals(words);
   const linking = buildLinkingSignals(words);
   const boundaryPauses = supplementBoundaryPausesFromRhythm(words, buildBoundaryPauseSignals(words), rhythmHints);
