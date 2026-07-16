@@ -1072,10 +1072,15 @@ function effectiveVoiceSpeedLevel(speechFeatures) {
   return voice;
 }
 
-function classifyConsonantWeakness(consonantAvg, consonantMin) {
+function classifyConsonantWeakness(consonantAvg, consonantMin, weakWordCount = 0) {
   const avg = consonantAvg === null || consonantAvg === undefined ? null : Number(consonantAvg);
   const min = consonantMin === null || consonantMin === undefined ? null : Number(consonantMin);
-  if ((min !== null && min < 55) || (avg !== null && avg < 62)) return { level: "high", label: "強い" };
+  const highTierTriggered = (min !== null && min < 55) || (avg !== null && avg < 62);
+  // 「強い」は、発話全体のavg/minがどちらも単語1つだけの境界音素(区切り発音の語頭/語尾など、
+  // Azureが低く採点しやすい箇所)に引きずられているだけの可能性を避けるため、2語以上で
+  // 弱さが確認できた場合のみ許可する。1語だけの場合は「中」に留める(該当語自体の弱さは
+  // 単語ごとの分析カードに引き続き表示される)。
+  if (highTierTriggered) return weakWordCount >= 2 ? { level: "high", label: "強い" } : { level: "medium", label: "中" };
   if ((min !== null && min < 65) || (avg !== null && avg < 76)) return { level: "medium", label: "中" };
   if ((min !== null && min < 78) || (avg !== null && avg < 84)) return { level: "low", label: "軽い" };
   return { level: "none", label: "少ない" };
@@ -1790,7 +1795,8 @@ function buildSpeechFeatures({ words, scores, consonantAvg, consonantMin, muffle
   const articulationWpm = articulationDurationMs ? Math.round((wordCount / articulationDurationMs) * 60000) : null;
   const speed = classifySpeed(wpm);
   const articulationSpeed = classifySpeed(articulationWpm);
-  const consonants = classifyConsonantWeakness(consonantAvg, consonantMin);
+  const weakConsonantWordCount = words.filter((word) => word.consonantMin !== null && word.consonantMin !== undefined && Number(word.consonantMin) < 55).length;
+  const consonants = classifyConsonantWeakness(consonantAvg, consonantMin, weakConsonantWordCount);
   const length = buildLengthAndPronunciationSignals(words);
   const linking = buildLinkingSignals(words);
   const boundaryPauses = supplementBoundaryPausesFromRhythm(words, buildBoundaryPauseSignals(words), rhythmHints);
