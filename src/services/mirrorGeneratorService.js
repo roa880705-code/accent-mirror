@@ -3264,14 +3264,16 @@ function buildAccentTransferPlan({ speechFeatures, mirrorTimeline, voicePlan, so
   const intonationStatus = mirrorTimeline?.pitchOverlay?.status || speechFeatures?.intonationStatus || "unknown";
   const intonationMoves = Array.isArray(speechFeatures?.pitchContour?.moves) ? speechFeatures.pitchContour.moves : [];
   // モデル音声比較(model-relative)が使える場合のみ、語ごとの実測ピッチ差(avgDeviation, 半音)を
-  // そのままミラーのセグメントへ引き継ぐ。自己相対フォールバック時は語ごとの実測値がないため
+  // ミラーのセグメントへ引き継ぐ。自己相対フォールバック時は語ごとの実測値がないため
   // (basis !== "model-relative")、intonationStatus 別の固定パターンにフォールバックする。
   const rawIntonationFeatures = speechFeatures?.intonationFeatures;
-  const intonationDeviationWords = rawIntonationFeatures?.basis === "model-relative"
-    ? (rawIntonationFeatures.words || [])
-        .filter((word) => Number.isFinite(word.avgDeviation))
-        .map((word) => ({ word: word.word, avgDeviation: word.avgDeviation }))
-    : [];
+  const intonationDeviationWords = smoothIntonationDeviationWords(
+    rawIntonationFeatures?.basis === "model-relative"
+      ? (rawIntonationFeatures.words || [])
+          .filter((word) => Number.isFinite(word.avgDeviation))
+          .map((word) => ({ word: word.word, avgDeviation: word.avgDeviation, durationMs: Number(word.durationMs) || 0 }))
+      : []
+  );
   const maxPause = effectivePauseEvents.length ? Math.max(...effectivePauseEvents.map((event) => Number(event.gapMs || 0))) : 0;
   const maxUnlinkedGap = effectiveUnlinkedEvents.length ? Math.max(...effectiveUnlinkedEvents.map((event) => Number(event.gapMs || 0))) : 0;
   const voiceMirrorLevel = speechFeatures?.voiceMirrorLevel || "clear";
@@ -3472,6 +3474,29 @@ function intonationPitchPattern(transferPlan, partCount = 0) {
     pattern.push(pattern[pattern.length - 1]);
   }
   return pattern;
+}
+
+// 短い機能語(例: "I")は3点サンプルのピッチ推定がノイズに弱く、そのまま使うと
+// 前後の語と無関係に飛び跳ねた値になりやすい。自分自身と前後の語を、語の長さ(ms)を
+// 信頼度の重みとして加重平均する(1-2-1型の平滑化、ただし重みは均等ではなく長さ依存)。
+// 実測により真に大きく動いている(zigzagなど)場合は、複数語にまたがって値が残るため
+// 平滑化されても消えない。孤立した1語だけの突発的なノイズを主に減衰させる。
+function smoothIntonationDeviationWords(words) {
+  if (!Array.isArray(words) || words.length < 3) return words;
+  return words.map((word, index) => {
+    const selfWeight = Math.max(60, Number(word.durationMs) || 150) * 1.6;
+    const samples = [{ value: word.avgDeviation, weight: selfWeight }];
+    [words[index - 1], words[index + 1]].forEach((neighbor) => {
+      if (neighbor && Number.isFinite(neighbor.avgDeviation)) {
+        samples.push({ value: neighbor.avgDeviation, weight: Math.max(60, Number(neighbor.durationMs) || 150) });
+      }
+    });
+    const usable = samples.filter((sample) => Number.isFinite(sample.value));
+    if (!usable.length) return word;
+    const totalWeight = usable.reduce((sum, sample) => sum + sample.weight, 0);
+    const smoothed = usable.reduce((sum, sample) => sum + sample.value * sample.weight, 0) / totalWeight;
+    return { ...word, avgDeviation: smoothed };
+  });
 }
 
 // transferPlan.intonationDeviationWords ([{word, avgDeviation}], 単語ごとの実測半音差) を

@@ -120,7 +120,10 @@ function buildDeviationTimelineFromSpans({ modelWavBuffer, modelSpans, userWavBu
       modelSemitone,
       userSemitone,
       deviation,
-      avgDeviation: averageFinite([deviation.start, deviation.mid, deviation.end])
+      avgDeviation: averageFinite([deviation.start, deviation.mid, deviation.end]),
+      // ユーザー側の区間の長さ(ms)。短い機能語ほど3点サンプルのピッチ推定が
+      // ノイズに弱いため、下流(ミラー音声生成)で信頼度の重み付けに使う。
+      durationMs: Number(userWords[i]?.durationMs ?? modelWords[i]?.durationMs ?? 0)
     });
   }
 
