@@ -1,5 +1,6 @@
 ﻿const pitchThresholds = require("../config/pitchThresholds");
 const { weakenJapaneseMoraText, elongateJapaneseMoraText, muddleJapaneseMoraText, segmentPauseJapaneseMoraText } = require("./japaneseMoraTransform");
+const { phoneticKatakanaForWord } = require("./englishKatakanaEngine");
 
 const WORD_MIRRORS = {
   could: {
@@ -472,11 +473,17 @@ function mirrorWord(word, context) {
     };
   }
 
+  // WORD_MIRRORS は検証済みの単語(could/help/you/me/she/live/leave/consider)だけの
+  // 個別テーブルで、それ以外の単語は音素データから一般エンジンでカタカナを組み立てる。
+  // 単語を1つずつ追加していく方式(モグラ叩き)を避け、新しい練習文の単語にも
+  // 同じ質の反映を行うのが目的。エンジンの出力は既に音素スコアで弱さを反映済みのため、
+  // target/weak/distorted のどの段階でも同じ結果を使う。
+  const engineKatakana = phoneticKatakanaForWord(word);
   const template = WORD_MIRRORS[word.word] || {
-    target: word.original || word.word,
-    weak: word.original || word.word,
-    distorted: word.original || word.word,
-    reason: `${word.original || word.word} に弱く聞こえる箇所があります。`
+    target: engineKatakana || word.original || word.word,
+    weak: engineKatakana || word.original || word.word,
+    distorted: engineKatakana || word.original || word.word,
+    reason: engineKatakana ? `${word.original || word.word} の一部の音が弱く聞こえる候補です。` : `${word.original || word.word} に弱く聞こえる箇所があります。`
   };
   const severity = wordSeverity(word);
   const couldSignals = context.lengthSignals?.filter((signal) => signal.startsWith("could-")) || [];
