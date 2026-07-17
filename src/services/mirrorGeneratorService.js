@@ -1614,7 +1614,23 @@ function classifyIntonationDeviation(intonationFeatures, intonationTarget = {}) 
   if (abs <= pitchThresholds.naturalToleranceSemitone) {
     return { status: "natural", level: "none", label: `model-relative natural Δ${deviation.toFixed(1)}st` };
   }
-  if (abs <= pitchThresholds.strongDeviationSemitone) {
+
+  // 平叙文(neutral_or_falling)はモデル音声自体が文末で自然に下がることが多い。
+  // deviation = user - model なので、ユーザーが平坦に読んだだけでも「モデルほど
+  // 下がらなかった」分がプラスの deviation として出て、over_rising(上がりすぎ・
+  // 疑問形寄り)に誤判定されやすい(実機フィードバック: 平坦読みなのに「明日会い
+  // ましょう？」と疑問形に反映された。実測ではモデルが文末で下降し、ユーザーは
+  // 平坦のままだった)。この文型のプラス側だけは、contrastSets.js 側で既に
+  // 自己相対判定用に調整済みの overRiseAbove を上限として流用し、trace(表示のみ、
+  // 音声には強く反映しない)側に寄せる。
+  const positiveOverRiseAbove = expected === "neutral_or_falling" && Number.isFinite(Number(intonationTarget.overRiseAbove))
+    ? Number(intonationTarget.overRiseAbove)
+    : pitchThresholds.strongDeviationSemitone;
+
+  if (deviation > 0 && deviation <= positiveOverRiseAbove) {
+    return { status: "trace", level: "low", label: `model-relative trace Δ${deviation.toFixed(1)}st` };
+  }
+  if (deviation < 0 && abs <= pitchThresholds.strongDeviationSemitone) {
     return { status: "trace", level: "low", label: `model-relative trace Δ${deviation.toFixed(1)}st` };
   }
   if (deviation > 0) {
