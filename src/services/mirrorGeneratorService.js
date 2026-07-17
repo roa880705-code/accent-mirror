@@ -1,5 +1,5 @@
 ﻿const pitchThresholds = require("../config/pitchThresholds");
-const { weakenJapaneseMoraText, elongateJapaneseMoraText, segmentPauseJapaneseMoraText } = require("./japaneseMoraTransform");
+const { weakenJapaneseMoraText, elongateJapaneseMoraText, weakenAndElongateJapaneseMoraText, segmentPauseJapaneseMoraText } = require("./japaneseMoraTransform");
 const { phoneticKatakanaForWord, spellingToKatakana, coalescedLinkingKatakana, droppedStopLinkingKatakana } = require("./englishKatakanaEngine");
 
 const WORD_MIRRORS = {
@@ -3532,14 +3532,19 @@ function applyAccentTransferToVoiceText(text, articulation, transferPlan, role =
     : softenJapaneseConsonantsForVoice(lengthAdjusted, shouldDeformText ? articulation : "clear");
   if (localKatakanaDelivery) {
     // 同じ role 内に、母音追加(katakana)とは別の音の本当の弱化・脱落が
-    // 共存している場合は、母音追加だけに寄せず、まず弱化を軽く反映してから
-    // 母音追加を重ねる(絶対ルール: 別種類の癖に置き換えない、を両方の証拠が
-    // ある場合にも守るため)。
+    // 共存している場合(実機フィードバック: help の l の弱さと p の母音追加は
+    // 別々の文字で起きているので、同じ1文字に両方重ねるのはおかしい)は、
+    // 弱化と母音追加を別々のモーラに割り当てて重ねる。
     const coOccurringWeakness = coOccurringWeaknessEventsForRole(transferPlan, role);
-    const katakanaBase = coOccurringWeakness.length
-      ? weakenJapaneseMoraText(softened, coOccurringWeakness.some((event) => severityRank(event.severity) >= 3) ? "strong" : "medium")
-      : softened;
-    softened = katakanaDeliveryForVoice(katakanaBase, katakanaDeliveryStrengthForRole(transferPlan, role));
+    const katakanaStrength = katakanaDeliveryStrengthForRole(transferPlan, role);
+    if (coOccurringWeakness.length) {
+      const weakenStrength = coOccurringWeakness.some((event) => severityRank(event.severity) >= 3) ? "strong" : "medium";
+      softened = katakanaStrength === "light"
+        ? segmentPauseJapaneseMoraText(weakenJapaneseMoraText(softened, weakenStrength))
+        : weakenAndElongateJapaneseMoraText(softened, weakenStrength, katakanaStrength);
+    } else {
+      softened = katakanaDeliveryForVoice(softened, katakanaStrength);
+    }
   } else if (localLiquid) {
     softened = localLiquidConfusionForVoice(softened, transferPlan, role);
   } else if (localConsonant) {

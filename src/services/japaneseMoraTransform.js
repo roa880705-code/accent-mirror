@@ -65,7 +65,28 @@ const KANJI_READINGS = {
   暮らしている: "くらしている",
   電話番号: "でんわばんごう",
   検討します: "けんとうします",
-  大好きです: "だいすきです"
+  大好きです: "だいすきです",
+  手伝って: "てつだって",
+  手伝う: "てつだう",
+  助ける: "たすける",
+  教えて: "おしえて",
+  取って: "とって",
+  持っています: "もっています",
+  働かなければなりません: "はたらかなければなりません",
+  会いましょう: "あいましょう",
+  去ります: "さります",
+  本当に: "ほんとうに",
+  今日: "きょう",
+  明日: "あした",
+  電話: "でんわ",
+  番号: "ばんごう",
+  塩: "しお",
+  海: "うみ",
+  // 「彼女」は「彼」を含むため、先に置換しないと「彼」だけ変換されて
+  // 「かれ女」のように壊れる。順序が意味を持つので、彼女を彼より前に置く。
+  彼女: "かのじょ",
+  彼: "かれ",
+  私: "わたし"
 };
 
 function toReadableKana(text) {
@@ -124,6 +145,35 @@ function vowelOnlyKanaFor(token) {
   return table[token.vowel] || "";
 }
 
+// 弱化(weaken)・母音追加(elongate)それぞれで「どのモーラを対象にするか」を
+// 選ぶロジック本体。weaken/elongate単体でも、両方を別モーラに重ねる
+// weakenAndElongateJapaneseMoraText でも共通して使う。
+function pickWeakenTargets(weakenableIdx, strength) {
+  if (!weakenableIdx.length) return [];
+  const first = weakenableIdx[0];
+  const last = weakenableIdx[weakenableIdx.length - 1];
+  const interior = weakenableIdx.filter((index) => index !== first && index !== last);
+  if (strength === "strong") {
+    return weakenableIdx.length === 1 ? weakenableIdx : weakenableIdx.filter((index) => index !== first);
+  }
+  // 弱化できるモーラが1つしかない短い語句では、medium でも何も変わらないと
+  // 「反映されていないように見える」実害があるため、その1つだけは弱める。
+  return interior.length
+    ? [interior[Math.floor(interior.length / 2)]]
+    : (weakenableIdx.length > 1 ? [last] : weakenableIdx);
+}
+
+function pickElongateTargets(elongatableIdx, strength) {
+  if (!elongatableIdx.length) return [];
+  // 伸ばせるモーラが1〜2個しかない短い語句では「1つ飛ばし」だと0個になって
+  // しまうことがあるため、その場合は最後の1つだけは必ず伸ばす。
+  return strength === "strong"
+    ? elongatableIdx
+    : elongatableIdx.length <= 2
+      ? [elongatableIdx[elongatableIdx.length - 1]]
+      : elongatableIdx.filter((_, order) => order % 2 === 1);
+}
+
 // 子音を落として母音だけのモーラに置き換える(例: もらえ→もあえ, ますか→まうか)。
 // 絶対ルール: 冒頭のモーラ(語頭の輪郭)は残し、聞き取りの手がかりを完全には失わせない。
 // medium と strong ははっきり強度が違うようにする: medium は中間のモーラを1つだけ
@@ -132,22 +182,7 @@ function weakenJapaneseMoraText(text, strength = "medium") {
   const tokens = splitIntoMorae(toReadableKana(text));
   const weakenableIdx = tokens.map((token, index) => (token.kind === "consonant" ? index : -1)).filter((index) => index >= 0);
   if (!weakenableIdx.length) return String(text || "");
-  const first = weakenableIdx[0];
-  const last = weakenableIdx[weakenableIdx.length - 1];
-  const interior = weakenableIdx.filter((index) => index !== first && index !== last);
-
-  let targets;
-  if (strength === "strong") {
-    targets = weakenableIdx.length === 1 ? weakenableIdx : weakenableIdx.filter((index) => index !== first);
-  } else {
-    // 弱化できるモーラが1つしかない短い語句(手伝って→っ+て など、漢字混じりの
-    // 短い日本語では珍しくない)では、medium でも何も変わらないと「反映されて
-    // いないように見える」実害があるため、その1つだけは弱める。
-    targets = interior.length
-      ? [interior[Math.floor(interior.length / 2)]]
-      : (weakenableIdx.length > 1 ? [last] : weakenableIdx);
-  }
-  const targetSet = new Set(targets);
+  const targetSet = new Set(pickWeakenTargets(weakenableIdx, strength));
   return tokens.map((token, index) => (targetSet.has(index) ? (vowelOnlyKanaFor(token) || token.text) : token.text)).join("");
 }
 
@@ -158,19 +193,40 @@ function elongateJapaneseMoraText(text, strength = "medium") {
     .map((token, index) => (token.kind === "consonant" || token.kind === "vowelOnly" ? index : -1))
     .filter((index) => index >= 0);
   if (!elongatableIdx.length) return String(text || "");
-  // 伸ばせるモーラが1〜2個しかない短い語句では「1つ飛ばし」だと0個になって
-  // しまうことがあるため、その場合は最後の1つだけは必ず伸ばす。
-  const targets = new Set(
-    strength === "strong"
-      ? elongatableIdx
-      : elongatableIdx.length <= 2
-        ? [elongatableIdx[elongatableIdx.length - 1]]
-        : elongatableIdx.filter((_, order) => order % 2 === 1)
-  );
+  const targets = new Set(pickElongateTargets(elongatableIdx, strength));
   return tokens.map((token, index) => {
     if (!targets.has(index)) return token.text;
     const vowelKana = vowelOnlyKanaFor(token);
     return vowelKana ? token.text + vowelKana : token.text;
+  }).join("");
+}
+
+// 同じ語句の中で「本当に脱落した子音」と「本当に母音が付いた子音」が別々の
+// 音として両方観測される場合向け(実機フィードバック: "lの弱さ、pでの母音の
+// 追加は、それぞれ別の文字で起きているわけなので、同じ1文字でその2つを反映
+// させるのはおかしい")。弱化と母音追加を別モーラに割り当てて重ねる。
+function weakenAndElongateJapaneseMoraText(text, weakenStrength = "medium", elongateStrength = "medium") {
+  const tokens = splitIntoMorae(toReadableKana(text));
+  const weakenableIdx = tokens.map((token, index) => (token.kind === "consonant" ? index : -1)).filter((index) => index >= 0);
+  const elongatableIdx = tokens
+    .map((token, index) => (token.kind === "consonant" || token.kind === "vowelOnly" ? index : -1))
+    .filter((index) => index >= 0);
+  if (!weakenableIdx.length && !elongatableIdx.length) return String(text || "");
+
+  const weakenSet = new Set(pickWeakenTargets(weakenableIdx, weakenStrength));
+  // 母音追加の対象は弱化と重ならないモーラから選ぶ。どうしても候補が
+  // 1つしかない(=弱化と母音追加が同じモーラでしか表現できない)場合だけ、
+  // やむを得ず同じモーラを共有する(何も反映しないよりまし)。
+  const elongateCandidates = elongatableIdx.filter((index) => !weakenSet.has(index));
+  const elongateSet = new Set(pickElongateTargets(elongateCandidates.length ? elongateCandidates : elongatableIdx, elongateStrength));
+
+  return tokens.map((token, index) => {
+    if (weakenSet.has(index)) return vowelOnlyKanaFor(token) || token.text;
+    if (elongateSet.has(index)) {
+      const vowelKana = vowelOnlyKanaFor(token);
+      return vowelKana ? token.text + vowelKana : token.text;
+    }
+    return token.text;
   }).join("");
 }
 
@@ -201,6 +257,7 @@ module.exports = {
   splitIntoMorae,
   weakenJapaneseMoraText,
   elongateJapaneseMoraText,
+  weakenAndElongateJapaneseMoraText,
   muddleJapaneseMoraText,
   segmentPauseJapaneseMoraText
 };
