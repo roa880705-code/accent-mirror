@@ -1026,6 +1026,19 @@ function classifySpeed(wpm) {
   return { level: "very_fast", label: "かなり速い", rate: "+36%" };
 }
 
+// classifySpeed の区切り値(95/125/255/320WPM)を、evidence文言でそのまま
+// 引用できる形にしておく(絶対ルールに準じ、根拠の数値と比較対象を必ず書く)。
+function speedRangeCompareText(level) {
+  return {
+    unknown: "",
+    very_slow: "自然域の下限(125WPM)を大きく下回る",
+    slow: "自然域の下限(125WPM)をやや下回る",
+    natural: "自然域(125〜255WPM)内の",
+    fast: "自然域の上限(255WPM)を超える",
+    very_fast: "自然域の上限(255WPM)を大きく超える"
+  }[level] || "";
+}
+
 function japaneseMirrorRateForSpeed(level) {
   return {
     unknown: "-6%",
@@ -1361,7 +1374,7 @@ function buildLengthAndPronunciationSignals(words) {
           type: "length",
           word: word.original,
           label: "Could の母音が長め",
-          detail: `母音 ${longestVowel.phone} が約${longestVowel.ms}ms。短い /kəd/ より「クル」に寄る候補です。`,
+          detail: `母音 ${longestVowel.phone} は約${longestVowel.ms}msで、「クル」寄りに聞こえ始めると見なす目安の145msを超えています。短い /kəd/ より「クル」に寄る候補です。`,
           action: "Could の母音を短くして /kəd/ に近づける。"
         });
       }
@@ -1396,10 +1409,10 @@ function buildLengthAndPronunciationSignals(words) {
           voiceEligible: !couldDCheckOnly,
           label: couldDCheckOnly ? "Could の d を確認" : dIsShortOrWeak ? "Could の d が弱い" : "Could の d に母音が付いている",
           detail: dIsShortOrWeak && !couldDCheckOnly
-            ? `d が score ${Math.round(dScore)}${dMs !== null ? ` / 約${dMs}ms` : ""}。語尾の閉じが短く、Could の輪郭が弱く聞こえる候補です。`
+            ? `d は score ${Math.round(dScore)}${dMs !== null ? ` / 約${dMs}ms` : ""}で、はっきり子音が残っていると見なす目安(score72以上かつ70ms以上)に届いていません。語尾の閉じが短く、Could の輪郭が弱く聞こえる候補です。`
             : couldDCheckOnly
-            ? `Could は単語スコアが高いため断定しません。d が score ${Math.round(dScore)}${dMs !== null ? ` / 約${dMs}ms` : ""} なので、語尾に母音が付いていないか確認する候補です。`
-            : `d が score ${Math.round(dScore)}${dMs !== null ? ` / 約${dMs}ms` : ""}。d の後ろに母音が付いて「クド」寄りに聞こえる候補です。`,
+            ? `Could は単語全体のscoreが${Math.round(Number(word.score ?? 100))}と高い(94以上)ため断定しません。d は score ${Math.round(dScore)}${dMs !== null ? ` / 約${dMs}ms` : ""}で、母音が付いた場合と弱く欠けた場合のどちらの目安にも近いため、語尾に母音が付いていないか確認する候補です。`
+            : `d は score ${Math.round(dScore)}${dMs !== null ? ` / 約${dMs}ms` : ""}で、欠落とみなす目安(70ms未満)より長く残っています。d の後ろに母音が付いて「クド」寄りに聞こえる候補です。`,
           action: dIsShortOrWeak && !couldDCheckOnly
             ? "Could の d を完全に消さず、短く弱い閉じを残す。"
             : couldDCheckOnly
@@ -1436,8 +1449,8 @@ function buildLengthAndPronunciationSignals(words) {
           level,
           label: "help の h が弱い",
           detail: isNotableWeakness(level)
-            ? `h が score ${Math.round(hScore)}。出だしが抜けて「エルプ」寄りに届く候補です。`
-            : `h が score ${Math.round(hScore)}。出だしの子音がやや弱いものの、大きくは崩れていない軽微な候補です。`,
+            ? `h は score ${Math.round(hScore)}で、はっきり聞こえるとみなす基準90を大きく下回っています(45未満は特に強い弱さの目安)。出だしが抜けて「エルプ」寄りに届く候補です。`
+            : `h は score ${Math.round(hScore)}で、はっきり聞こえるとみなす基準90をわずかに下回る程度です(78以上はごく軽微な目安)。出だしの子音がやや弱いものの、大きくは崩れていない軽微な候補です。`,
           action: "help の h を息だけで流さず、語頭の輪郭を軽く残す。"
         });
       }
@@ -1461,12 +1474,12 @@ function buildLengthAndPronunciationSignals(words) {
           level,
           label: lVowelAdded ? "help の l に母音が付いている" : "help の l が弱い",
           detail: lVowelAdded
-            ? `l が score ${Math.round(lScore)} / 約${lMs}ms。l の後ろに母音が付いて「ル」寄りに聞こえる候補です。`
+            ? `l は score ${Math.round(lScore)} / 約${lMs}msで、脱落とみなす目安(60ms以下)より長く残っています。l の後ろに母音が付いて「ル」寄りに聞こえる候補です。`
             : isNotableWeakness(level)
               ? (durationWeak
-                ? `l は score ${Math.round(lScore)}ですが約${lMs}msと短く、聞き手には「ヘプ」寄りに届く候補です。`
-                : `l が score ${Math.round(lScore)}。聞き手には「ヘプ」寄りに届く候補です。`)
-              : `l が score ${Math.round(lScore)}${lMs !== null ? ` / 約${lMs}ms` : ""}。やや短め・弱めですが、大きくは崩れていない軽微な候補です。`,
+                ? `l は score ${Math.round(lScore)}ですが、脱落とみなす目安(60ms以下)に入る約${lMs}msと短いため、聞き手には「ヘプ」寄りに届く候補です。`
+                : `l は score ${Math.round(lScore)}で、はっきり聞こえるとみなす基準90を大きく下回っています(45未満は特に強い弱さの目安)。聞き手には「ヘプ」寄りに届く候補です。`)
+              : `l は score ${Math.round(lScore)}${lMs !== null ? ` / 約${lMs}ms` : ""}で、はっきり聞こえるとみなす基準90をわずかに下回る程度です(72以上はごく軽微な目安)。やや短め・弱めですが、大きくは崩れていない軽微な候補です。`,
           action: lVowelAdded
             ? "help の l の後ろに母音を付けず、舌先の接触だけで止める。"
             : "help の l を消さず、舌先の接触を残す。"
@@ -1488,10 +1501,10 @@ function buildLengthAndPronunciationSignals(words) {
           level,
           label: pVowelAdded ? "help の p に母音が付いている" : "help の p が弱い",
           detail: pVowelAdded
-            ? `p が score ${Math.round(pScore)}${pMs !== null ? ` / 約${pMs}ms` : ""}。p の後ろに母音が付いて「プ」寄りに聞こえる候補です。`
+            ? `p は score ${Math.round(pScore)}${pMs !== null ? ` / 約${pMs}ms` : ""}で、脱落とみなす目安(70ms未満)より長く残っています。p の後ろに母音が付いて「プ」寄りに聞こえる候補です。`
             : isNotableWeakness(level)
-              ? `p が score ${Math.round(pScore)}。語尾が閉じず、意味がぼやける候補です。`
-              : `p が score ${Math.round(pScore)}。語尾の閉じがやや弱いものの、大きくは崩れていない軽微な候補です。`,
+              ? `p は score ${Math.round(pScore)}で、はっきり聞こえるとみなす基準88を大きく下回っています(45未満は特に強い弱さの目安)。語尾が閉じず、意味がぼやける候補です。`
+              : `p は score ${Math.round(pScore)}で、はっきり聞こえるとみなす基準88をわずかに下回る程度です(72以上はごく軽微な目安)。語尾の閉じがやや弱いものの、大きくは崩れていない軽微な候補です。`,
           action: pVowelAdded
             ? "help の p の後ろに母音を付けず、唇だけで短く閉じる。"
             : "help の p を日本語の母音付き「プ」にせず、唇で短く閉じる。"
@@ -1508,7 +1521,7 @@ function buildLengthAndPronunciationSignals(words) {
         strength: finalScore < 45 ? "strong" : "weak",
         level: finalScore < 45 ? "high" : finalScore < 55 ? "medium" : "low",
         label: `${word.original} の語尾が弱い`,
-        detail: `語尾 ${finalPhone.phone} が score ${Math.round(finalScore)}${finalMs !== null ? ` / 約${finalMs}ms` : ""}。単語の輪郭が弱い候補です。`,
+        detail: `語尾 ${finalPhone.phone} は score ${Math.round(finalScore)}${finalMs !== null ? ` / 約${finalMs}ms` : ""}で、はっきり聞こえるとみなす基準65を下回っています。単語の輪郭が弱い候補です。`,
         action: `${word.original} の語尾 ${finalPhone.phone} を短く残す。`
       });
     }
@@ -1531,7 +1544,7 @@ function buildLengthAndPronunciationSignals(words) {
         strength: finalVowelMs >= 520 ? "strong" : "weak",
         level: finalVowelMs >= 520 ? "high" : "medium",
         label: `${word.original} の母音が長い`,
-        detail: `${word.original} の ${finalVowel.phone} が約${finalVowelMs}ms 伸びています。語尾が長く残る候補です。`,
+        detail: `${word.original} の ${finalVowel.phone} は約${finalVowelMs}msで、${finalVowelScoreIsHigh ? "スコアが高い語向けの目安650ms" : "通常の目安360ms"}を超えて伸びています。語尾が長く残る候補です。`,
         action: `${word.original} の母音を必要以上に伸ばさず、短く閉じる。`
       });
     }
@@ -1550,7 +1563,7 @@ function buildLengthAndPronunciationSignals(words) {
         strength: "weak",
         level: "low",
         label: `${word.original} の軽い発音の甘さ`,
-        detail: `${word.original} は通じる範囲ですが、${weakestPhone.phone} が score ${Math.round(weakestPhone.score)}${weakestPhone.ms !== null ? ` / 約${weakestPhone.ms}ms` : ""} です。上級者の微妙な非ネイティブ感として残す候補です。`,
+        detail: `${word.original} は単語全体のscoreが${Math.round(wordScore)}で通じる範囲ですが、最も弱い ${weakestPhone.phone} は score ${Math.round(weakestPhone.score)}${weakestPhone.ms !== null ? ` / 約${weakestPhone.ms}ms` : ""}です。はっきりネイティブ的とみなす基準93にはわずかに届きませんが、聞き取りに支障が出るとみなす基準78は下回っていないため、上級者の微妙な非ネイティブ感として残す候補です。`,
         action: `${word.original} をモデル音声と比べ、母音・子音の輪郭を少しだけ調整する。`
       });
     }
@@ -1601,6 +1614,23 @@ function classifyIntonationAgainstTargetLegacy(intonationFeatures, intonationTar
   return { status: "borderline", level: "low", label: `borderline ${rise.toFixed(1)}st` };
 }
 
+// 平叙文(neutral_or_falling)はモデル音声自体が文末で自然に下がることが多い。
+// deviation = user - model なので、ユーザーが平坦に読んだだけでも「モデルほど
+// 下がらなかった」分がプラスの deviation として出て、over_rising(上がりすぎ・
+// 疑問形寄り)に誤判定されやすい(実機フィードバック: 平坦読みなのに「明日会い
+// ましょう？」と疑問形に反映された。実測ではモデルが文末で下降し、ユーザーは
+// 平坦のままだった)。この文型のプラス側だけは、contrastSets.js 側で既に
+// 自己相対判定用に調整済みの overRiseAbove を上限として流用し、trace(表示のみ、
+// 音声には強く反映しない)側に寄せる。classifyIntonationDeviation と
+// buildIntonationSignals の詳細文言(実際に使った閾値を文章にそのまま書く)で
+// 同じ値を参照できるよう、判定ロジックとは別関数として切り出しておく。
+function positiveDeviationToleranceFor(intonationTarget = {}) {
+  const expected = intonationTarget.expectedFinalContour || "neutral";
+  return expected === "neutral_or_falling" && Number.isFinite(Number(intonationTarget.overRiseAbove))
+    ? Number(intonationTarget.overRiseAbove)
+    : pitchThresholds.strongDeviationSemitone;
+}
+
 // 新: モデル音声基準(deviation)判定。riseSemitones はここでは
 // deviation(t) = userSemitone(t) - modelSemitone(t) の文末区間平均を表す
 // (pitchAlignmentService.buildDeviationTimeline が同じ形状で供給する)。
@@ -1615,17 +1645,7 @@ function classifyIntonationDeviation(intonationFeatures, intonationTarget = {}) 
     return { status: "natural", level: "none", label: `model-relative natural Δ${deviation.toFixed(1)}st` };
   }
 
-  // 平叙文(neutral_or_falling)はモデル音声自体が文末で自然に下がることが多い。
-  // deviation = user - model なので、ユーザーが平坦に読んだだけでも「モデルほど
-  // 下がらなかった」分がプラスの deviation として出て、over_rising(上がりすぎ・
-  // 疑問形寄り)に誤判定されやすい(実機フィードバック: 平坦読みなのに「明日会い
-  // ましょう？」と疑問形に反映された。実測ではモデルが文末で下降し、ユーザーは
-  // 平坦のままだった)。この文型のプラス側だけは、contrastSets.js 側で既に
-  // 自己相対判定用に調整済みの overRiseAbove を上限として流用し、trace(表示のみ、
-  // 音声には強く反映しない)側に寄せる。
-  const positiveOverRiseAbove = expected === "neutral_or_falling" && Number.isFinite(Number(intonationTarget.overRiseAbove))
-    ? Number(intonationTarget.overRiseAbove)
-    : pitchThresholds.strongDeviationSemitone;
+  const positiveOverRiseAbove = positiveDeviationToleranceFor(intonationTarget);
 
   if (deviation > 0 && deviation <= positiveOverRiseAbove) {
     return { status: "trace", level: "low", label: `model-relative trace Δ${deviation.toFixed(1)}st` };
@@ -1673,17 +1693,17 @@ function buildJapaneseMirrorPitchAnalysis(intonationFeatures) {
       classification: { ...classification, status: contour.pattern, label: `${contour.pattern} ${changeCount}` },
       riseSemitones: rise,
       summary: contour.pattern === "zigzag"
-        ? `ミラー音声は模範日本語ミラーと比べて、文中の上げ下げの切り替わりが${changeCount}回、音域差が約${rangeSemitones.toFixed(1)}半音あります。全体的な上げ下げではなく、区間ごとに音程がジグザグに動いている可能性があります。`
-        : `ミラー音声は模範日本語ミラーと比べて、文中で音域差が約${rangeSemitones.toFixed(1)}半音動く区間があります。文全体を一様に上げ下げするのではなく、一部の区間だけ音程が動いている可能性があります。`
+        ? `ミラー音声は模範日本語ミラーと比べて、文中の上げ下げの切り替わりが${changeCount}回で、ジグザグとみなす目安(2回以上)を超え、音域差も約${rangeSemitones.toFixed(1)}半音で目安(3.0半音以上)を超えています。全体的な上げ下げではなく、区間ごとに音程がジグザグに動いている可能性があります。`
+        : `ミラー音声は模範日本語ミラーと比べて、文中で音域差が約${rangeSemitones.toFixed(1)}半音動く区間があり、目立つ上げ下げとみなす目安(2.0半音以上)を超えています。文全体を一様に上げ下げするのではなく、一部の区間だけ音程が動いている可能性があります。`
     };
   }
 
   const summaries = {
-    natural: `模範日本語ミラーとほぼ同じ音高の動きです（差は約${Math.abs(rise).toFixed(1)}半音）。`,
-    trace: `模範日本語ミラーとの差は約${Math.abs(rise).toFixed(1)}半音で、軽いズレの範囲内です。`,
-    over_rising: `ミラー音声は模範日本語ミラーと比べて、音高が全体的に約${rise.toFixed(1)}半音高く動いています。癖の反映（音程の上げ下げ）が強すぎる可能性があります。`,
-    falling_question: `ミラー音声は模範日本語ミラーと比べて、音高が全体的に約${Math.abs(rise).toFixed(1)}半音低く動いています。`,
-    flat_question: `模範日本語ミラーでは上昇する箇所ですが、ミラー音声では約${Math.abs(rise).toFixed(1)}半音分その上昇が弱く、平坦寄りに聞こえます。`,
+    natural: `模範日本語ミラーとの差は約${Math.abs(rise).toFixed(1)}半音で、自然とみなす範囲(±${pitchThresholds.naturalToleranceSemitone}半音以内)に収まっています。ほぼ同じ音高の動きです。`,
+    trace: `模範日本語ミラーとの差は約${Math.abs(rise).toFixed(1)}半音です。自然とみなす範囲(±${pitchThresholds.naturalToleranceSemitone}半音以内)は超えていますが、明確な癖とみなす基準(±${pitchThresholds.strongDeviationSemitone}半音)には届いていない、軽いズレの範囲内です。`,
+    over_rising: `ミラー音声は模範日本語ミラーと比べて、音高が全体的に約${rise.toFixed(1)}半音高く動いています。明確な癖とみなす基準(+${pitchThresholds.strongDeviationSemitone}半音)を超えており、癖の反映（音程の上げ下げ）が強すぎる可能性があります。`,
+    falling_question: `ミラー音声は模範日本語ミラーと比べて、音高が全体的に約${Math.abs(rise).toFixed(1)}半音低く動いています。明確な癖とみなす基準(-${pitchThresholds.strongDeviationSemitone}半音)を超えています。`,
+    flat_question: `模範日本語ミラーでは上昇する箇所ですが、ミラー音声では約${Math.abs(rise).toFixed(1)}半音分その上昇が弱く(差が明確な癖とみなす基準${pitchThresholds.strongDeviationSemitone}半音を超えています)、平坦寄りに聞こえます。`,
     borderline: `模範日本語ミラーとの音高差は約${rise.toFixed(1)}半音です。`
   };
 
@@ -1738,7 +1758,7 @@ function buildIntonationSignals(intonationFeatures, intonationTarget) {
         level: "high",
         strength: "strong",
         label: "文中の上昇下降が多すぎる",
-        detail: `文中の音高変化が大きく、上昇下降の切り替わりが ${contourChanges} 回、音域差が約${contourRange.toFixed(1)}半音あります。聞き手にはかなり不自然な抑揚として届く候補です。`,
+        detail: `上昇下降の切り替わりが${contourChanges}回で、1語ずつ区切って読んでいるとみなす目安(2回以上)を超え、かつ音域差も約${contourRange.toFixed(1)}半音で目安(3.0半音以上)を超えています。聞き手にはかなり不自然な抑揚として届く候補です。`,
         action: "1語ごとに上げ下げせず、文全体で自然な流れを作る。"
       }],
       classification: { ...classification, status: "zigzag", level: "high", label: `zigzag ${contourChanges}` }
@@ -1756,7 +1776,7 @@ function buildIntonationSignals(intonationFeatures, intonationTarget) {
         level: "medium",
         strength: "medium",
         label: "文中の上げ下げが目立つ",
-        detail: `文中の音高差が約${contourRange.toFixed(1)}半音あります。大きな誤りではありませんが、ネイティブには少し不自然な抑揚として届く候補です。`,
+        detail: `文中の音高差が約${contourRange.toFixed(1)}半音で、目立つ上げ下げとみなす目安(2.0半音以上)を超えています。大きな誤りではありませんが、ネイティブには少し不自然な抑揚として届く候補です。`,
         action: "単語ごとに音程を作らず、意味のまとまり単位でなだらかに読む。"
       }],
       classification: { ...classification, status: "phrase_movement", level: "medium", label: `movement ${contourRange.toFixed(1)}st` }
@@ -1783,7 +1803,7 @@ function buildIntonationSignals(intonationFeatures, intonationTarget) {
           level: "low",
           strength: "weak",
           label: "抑揚に軽い非ネイティブ感",
-          detail: `文末は許容範囲ですが、目標の自然な抑揚から約${subtleGap.toFixed(1)}半音ずれています。上級者の微妙な違和感として扱う候補です。`,
+          detail: `文末は明確な癖(over_rising/falling_question)とみなす範囲には入っていませんが、この文型で自然とされる上昇量(約${idealRise.toFixed(1)}半音)との差が約${subtleGap.toFixed(1)}半音あります(1.4半音以上でこの候補になります)。上級者の微妙な違和感として扱う候補です。`,
           action: "文末の上げ下げを大きく作らず、自然なモデル音声と比較する。"
         }],
         classification: { ...classification, status: "trace", level: "low", label: `trace ${subtleGap.toFixed(1)}st` }
@@ -1812,13 +1832,14 @@ function buildIntonationSignals(intonationFeatures, intonationTarget) {
         flat_question: "疑問文の文尾が平坦",
         borderline: "文尾イントネーションを確認"
       };
+  const positiveOverRiseAbove = positiveDeviationToleranceFor(intonationTarget);
   const details = isModelRelative
     ? {
-        over_rising: `モデル音声と比べて文末の音高が約${rise.toFixed(1)}半音高く動いています。モデルより上がりすぎで、不安げ・確認っぽく聞こえる候補です。`,
-        falling_question: `モデル音声と比べて文末の音高が約${Math.abs(rise).toFixed(1)}半音低く動いています。モデルより下がっている候補です。`,
-        flat_question: `モデル音声は文末で上昇していますが、この録音では約${Math.abs(rise).toFixed(1)}半音分その上昇が不足しています。疑問文の棒読み、または質問らしさが弱く聞こえる候補です。`,
-        trace: `モデル音声との差は約${rise.toFixed(1)}半音で、許容範囲に近い軽いズレです。上級者の微妙な違和感として扱う候補です。`,
-        borderline: `モデル音声との文末の差は約${rise.toFixed(1)}半音です。`
+        over_rising: `モデル音声との差(deviation)が約${rise.toFixed(1)}半音で、この文型で明確な癖とみなす基準(+${positiveOverRiseAbove}半音)を超えています。モデルより上がりすぎで、不安げ・確認っぽく聞こえる候補です。`,
+        falling_question: `モデル音声との差(deviation)が約${Math.abs(rise).toFixed(1)}半音で、明確な癖とみなす基準(-${pitchThresholds.strongDeviationSemitone}半音)をマイナス方向に超えています。モデルより下がっている候補です。`,
+        flat_question: `モデル音声は文末で上昇していますが、この録音では約${Math.abs(rise).toFixed(1)}半音分その上昇が不足しています(差が明確な癖とみなす基準${pitchThresholds.strongDeviationSemitone}半音を超えています)。疑問文の棒読み、または質問らしさが弱く聞こえる候補です。`,
+        trace: `モデル音声との差(deviation)は約${rise.toFixed(1)}半音です。自然とみなす範囲(±${pitchThresholds.naturalToleranceSemitone}半音以内)は超えていますが、この文型で明確な癖とみなす基準(${rise > 0 ? `+${positiveOverRiseAbove}` : `-${pitchThresholds.strongDeviationSemitone}`}半音)には届いていないため、上級者の微妙な違和感として扱う候補です。`,
+        borderline: `モデル音声との文末の差(deviation)は約${rise.toFixed(1)}半音です。`
       }
     : {
         over_rising: `文末の音高が約${rise.toFixed(1)}半音上がっています。この疑問文では上がりすぎで、不安げ・確認っぽく聞こえる候補です。`,
@@ -2631,7 +2652,7 @@ function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature
       severity: Number(phone.score || 100) < 45 ? "high" : Number(phone.score || 100) < 62 ? "medium" : "low",
       confidence: "low",
       targetRoles: japaneseRolesForEnglishWord(phone.word, meaningJapanese),
-      englishEvidence: `${phone.original || phone.word} の ${phone.phone} が score ${phone.score}。${phone.class} の弱さとして扱う候補です。`,
+      englishEvidence: `${phone.original || phone.word} の ${phone.phone} は score ${phone.score}で、はっきり聞こえるとみなす基準72を下回っています。${phone.class} の弱さとして扱う候補です。`,
       mirrorAction: phone.class === "vowel"
         ? "該当語句だけ母音の曖昧さとして軽く反映する。子音弱化には置き換えない。"
         : issueType === "liquid_confusion"
@@ -2651,7 +2672,7 @@ function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature
       severity: deviationSeverity(speechFeatures.voiceSpeedLevel),
       confidence: speechFeatures.wpm ? "medium" : "low",
       targetRoles: ["sentence"],
-      englishEvidence: `WPM ${speechFeatures.wpm ?? "--"} / articulation ${speechFeatures.articulationWpm ?? "--"} / ${speechFeatures.voiceSpeedLabel}`,
+      englishEvidence: `全体WPM ${speechFeatures.wpm ?? "--"}、発話区間だけのarticulation WPM ${speechFeatures.articulationWpm ?? "--"}です。articulation WPMが${speedRangeCompareText(speechFeatures.articulationSpeedLevel) || "自然域から外れる"}ため、「${speechFeatures.voiceSpeedLabel}」と判定しています。`,
       mirrorAction: "全体速度だけに反映する。滑舌の崩れや区切りに置き換えない。",
       preserveMeaning: true,
       global: true
