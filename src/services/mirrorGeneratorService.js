@@ -1,5 +1,5 @@
 ﻿const pitchThresholds = require("../config/pitchThresholds");
-const { weakenJapaneseMoraText, elongateJapaneseMoraText, weakenAndElongateJapaneseMoraText, segmentPauseJapaneseMoraText } = require("./japaneseMoraTransform");
+const { splitIntoMorae, weakenJapaneseMoraText, elongateJapaneseMoraText, weakenAndElongateJapaneseMoraText, segmentPauseJapaneseMoraText } = require("./japaneseMoraTransform");
 const { phoneticKatakanaForWord, spellingToKatakana, coalescedLinkingKatakana, droppedStopLinkingKatakana } = require("./englishKatakanaEngine");
 
 const WORD_MIRRORS = {
@@ -3755,6 +3755,40 @@ function pitchForVoiceSegment({ index, parts, basePitch, weakPitch, transferPlan
   return basePitch;
 }
 
+// pitchForVoiceSegment は1セグメントにつきピッチ値を1つしか返せないため、日本語訳の
+// フレーズ区切りが英語の単語数より少ない文(例: "I will see you tomorrow." が
+// 「明日」「会いましょう」の2区切りしかない)では、文中で単語ごとに上げ下げした
+// 実測カーブ(intonationDeviationWords)のほとんどが2点に潰れてしまい、「意図的に
+// 大きく上げ下げしたのに、途中の抑揚がミラーにあまり反映されない」という実害が
+// あった。セグメント数ではなくモーラ数を単位に実測カーブを再サンプリングし、
+// 1セグメント内でもモーラごとに違うピッチを持たせることで、文中の動きの形
+// (上げ下げのタイミング・回数)をより忠実に引き継ぐ。
+function moraPitchCurveForSegment({ text, segmentIndex, segmentCount, transferPlan, basePitch, weakPitch, isFinal }) {
+  const words = transferPlan?.intonationDeviationWords;
+  if (!Array.isArray(words) || words.length < 3) return null;
+  const values = words.map((word) => Number(word.avgDeviation)).filter((value) => Number.isFinite(value));
+  if (values.length < 3) return null;
+
+  const tokens = splitIntoMorae(String(text || ""));
+  if (tokens.length < 2) return null;
+
+  const segStart = segmentCount > 0 ? segmentIndex / segmentCount : 0;
+  const segEnd = segmentCount > 0 ? (segmentIndex + 1) / segmentCount : 1;
+  const baselinePercent = parsePercentValue(isFinal ? basePitch : weakPitch);
+
+  return tokens.map((token, tokenIndex) => {
+    const localT = (tokenIndex + 0.5) / tokens.length;
+    const t = segStart + localT * (segEnd - segStart);
+    const pos = t * (values.length - 1);
+    const lower = Math.max(0, Math.min(values.length - 1, Math.floor(pos)));
+    const upper = Math.min(values.length - 1, lower + 1);
+    const frac = pos - lower;
+    const deviation = values[lower] + (values[upper] - values[lower]) * frac;
+    const deviationPercent = Math.max(-PITCH_DEVIATION_PERCENT_CAP, Math.min(PITCH_DEVIATION_PERCENT_CAP, deviation * PITCH_PERCENT_PER_SEMITONE));
+    return { text: token.text, pitch: formatSignedPercent(baselinePercent + deviationPercent) };
+  });
+}
+
 function applyIntonationPunctuation(text, index, parts, transferPlan) {
   const value = String(text || "");
   const isFinal = index === parts.length - 1;
@@ -3826,12 +3860,23 @@ function timelineToVoiceScript({ meaning, mirrorTimeline, voicePlan, speechFeatu
       const segmentArticulation = segmentArticulationForRole(articulation, part.role, transferPlan);
       const accentText = applyAccentTransferToVoiceText(part.text, segmentArticulation, transferPlan, part.role);
       const segmentKatakanaDelivery = hasKatakanaDeliveryForRole(transferPlan, part.role);
+      const isFinalSegment = index === parts.length - 1;
+      const finalText = applyIntonationPunctuation(accentText, index, parts, transferPlan);
       return {
-        text: applyIntonationPunctuation(accentText, index, parts, transferPlan),
+        text: finalText,
         sourceText: part.text,
         role: part.role,
         rate: index === 0 && useWeakTiming ? weakRate : useWeakTiming ? weakRate : compressedRate,
         pitch: pitchForVoiceSegment({ index, parts, basePitch, weakPitch, transferPlan }),
+        pitchCurve: moraPitchCurveForSegment({
+          text: finalText,
+          segmentIndex: index,
+          segmentCount: parts.length,
+          transferPlan,
+          basePitch,
+          weakPitch,
+          isFinal: isFinalSegment
+        }),
         volume: segmentVolumeForArticulation(baseVolume, segmentArticulation),
         articulation: segmentArticulation,
         breakAfterMs: index < parts.length - 1

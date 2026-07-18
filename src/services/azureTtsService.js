@@ -62,6 +62,16 @@ function renderNaturalPauses(text, rate, pitch, volume = "default") {
   }).join("");
 }
 
+// segment.pitchCurve があれば、モーラごとに違うピッチを持つ複数の<prosody>に分けて
+// レンダリングする(1セグメント=1ピッチ値では、文中の細かい上げ下げの形が
+// フレーズ区切りの数まで潰れてしまうため)。無ければ従来通り1つの<prosody>。
+function renderSegmentBody(segment, segmentRate, segmentPitch, segmentVolume) {
+  if (Array.isArray(segment.pitchCurve) && segment.pitchCurve.length) {
+    return segment.pitchCurve.map((piece) => prosodyChunk(piece.text, segmentRate, piece.pitch || segmentPitch, segmentVolume)).join("");
+  }
+  return renderSegmentText(segment.text || "", segmentRate, segmentPitch, segmentVolume);
+}
+
 function renderVoiceScript(voiceScript, fallbackRate, fallbackPitch) {
   const segments = Array.isArray(voiceScript?.segments) ? voiceScript.segments : [];
   return segments.map((segment) => {
@@ -70,7 +80,7 @@ function renderVoiceScript(voiceScript, fallbackRate, fallbackPitch) {
     const segmentVolume = segment.volume || "default";
     const breakAfterMs = Math.max(0, Math.min(900, Math.round(Number(segment.breakAfterMs || 0))));
     return [
-      renderSegmentText(segment.text || "", segmentRate, segmentPitch, segmentVolume),
+      renderSegmentBody(segment, segmentRate, segmentPitch, segmentVolume),
       breakAfterMs ? `<break time="${breakAfterMs}ms"/>` : ""
     ].join("");
   }).join("");
@@ -88,7 +98,7 @@ function renderVoiceScriptWithBookmarks(voiceScript, fallbackRate, fallbackPitch
     const breakAfterMs = Math.max(0, Math.min(900, Math.round(Number(segment.breakAfterMs || 0))));
     return [
       `<bookmark mark="seg${index}"/>`,
-      renderSegmentText(segment.text || "", segmentRate, segmentPitch, segmentVolume),
+      renderSegmentBody(segment, segmentRate, segmentPitch, segmentVolume),
       breakAfterMs ? `<break time="${breakAfterMs}ms"/>` : ""
     ].join("");
   }).join("");
