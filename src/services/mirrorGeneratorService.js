@@ -3889,6 +3889,17 @@ function timelineToVoiceScript({ meaning, mirrorTimeline, voicePlan, speechFeatu
   };
 }
 
+// モーラ単位で分割し、全モーラを±0(平坦)のピッチにしたpitchCurveを作る。
+// 模範日本語ミラー側にも実際のミラー音声側と同程度の欠片数を持たせることで、
+// ピッチ比較(buildDeviationTimelineFromSpans)がセグメント単位の粗いサンプリングに
+// 戻ってしまわないようにする(欠片数が違いすぎると、比較が短い方に切り詰められて
+// 意味をなさなくなるため)。
+function flatPitchCurveForText(text) {
+  const tokens = splitIntoMorae(String(text || ""));
+  if (tokens.length < 2) return null;
+  return tokens.map((token) => ({ text: token.text, pitch: "+0Hz" }));
+}
+
 // 模範日本語ミラー(癖を反映しない比較用)を、実際のミラー音声とセグメント構成
 // (区切り位置・順序・数)を揃えて生成する。ピッチ比較でセグメント単位で対応づけるため、
 // accentTransferを適用する前の sourceText (each segment's pre-transform text) を使う。
@@ -3905,6 +3916,7 @@ function buildNeutralVoiceScriptFromSegments(voiceScript) {
         role: segment.role,
         rate: "+0%",
         pitch: "+0Hz",
+        pitchCurve: flatPitchCurveForText(text),
         volume: "default",
         articulation: "clear",
         breakAfterMs: segment.breakAfterMs || 0

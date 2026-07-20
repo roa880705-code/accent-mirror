@@ -1,5 +1,6 @@
 const speechSdk = require("microsoft-cognitiveservices-speech-sdk");
 const { assertAzureConfig } = require("./azurePronunciationService");
+const { splitIntoMorae } = require("./japaneseMoraTransform");
 
 const JA_COMMA_PERIOD = "\u3001\u3002";
 const JA_QUESTION_EXCLAMATION = "\uff01\uff1f";
@@ -65,6 +66,13 @@ function renderNaturalPauses(text, rate, pitch, volume = "default") {
 // segment.pitchCurve があれば、モーラごとに違うピッチを持つ複数の<prosody>に分けて
 // レンダリングする(1セグメント=1ピッチ値では、文中の細かい上げ下げの形が
 // フレーズ区切りの数まで潰れてしまうため)。無ければ従来通り1つの<prosody>。
+function segmentPieces(segment, fallbackPitch) {
+  if (Array.isArray(segment.pitchCurve) && segment.pitchCurve.length) {
+    return segment.pitchCurve.map((piece) => ({ text: piece.text, pitch: piece.pitch || segment.pitch || fallbackPitch }));
+  }
+  return [{ text: segment.text || "", pitch: segment.pitch || fallbackPitch }];
+}
+
 function renderSegmentBody(segment, segmentRate, segmentPitch, segmentVolume) {
   if (Array.isArray(segment.pitchCurve) && segment.pitchCurve.length) {
     return segment.pitchCurve.map((piece) => prosodyChunk(piece.text, segmentRate, piece.pitch || segmentPitch, segmentVolume)).join("");
@@ -86,34 +94,47 @@ function renderVoiceScript(voiceScript, fallbackRate, fallbackPitch) {
   }).join("");
 }
 
-// 日本語ミラーのピッチ比較用: 各セグメントの開始位置に <bookmark> を挿入し、
-// 合成音声中での実際のセグメント境界(ms)を bookmarkReached イベントから取得できるようにする。
-// 通常再生用の renderVoiceScript とは別に用意し、既存の再生パスには影響を与えない。
+// 日本語ミラーのピッチ比較用: 各"欠片"(pitchCurveがあればモーラ単位、無ければ
+// セグメント単位)の開始位置に <bookmark> を挿入し、合成音声中での実際の境界(ms)を
+// bookmarkReached イベントから取得できるようにする。以前はセグメント単位(例: 2区切り)
+// でしかタイミングを取れず、セグメント内のモーラごとの音程の動き(zigzagなど)を
+// 比較分析側では検知できなかった(実機フィードバック: "音程の上下の反映が課題"。
+// ミラー音声のSSML自体はモーラ単位でピッチを変えても、比較分析はセグメント単位の
+// 大まかな3点サンプリングしかしていなかったため、実際の変化を拾えていなかった)。
+// bookmark をモーラ単位まで細かくすることで、比較分析(buildDeviationTimelineFromSpans)
+// も同じ解像度で実際の音声を測れるようにする。通常再生用の renderVoiceScript とは
+// 別に用意し、既存の再生パスには影響を与えない。
 function renderVoiceScriptWithBookmarks(voiceScript, fallbackRate, fallbackPitch) {
   const segments = Array.isArray(voiceScript?.segments) ? voiceScript.segments : [];
-  return segments.map((segment, index) => {
+  const marks = [];
+  let bookmarkIndex = 0;
+  const body = segments.map((segment, segmentIndex) => {
     const segmentRate = segment.rate || fallbackRate;
-    const segmentPitch = segment.pitch || fallbackPitch;
     const segmentVolume = segment.volume || "default";
     const breakAfterMs = Math.max(0, Math.min(900, Math.round(Number(segment.breakAfterMs || 0))));
-    return [
-      `<bookmark mark="seg${index}"/>`,
-      renderSegmentBody(segment, segmentRate, segmentPitch, segmentVolume),
-      breakAfterMs ? `<break time="${breakAfterMs}ms"/>` : ""
-    ].join("");
+    const pieces = segmentPieces(segment, fallbackPitch);
+    const rendered = pieces.map((piece) => {
+      const mark = `b${bookmarkIndex}`;
+      marks.push({ mark, text: piece.text, role: segment.role || "", segmentIndex });
+      bookmarkIndex += 1;
+      return [`<bookmark mark="${mark}"/>`, prosodyChunk(piece.text, segmentRate, piece.pitch, segmentVolume)].join("");
+    }).join("");
+    return [rendered, breakAfterMs ? `<break time="${breakAfterMs}ms"/>` : ""].join("");
   }).join("");
+  return { body, marks };
 }
 
 function buildSsmlWithBookmarks({ voiceScript, voice, rate, pitch, style, language = "ja-JP" }) {
-  const body = renderVoiceScriptWithBookmarks(voiceScript, rate, pitch);
+  const { body, marks } = renderVoiceScriptWithBookmarks(voiceScript, rate, pitch);
   const styledBody = style ? `<mstts:express-as style="${escapeXml(style)}">${body}</mstts:express-as>` : body;
-  return [
+  const ssml = [
     `<speak version="1.0" xml:lang="${escapeXml(language)}" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts">`,
     `<voice name="${escapeXml(voice)}">`,
     styledBody,
     `</voice>`,
     `</speak>`
   ].join("");
+  return { ssml, marks };
 }
 
 function buildProsodyBody({ text, rate, pitch, pausePattern, voiceScript }) {
@@ -324,16 +345,20 @@ async function synthesizeJapaneseSpeechWithSegmentTimings({
     throw error;
   }
 
-  const ssml = buildSsmlWithBookmarks({ voiceScript, voice, rate: "-4%", pitch: "+0Hz", style, language: "ja-JP" });
+  const { ssml, marks } = buildSsmlWithBookmarks({ voiceScript, voice, rate: "-4%", pitch: "+0Hz", style, language: "ja-JP" });
   const { audio, bookmarks, durationMs } = await synthesizeSpeechWithBookmarks({ ssml });
 
-  const spans = segments.map((segment, index) => {
-    const startMs = bookmarks.find((bookmark) => bookmark.mark === `seg${index}`)?.offsetMs ?? 0;
-    const nextOffsetMs = bookmarks.find((bookmark) => bookmark.mark === `seg${index + 1}`)?.offsetMs;
+  // marks は pitchCurve があればモーラ単位、無ければセグメント単位の欠片ごとに
+  // 1つずつ発行されている。bookmarkReached で実際に得られた時刻をそのまま
+  // 各欠片の区間(次の欠片の開始まで)として使うことで、セグメント単位より
+  // 細かい解像度でピッチ比較(buildDeviationTimelineFromSpans)ができる。
+  const spans = marks.map((mark, index) => {
+    const startMs = bookmarks.find((bookmark) => bookmark.mark === mark.mark)?.offsetMs ?? 0;
+    const nextOffsetMs = bookmarks.find((bookmark) => bookmark.mark === marks[index + 1]?.mark)?.offsetMs;
     const endMs = Number.isFinite(nextOffsetMs) ? nextOffsetMs : durationMs;
     return {
-      word: segment.sourceText || segment.text || "",
-      role: segment.role || "",
+      word: mark.text,
+      role: mark.role,
       startMs,
       durationMs: Math.max(1, endMs - startMs),
       endMs: Math.max(startMs + 1, endMs)
