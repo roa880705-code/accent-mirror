@@ -2501,6 +2501,12 @@ function japaneseRolesForEnglishWord(word) {
     roles.add("request-object");
     roles.add("object");
     roles.add("request-ending");
+    // 意訳(例: "I will see you tomorrow." → "明日会いましょう。")では、you は
+    // 独立したobject/request-endingセグメントを持たず、動詞句(predicate)に
+    // 意味ごと畳み込まれる。専用セグメントが無い文では、predicateとの対応も
+    // 候補として持たせておくことで、「youが和訳されていないように見える」
+    // (実際は会いましょうに含まれている)実機フィードバックに対応する。
+    roles.add("predicate");
   }
   if (["phone", "number", "salt", "pen", "today", "tomorrow", "here", "it",
     "light", "right", "correct", "collect", "grass", "glass", "road", "load"].includes(value)) {
@@ -2512,12 +2518,19 @@ function japaneseRolesForEnglishWord(word) {
   if (["could", "can", "will", "have", "to"].includes(value)) {
     roles.add("request-ending");
     roles.add("predicate-ending");
+    // will/could などの助動詞も、意訳では独立したセグメントを持たず、
+    // 動詞の活用(例: 「〜ましょう」の意志・未来のニュアンス)に畳み込まれる。
+    // 上のyouと同じ理由でpredicateも候補に持たせる。
+    roles.add("predicate");
   }
   // 以前は meaning が「私は」「彼女」で始まるだけで、文中の全ての単語に
   // subject roleを付けてしまっていた(i/sheでない単語にまで主語セグメントへの
   // 反映が付いてしまう実害があった)。単語自体が i/she の場合だけに限定する。
   if (["i", "she"].includes(value)) {
     roles.add("subject");
+    // i/she も、主語が明示されない意訳(「明日会いましょう」など)では
+    // 独立したsubjectセグメントを持たず、動詞句に畳み込まれる。上と同じ理由。
+    roles.add("predicate");
   }
   if (!roles.size) roles.add("sentence");
   return [...roles];

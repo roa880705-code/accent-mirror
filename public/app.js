@@ -1146,11 +1146,30 @@ function buildWordGroups(mirror) {
       });
     }
 
-    const roles = new Set(events.flatMap((event) => event.targetRoles || []));
-    const wordSegments = segments.filter((segment) => {
+    // events だけだと、発音の癖が検出されなかった単語(例: "you" が問題なく発音された
+    // 場合)は対応する日本語セグメントが一切見つからず、意訳(和訳が単語ごとに1対1で
+    // ないため、"I"/"will"/"you" のような単語がどこにも反映されていないように見える)
+    // で誤解を招いていた(実機フィードバック: "I will youが和訳されていないことが
+    // わかります")。mirrorTimeline.phonemeTimeline[].roles (バックエンドの静的な
+    // 英単語→役割の対応表、癖の有無に関係なく常に付与される)もあわせて使うことで、
+    // 癖が無い単語でも意訳先の日本語部分との対応を示せるようにする。
+    // "predicate" は i/she/will/could/you などにも保険として付与されているが
+    // (意訳で主語や助動詞が動詞句へ畳み込まれるケース向け)、その語に本来の
+    // 専用セグメント(subject/time/objectなど)が既にある文では、そちらを優先し
+    // predicateには重ねない("私はここに住んでいます" の "i" が "私は" だけでなく
+    // "住んでいます"(本来はliveの領域)にも誤って対応付くのを防ぐため)。
+    const matchSegments = (roleSet) => segments.filter((segment) => {
       const role = String(segment.role || "");
-      return [...roles].some((target) => role === target || role.startsWith(`${target}-pitch-`));
+      return [...roleSet].some((target) => role === target || role.startsWith(`${target}-pitch-`));
     });
+    const specificRoles = new Set([
+      ...events.flatMap((event) => event.targetRoles || []),
+      ...members.flatMap((member) => member.roles || [])
+    ].filter((role) => role !== "predicate"));
+    let wordSegments = matchSegments(specificRoles);
+    if (!wordSegments.length) {
+      wordSegments = matchSegments(new Set([...specificRoles, "predicate"]));
+    }
 
     wordGroups.push({
       key: `word-${spanIndices.join("-")}`,
@@ -1163,11 +1182,38 @@ function buildWordGroups(mirror) {
     });
   });
 
+  // 意訳(例: "I will see you tomorrow." → "明日会いましょう。")では、複数の英単語
+  // (I/will/see/you)が同じ1つの日本語セグメント(会いましょう)に対応することがある。
+  // 単語ごとに別グループのままだと、それぞれ違う色が割り当てられてしまい、実際に
+  // 表示される日本語側は最後に処理されたグループの色しか残らず、見た目上「他の単語の
+  // 色に対応する日本語がどこにも無い」ように見えてしまう。同じセグメント集合を指す
+  // 単語グループは1つにまとめ、同じ色・1つのまとまった説明文になるようにする。
+  const mergedWordGroups = [];
+  const groupBySegmentSignature = new Map();
+  wordGroups.forEach((group) => {
+    if (!group.segments.length) {
+      mergedWordGroups.push(group);
+      return;
+    }
+    const signature = group.segments.map((segment) => segment.role).sort().join("|");
+    const existing = groupBySegmentSignature.get(signature);
+    if (existing) {
+      existing.label = `${existing.label} ${group.label}`;
+      existing.members = [...existing.members, ...group.members];
+      existing.events = [...existing.events, ...group.events];
+      existing.key = `${existing.key}-${group.key}`;
+      return;
+    }
+    const merged = { ...group };
+    groupBySegmentSignature.set(signature, merged);
+    mergedWordGroups.push(merged);
+  });
+
   const phraseEvents = localEvents.filter((event) => !event.word && !claimedPhraseEvents.has(event));
-  const usedSegmentRoles = new Set(wordGroups.flatMap((group) => group.segments.map((segment) => segment.role)));
+  const usedSegmentRoles = new Set(mergedWordGroups.flatMap((group) => group.segments.map((segment) => segment.role)));
   const phraseSegments = segments.filter((segment) => !usedSegmentRoles.has(segment.role));
 
-  const groups = [...wordGroups];
+  const groups = [...mergedWordGroups];
   if (phraseEvents.length || phraseSegments.length) {
     groups.push({
       key: "phrase-sentence",
