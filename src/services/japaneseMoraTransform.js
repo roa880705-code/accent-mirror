@@ -148,19 +148,31 @@ function vowelOnlyKanaFor(token) {
 // 弱化(weaken)・母音追加(elongate)それぞれで「どのモーラを対象にするか」を
 // 選ぶロジック本体。weaken/elongate単体でも、両方を別モーラに重ねる
 // weakenAndElongateJapaneseMoraText でも共通して使う。
-function pickWeakenTargets(weakenableIdx, strength) {
+//
+// tokens が渡された場合、拗音(きゃ/しょ/りゅ など2文字のモーラ)は弱化の対象から
+// 極力外す。拗音は「表記は2文字でもモーラとしては1つ」という短い語句の中で
+// 特に情報量が多い部分であり、ここを子音だけ落として母音化すると、単語の
+// 判別に必要な音が丸ごと消えて別の単語に聞こえてしまうリスクが単純なモーラより
+// 高い(実機フィードバック: 意訳で複数の英単語が同じ日本語1語("会いましょう")に
+// 畳み込まれるようになった結果、"しょ"が弱化対象に選ばれて「あいまおう」という
+// 意味の取れない語になってしまった)。単純なモーラの候補がある限りはそちらを
+// 優先し、無い場合だけ拗音も対象にする(何も弱化できないよりはまし)。
+function pickWeakenTargets(weakenableIdx, strength, tokens = []) {
   if (!weakenableIdx.length) return [];
-  const first = weakenableIdx[0];
-  const last = weakenableIdx[weakenableIdx.length - 1];
-  const interior = weakenableIdx.filter((index) => index !== first && index !== last);
+  const isSimpleMora = (index) => String(tokens[index]?.text || "").length <= 1;
+  const simpleIdx = weakenableIdx.filter(isSimpleMora);
+  const pool = simpleIdx.length ? simpleIdx : weakenableIdx;
+  const first = pool[0];
+  const last = pool[pool.length - 1];
+  const interior = pool.filter((index) => index !== first && index !== last);
   if (strength === "strong") {
-    return weakenableIdx.length === 1 ? weakenableIdx : weakenableIdx.filter((index) => index !== first);
+    return pool.length === 1 ? pool : pool.filter((index) => index !== first);
   }
   // 弱化できるモーラが1つしかない短い語句では、medium でも何も変わらないと
   // 「反映されていないように見える」実害があるため、その1つだけは弱める。
   return interior.length
     ? [interior[Math.floor(interior.length / 2)]]
-    : (weakenableIdx.length > 1 ? [last] : weakenableIdx);
+    : (pool.length > 1 ? [last] : pool);
 }
 
 function pickElongateTargets(elongatableIdx, strength) {
@@ -182,7 +194,7 @@ function weakenJapaneseMoraText(text, strength = "medium") {
   const tokens = splitIntoMorae(toReadableKana(text));
   const weakenableIdx = tokens.map((token, index) => (token.kind === "consonant" ? index : -1)).filter((index) => index >= 0);
   if (!weakenableIdx.length) return String(text || "");
-  const targetSet = new Set(pickWeakenTargets(weakenableIdx, strength));
+  const targetSet = new Set(pickWeakenTargets(weakenableIdx, strength, tokens));
   return tokens.map((token, index) => (targetSet.has(index) ? (vowelOnlyKanaFor(token) || token.text) : token.text)).join("");
 }
 
@@ -213,7 +225,7 @@ function weakenAndElongateJapaneseMoraText(text, weakenStrength = "medium", elon
     .filter((index) => index >= 0);
   if (!weakenableIdx.length && !elongatableIdx.length) return String(text || "");
 
-  const weakenSet = new Set(pickWeakenTargets(weakenableIdx, weakenStrength));
+  const weakenSet = new Set(pickWeakenTargets(weakenableIdx, weakenStrength, tokens));
   // 母音追加の対象は弱化と重ならないモーラから選ぶ。どうしても候補が
   // 1つしかない(=弱化と母音追加が同じモーラでしか表現できない)場合だけ、
   // やむを得ず同じモーラを共有する(何も反映しないよりまし)。
