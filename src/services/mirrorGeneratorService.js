@@ -2477,6 +2477,12 @@ function phoneNameFromPronunciationEvent(event) {
 // データとして持つことで、新しいペアの追加は表の1行追加だけで済み、コード側の
 // 分岐を増やす必要がない(alternateWordMeaningFromPronunciationのような文全体
 // 単位のハードコードとは違い、単語単位でどの練習文にも適用できる)。
+// tomorrow/today は音そのものが似ているわけではないが、自由認識が実際に別の
+// 単語を拾った場合の扱いは他のペアと同じ(絶対に確定はできない候補として、
+// 発音そのものは参照文("tomorrow")のまま採点しつつ、聞こえ方の候補として
+// 「today」を注記し、ミラーにも反映する)なので同じ仕組みに載せる
+// (実機フィードバック: "todayと発音した部分を、tomorrowのまま分析している。
+// →tomorrowのまま分析した結果、todayに聞こえてる、が正解")。
 const CONFUSABLE_WORD_PAIRS = {
   light: { alternate: "right", alternateJapanese: "右" },
   right: { alternate: "light", alternateJapanese: "軽い" },
@@ -2485,7 +2491,9 @@ const CONFUSABLE_WORD_PAIRS = {
   grass: { alternate: "glass", alternateJapanese: "ガラス" },
   glass: { alternate: "grass", alternateJapanese: "芝生" },
   road: { alternate: "load", alternateJapanese: "荷物" },
-  load: { alternate: "road", alternateJapanese: "道" }
+  load: { alternate: "road", alternateJapanese: "道" },
+  tomorrow: { alternate: "today", alternateJapanese: "今日" },
+  today: { alternate: "tomorrow", alternateJapanese: "明日" }
 };
 
 function japaneseRolesForEnglishWord(word) {

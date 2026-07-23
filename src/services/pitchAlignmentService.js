@@ -6,7 +6,17 @@ const thresholds = require("../config/pitchThresholds");
 // NBest[0].Words は同じ語順で並ぶ想定。DTWは使わず、単語インデックスでそのまま対応づける。
 function buildWordSpansFromRaw(raw) {
   const words = raw?.NBest?.[0]?.Words || [];
-  return words.map((word) => {
+  // buildDeviationTimelineFromSpans は modelSpans/userSpans を位置(index)だけで
+  // 1対1に対応づける(意味的な単語照合ではない)。挿入(Insertion)として検出された
+  // 単語は参照文に存在しない余分な語なので、含めたまま位置合わせすると、それ以降の
+  // 単語が全てずれて誤ったペアになり、最後の方の単語がグラフから欠落する
+  // (実機フィードバック: "ピッチ輪郭に記載されている英文(単語ごと)がおかしい。
+  // seeが3箇所や途中までしかないなど"。"Could you help me?"の "you" が誤って
+  // "see" として2回検出された録音で、以降の単語(tomorrowなど)がグラフから
+  // 完全に消えていた)。挿入語を除いてから位置合わせすることで、参照文の単語数と
+  // 揃え、以降の単語のずれを防ぐ。
+  const filtered = words.filter((word) => String(word?.PronunciationAssessment?.ErrorType || "").toLowerCase() !== "insertion");
+  return filtered.map((word) => {
     const startMs = Number(word.Offset ?? word.offset ?? 0) / 10000;
     const durationMs = Number(word.Duration ?? word.duration ?? 0) / 10000;
     return {

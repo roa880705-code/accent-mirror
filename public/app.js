@@ -1294,10 +1294,21 @@ function buildMirrorAnalysisSummary(mirror) {
   const groups = buildWordGroups(mirror);
   const sentences = [];
   groups.forEach((group) => {
+    // 同じセグメントに畳み込まれた複数の単語(意訳や、Azureが同じ語を挿入と実語で
+    // 二重に検出した場合など)が、たまたま全く同じ根拠文を持つことがある。
+    // そのまま並べると同じ文が2〜3回繰り返されて読みにくくなるため、文面が
+    // 完全に一致するものは1つにまとめる(実機フィードバック: seeの挿入検出が
+    // 同じ文言で複数回繰り返されて表示された)。
     const events = (group.events || []).filter((event) => event.englishEvidence);
-    if (!events.length) return;
+    const seenEvidence = new Set();
+    const uniqueEvents = events.filter((event) => {
+      if (seenEvidence.has(event.englishEvidence)) return false;
+      seenEvidence.add(event.englishEvidence);
+      return true;
+    });
+    if (!uniqueEvents.length) return;
     const mirrorText = (group.segments || []).map((segment) => segment.text).join("");
-    const evidenceText = events.map((event) => event.englishEvidence).join("");
+    const evidenceText = uniqueEvents.map((event) => event.englishEvidence).join("");
     const subject = group.kind === "phrase" ? "文全体では、" : `「${escapeHtml(group.label)}」は、`;
     const reflection = mirrorText ? `日本語ミラーでは「${escapeHtml(mirrorText)}」のように反映しています。` : "";
     sentences.push(`${subject}${escapeHtml(evidenceText)}${reflection}`);
