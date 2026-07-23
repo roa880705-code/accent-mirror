@@ -3598,7 +3598,18 @@ function applyAccentTransferToVoiceText(text, articulation, transferPlan, role =
   let softened = localConsonant || localLiquid || localKatakanaDelivery
     ? lengthAdjusted
     : softenJapaneseConsonantsForVoice(lengthAdjusted, shouldDeformText ? articulation : "clear");
-  if (localKatakanaDelivery) {
+  // 同じ role(=同じ日本語の対応範囲)に、母音追加(katakana_delivery)の証拠と、
+  // 別の単語・音の本当の弱化・脱落(liquid_confusion/consonant_or_phonics)の
+  // 証拠が両方ある場合、dominantLocalTransformForRole は severity が高い方
+  // だけを選ぶ。role が複数の英単語を束ねている場合(意訳での畳み込み)、たまたま
+  // 1つの単語の弱い子音のseverityが、他の複数単語のカタカナ(母音追加)の
+  // severityより高いだけで「子音」側が勝ってしまい、実際にはカタカナ的な
+  // 単語が大半なのに、ミラー全体が子音欠落だけで表現される実害があった
+  // (実機フィードバック: "カタカナ英語判定なのに、ミラーでは子音の欠落が
+  // 目立つ")。katakana が dominant でなくても、この role にカタカナの証拠が
+  // 存在する限りは母音追加も重ねる。
+  const hasKatakanaEvidence = localKatakanaDelivery || ((localConsonant || localLiquid) && hasKatakanaDeliveryForRole(transferPlan, role));
+  if (hasKatakanaEvidence) {
     // 同じ role 内に、母音追加(katakana)とは別の音の本当の弱化・脱落が
     // 共存している場合(実機フィードバック: help の l の弱さと p の母音追加は
     // 別々の文字で起きているので、同じ1文字に両方重ねるのはおかしい)は、
