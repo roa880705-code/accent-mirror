@@ -3733,6 +3733,20 @@ function formatSignedPercent(value, cap = PITCH_SEGMENT_PERCENT_CAP) {
   return `${clamped >= 0 ? "+" : ""}${clamped}%`;
 }
 
+// 絶対ルール: trace/低信頼度の候補は表示のみに留め、ミラー音声には強く反映しない。
+// intonationStatus が natural/trace(文末だけで見れば軽微・自然)の場合、実測カーブの
+// 大きさをそのまま反映すると、文全体としては「大きな癖ではない」判定なのに、
+// 文中の一部区間だけ測定ノイズ等で大きく振れてしまい(実機フィードバック:
+// 全単語score94-100・articulation WPM305という速いだけの綺麗な録音で、trace判定
+// なのにミラー音声と模範ミラーの音程比較で13.1半音もの振れが出た)、判定と実際の
+// 反映強度が食い違う。ステータスに応じて反映の強さそのものを弱める。
+function intonationReflectionScale(status) {
+  if (["over_rising", "falling_question", "flat_question", "zigzag", "phrase_movement"].includes(status)) return 1;
+  if (status === "trace") return 0.35;
+  if (status === "natural") return 0.15;
+  return 0.6;
+}
+
 function pitchForVoiceSegment({ index, parts, basePitch, weakPitch, transferPlan }) {
   const isFinal = index === parts.length - 1;
   const deviationCurve = resampledDeviationForSegments(transferPlan?.intonationDeviationWords, parts.length);
@@ -3744,7 +3758,8 @@ function pitchForVoiceSegment({ index, parts, basePitch, weakPitch, transferPlan
   // 実測差分を上乗せする形にし、既存の子音の弱さ等の反映は維持する。
   if (Number.isFinite(deviation)) {
     const baselinePercent = parsePercentValue(isFinal ? basePitch : weakPitch);
-    const deviationPercent = Math.max(-PITCH_DEVIATION_PERCENT_CAP, Math.min(PITCH_DEVIATION_PERCENT_CAP, deviation * PITCH_PERCENT_PER_SEMITONE));
+    const scale = intonationReflectionScale(transferPlan?.intonationStatus);
+    const deviationPercent = Math.max(-PITCH_DEVIATION_PERCENT_CAP, Math.min(PITCH_DEVIATION_PERCENT_CAP, deviation * PITCH_PERCENT_PER_SEMITONE * scale));
     return formatSignedPercent(baselinePercent + deviationPercent);
   }
 
@@ -3788,6 +3803,7 @@ function moraPitchCurveForSegment({ text, segmentIndex, segmentCount, transferPl
   const segStart = segmentCount > 0 ? segmentIndex / segmentCount : 0;
   const segEnd = segmentCount > 0 ? (segmentIndex + 1) / segmentCount : 1;
   const baselinePercent = parsePercentValue(isFinal ? basePitch : weakPitch);
+  const scale = intonationReflectionScale(transferPlan?.intonationStatus);
 
   return tokens.map((token, tokenIndex) => {
     const localT = (tokenIndex + 0.5) / tokens.length;
@@ -3797,7 +3813,7 @@ function moraPitchCurveForSegment({ text, segmentIndex, segmentCount, transferPl
     const upper = Math.min(values.length - 1, lower + 1);
     const frac = pos - lower;
     const deviation = values[lower] + (values[upper] - values[lower]) * frac;
-    const deviationPercent = Math.max(-PITCH_DEVIATION_PERCENT_CAP, Math.min(PITCH_DEVIATION_PERCENT_CAP, deviation * PITCH_PERCENT_PER_SEMITONE));
+    const deviationPercent = Math.max(-PITCH_DEVIATION_PERCENT_CAP, Math.min(PITCH_DEVIATION_PERCENT_CAP, deviation * PITCH_PERCENT_PER_SEMITONE * scale));
     return { text: token.text, pitch: formatSignedPercent(baselinePercent + deviationPercent) };
   });
 }
