@@ -1512,7 +1512,26 @@ function buildLengthAndPronunciationSignals(words) {
       }
     }
 
-    if (finalPhone && finalScore < 65 && !handledFinalPhones.has(String(finalPhone.phone || "").toLowerCase())) {
+    const finalVowel = finalPhone && isVowelPhone(finalPhone.phone) ? finalPhone : null;
+    const finalVowelMs = finalVowel ? phoneMs(finalVowel) : null;
+    // 語尾の母音(here の ɪɹ など)はr音化・文末伸長で自然に長くなるため、絶対的な
+    // 閾値だけでは際限なく誤検出が起きる(katakanaHeavyWords と同じ問題)。
+    // Azure自身のスコアが高い場合はよほど極端な長さでない限り疑わない。r音化母音は
+    // 音素単体のスコアが単語全体のスコアより低めに出やすい(実機フィードバック:
+    // word score 97でもɪɹ単体は86止まり)ため、単語スコアと音素スコアの高い方で判定する。
+    const finalVowelScoreIsHigh = Math.max(finalScore, Number(word.score ?? 100)) >= 92;
+    const finalVowelDurationBar = finalVowelScoreIsHigh ? 650 : 360;
+    // 語尾が母音で、かつ異常に長く伸びている(=カタカナ的な母音追加の候補)場合は、
+    // そのスコアの低さも長さの副作用である可能性が高い。この下の「語尾が弱い」
+    // 判定にも同じ音素が引っかかると、同じ1音に「弱化(欠落)」と「カタカナ(母音
+    // 追加)」という矛盾する反映が両方付き、絶対ルール(カタカナ英語は母音追加で
+    // 表現し、子音欠落に置き換えない)に反して弱化(子音を落として母音化)が
+    // 優先されてしまう実害があった(実機フィードバック: tomorrowの語尾oʊが
+    // score44・約370ms(伸びている)で、弱化判定が勝って「あした」の「た」が
+    // 落ちて「あしあ」になった)。母音が既に長さで説明できる場合は、弱化側の
+    // 判定を出さない。
+    const finalVowelIsLong = finalVowel && finalVowelMs !== null && finalVowelMs >= finalVowelDurationBar;
+    if (finalPhone && finalScore < 65 && !finalVowelIsLong && !handledFinalPhones.has(String(finalPhone.phone || "").toLowerCase())) {
       signals.push(`${word.word}-final-weak`);
       events.push({
         key: `${word.word}:final-weak:${finalPhone.phone}`,
@@ -1526,16 +1545,7 @@ function buildLengthAndPronunciationSignals(words) {
       });
     }
 
-    const finalVowel = finalPhone && isVowelPhone(finalPhone.phone) ? finalPhone : null;
-    const finalVowelMs = finalVowel ? phoneMs(finalVowel) : null;
-    // 語尾の母音(here の ɪɹ など)はr音化・文末伸長で自然に長くなるため、絶対的な
-    // 閾値だけでは際限なく誤検出が起きる(katakanaHeavyWords と同じ問題)。
-    // Azure自身のスコアが高い場合はよほど極端な長さでない限り疑わない。r音化母音は
-    // 音素単体のスコアが単語全体のスコアより低めに出やすい(実機フィードバック:
-    // word score 97でもɪɹ単体は86止まり)ため、単語スコアと音素スコアの高い方で判定する。
-    const finalVowelScoreIsHigh = Math.max(finalScore, Number(word.score ?? 100)) >= 92;
-    const finalVowelDurationBar = finalVowelScoreIsHigh ? 650 : 360;
-    if (finalVowel && finalVowelMs !== null && finalVowelMs >= finalVowelDurationBar) {
+    if (finalVowelIsLong) {
       signals.push(`${word.word}-final-vowel-long`);
       events.push({
         key: `${word.word}:final-vowel-long:${finalVowel.phone}`,
