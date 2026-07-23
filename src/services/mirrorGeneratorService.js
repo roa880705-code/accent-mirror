@@ -1,5 +1,5 @@
 ﻿const pitchThresholds = require("../config/pitchThresholds");
-const { splitIntoMorae, weakenJapaneseMoraText, elongateJapaneseMoraText, weakenAndElongateJapaneseMoraText, segmentPauseJapaneseMoraText } = require("./japaneseMoraTransform");
+const { splitIntoMorae, toReadableKana, weakenJapaneseMoraText, elongateJapaneseMoraText, weakenAndElongateJapaneseMoraText, segmentPauseJapaneseMoraText } = require("./japaneseMoraTransform");
 const { phoneticKatakanaForWord, spellingToKatakana, coalescedLinkingKatakana, droppedStopLinkingKatakana } = require("./englishKatakanaEngine");
 
 const WORD_MIRRORS = {
@@ -3805,7 +3805,14 @@ function moraPitchCurveForSegment({ text, segmentIndex, segmentCount, transferPl
   const values = words.map((word) => Number(word.avgDeviation)).filter((value) => Number.isFinite(value));
   if (values.length < 3) return null;
 
-  const tokens = splitIntoMorae(String(text || ""));
+  // splitIntoMorae は仮名しか認識できず、漢字は1文字ずつ「other」種別の
+  // トークンになる。toReadableKana を通さずにこれをそのままモーラ単位の
+  // <prosody> に分割すると、"今日"が「今」「日」という別々のタグに分かれて
+  // しまい、Azure側の熟語読み上げ(きょう)が働かず、各文字が単独読み(いま/ひ)
+  // で発音される実害があった(実機フィードバック: "「今日」を「きょう」では
+  // なく、「いまひ」と読み上げている")。他のモーラ変形関数と同じく、必ず
+  // toReadableKana で既知の漢字語彙を仮名に変換してから分割する。
+  const tokens = splitIntoMorae(toReadableKana(text));
   if (tokens.length < 2) return null;
 
   const segStart = segmentCount > 0 ? segmentIndex / segmentCount : 0;
@@ -3932,7 +3939,14 @@ function timelineToVoiceScript({ meaning, mirrorTimeline, voicePlan, speechFeatu
 // 戻ってしまわないようにする(欠片数が違いすぎると、比較が短い方に切り詰められて
 // 意味をなさなくなるため)。
 function flatPitchCurveForText(text) {
-  const tokens = splitIntoMorae(String(text || ""));
+  // splitIntoMorae は仮名しか認識できず、漢字は1文字ずつ「other」種別の
+  // トークンになる。toReadableKana を通さずにこれをそのままモーラ単位の
+  // <prosody> に分割すると、"今日"が「今」「日」という別々のタグに分かれて
+  // しまい、Azure側の熟語読み上げ(きょう)が働かず、各文字が単独読み(いま/ひ)
+  // で発音される実害があった(実機フィードバック: "「今日」を「きょう」では
+  // なく、「いまひ」と読み上げている")。他のモーラ変形関数と同じく、必ず
+  // toReadableKana で既知の漢字語彙を仮名に変換してから分割する。
+  const tokens = splitIntoMorae(toReadableKana(text));
   if (tokens.length < 2) return null;
   return tokens.map((token) => ({ text: token.text, pitch: "+0Hz" }));
 }

@@ -267,6 +267,7 @@ function segmentPauseJapaneseMoraText(text) {
 
 module.exports = {
   splitIntoMorae,
+  toReadableKana,
   weakenJapaneseMoraText,
   elongateJapaneseMoraText,
   weakenAndElongateJapaneseMoraText,
