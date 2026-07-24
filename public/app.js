@@ -364,8 +364,10 @@ function appendContrastButton(container, set, index) {
   const button = document.createElement("button");
   button.className = `contrast-button${index === selectedIndex ? " active" : ""}${unlocked ? "" : " locked"}`;
   button.disabled = !unlocked;
+  const gain = wordCountForText(set.text);
+  const badge = unlocked ? `<span class="friend-gain-badge" title="この文の練習で増える友達の人数">+${gain}</span>` : "";
   button.innerHTML = unlocked
-    ? `<strong>${set.label}</strong><br>${set.text}<br><span class="minor">${set.focus}</span>`
+    ? `${badge}<strong>${set.label}</strong><br>${set.text}<br><span class="minor">${set.focus}</span>`
     : `<strong>🔒 ${set.label}</strong>`;
   if (unlocked) button.onclick = () => selectContrastSet(index);
   container.appendChild(button);
