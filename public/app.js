@@ -63,6 +63,36 @@ function renderHomeStage() {
   $("canadaPin")?.classList.toggle("pin-inactive", stage.location !== "canada");
 }
 
+// ホーム画面に「すごろく」風のステージボードを描画する。各マスがステージに対応し、
+// 現在地にコマ(絵文字)を乗せ、未解放マスは鍵アイコン付きでグレーアウトする。
+function renderSugorokuBoard() {
+  const board = $("sugorokuBoard");
+  if (!board || !storyStages.length) return;
+  const current = currentStageInfo();
+  const track = document.createElement("div");
+  track.className = "sugoroku-track";
+
+  storyStages.forEach((stage) => {
+    const unlocked = friendCount >= stage.threshold;
+    const isCurrent = current && stage.stage === current.stage;
+    const cell = document.createElement("div");
+    cell.className = `sugoroku-cell${unlocked ? " unlocked" : " locked"}${isCurrent ? " current" : ""}`;
+    cell.innerHTML = `${isCurrent ? '<span class="sugoroku-token">🚩</span>' : ""}<span class="cell-number">${unlocked ? stage.stage : "🔒"}</span><span class="cell-name">${stage.name}</span>`;
+    track.appendChild(cell);
+  });
+
+  const goalCell = document.createElement("div");
+  goalCell.className = "sugoroku-cell goal";
+  goalCell.innerHTML = '<span class="cell-number">🏁</span><span class="cell-name">ゴール</span>';
+  track.appendChild(goalCell);
+
+  board.innerHTML = "";
+  board.appendChild(track);
+
+  const currentCell = track.querySelector(".sugoroku-cell.current");
+  if (currentCell) currentCell.scrollIntoView({ inline: "center", block: "nearest" });
+}
+
 function wordCountForText(text) {
   return String(text || "").match(/[A-Za-z]+(?:'[A-Za-z]+)?/g)?.length || 0;
 }
@@ -173,6 +203,7 @@ function animateFriendIncrease(gain) {
       renderFriendCount();
       renderHomeCrowd();
       renderHomeStage();
+      renderSugorokuBoard();
       renderContrastButtons();
       $("homeFriendCount")?.classList.add("count-pop");
       setTimeout(() => $("homeFriendCount")?.classList.remove("count-pop"), 450);
@@ -470,6 +501,7 @@ async function loadContrastSets() {
   renderContrastButtons();
   renderReference();
   renderHomeStage();
+  renderSugorokuBoard();
 }
 
 async function startPcmRecording() {

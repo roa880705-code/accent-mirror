@@ -70,4 +70,23 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#111;color:#eee;borde
 .home-stage-label .stage-number{display:block;font-size:11px;color:#4c7c6b;font-weight:900}
 .pin-inactive{opacity:.32}
 @media(max-width:720px){.home-stage-label{top:16px;right:16px;padding:8px 12px;font-size:12px;max-width:150px}}
+
+/* すごろく風のステージボード */
+.sugoroku-board{position:absolute;left:50%;top:104px;transform:translateX(-50%);z-index:33;width:min(720px,94vw);max-width:94vw;background:rgba(255,255,255,.86);border:1px solid rgba(255,255,255,.7);border-radius:20px;box-shadow:0 14px 35px rgba(32,82,98,.18);backdrop-filter:blur(10px);padding:16px 8px 26px;overflow-x:auto;overflow-y:hidden}
+.sugoroku-track{display:flex;align-items:center;gap:6px;position:relative;padding:14px 10px 0;min-width:max-content}
+.sugoroku-track:before{content:"";position:absolute;left:20px;right:20px;top:50%;height:3px;background:repeating-linear-gradient(90deg,#cbd3e2 0 8px,transparent 8px 16px);z-index:0;transform:translateY(7px)}
+.sugoroku-cell{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:60px;height:60px;border-radius:14px;background:#fff;border:2px solid #d8dae4;font-weight:800;flex:0 0 auto;text-align:center;transition:transform .2s ease}
+.sugoroku-cell:nth-child(even){transform:translateY(-14px)}
+.sugoroku-cell .cell-number{font-size:10px;color:#8992a3;font-weight:900}
+.sugoroku-cell .cell-name{font-size:9.5px;line-height:1.15;padding:0 3px;color:inherit}
+.sugoroku-cell.locked{background:#eef0f5;border-color:#e2e5ee;color:#a3a8b3}
+.sugoroku-cell.locked .cell-number{color:#b7bccb}
+.sugoroku-cell.unlocked{background:#eafff3;border-color:#0f8a5f;color:#0f6b47}
+.sugoroku-cell.current{background:#0f8a5f;border-color:#0b6f4c;color:#fff;box-shadow:0 0 0 4px rgba(15,138,95,.22)}
+.sugoroku-cell.current:nth-child(even){transform:translateY(-14px) scale(1.06)}
+.sugoroku-cell.current:nth-child(odd){transform:scale(1.06)}
+.sugoroku-cell.goal{background:linear-gradient(135deg,#ffe08a,#ffb703);border-color:#e08e00;color:#7a4b00}
+.sugoroku-token{position:absolute;top:-24px;font-size:20px;animation:tokenBounce 1s ease-in-out infinite}
+@keyframes tokenBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@media(max-width:720px){.sugoroku-board{top:154px;padding:12px 6px 20px}.sugoroku-cell{width:52px;height:52px}.sugoroku-cell .cell-name{font-size:8.5px}}
 @media(max-width:720px){.home-title{top:78px}.home-app-name{font-size:32px}.home-copy{font-size:13px}.earth-dome{bottom:-8%;width:150vw}.canada-pin:after,.japan-pin:after{display:none}.home-avatar{bottom:16%;transform:translateX(-50%) scale(.78)}.home-crowd{bottom:25%;height:128px}.mountains{bottom:43%}.neighborhood,.trees{bottom:39%}.start-practice-button{bottom:calc(24px + env(safe-area-inset-bottom))}}
