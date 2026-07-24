@@ -2,7 +2,7 @@
 const express = require("express");
 const fs = require("fs/promises");
 const path = require("path");
-const { contrastSets, getContrastSet } = require("./src/config/contrastSets");
+const { contrastSets, getContrastSet, STORY_STAGES } = require("./src/config/contrastSets");
 const { analyzeAzureRaw } = require("./src/services/contrastAnalysisService");
 const { assessPronunciationFromWav, recognizeEnglishFromWav, assertAzureConfig } = require("./src/services/azurePronunciationService");
 const { compareAttempts } = require("./src/services/contrastSessionService");
@@ -101,7 +101,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.get("/api/contrast-sets", (_req, res) => {
-  res.json({ contrastSets });
+  res.json({ contrastSets, storyStages: STORY_STAGES });
 });
 
 app.get("/api/validation-logs", async (req, res) => {

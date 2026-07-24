@@ -1,4 +1,5 @@
 ﻿let contrastSets = [];
+let storyStages = [];
 let selectedIndex = 0;
 let lastRecording = null;
 let sessionAttempts = [];
@@ -36,6 +37,30 @@ function allValidationItems() {
 
 function currentSet() {
   return contrastSets[selectedIndex] || contrastSets[0];
+}
+
+// ストーリーモードのステージは友達数のしきい値で解放される。しきい値以下でも
+// 一覧には表示し、鍵アイコン付きで「あと何人で解放」が分かるようにする。
+function currentStageInfo() {
+  if (!storyStages.length) return null;
+  const unlocked = storyStages.filter((stage) => friendCount >= stage.threshold);
+  return unlocked.length ? unlocked[unlocked.length - 1] : storyStages[0];
+}
+
+function isStageUnlocked(stageNumber) {
+  const info = storyStages.find((stage) => stage.stage === stageNumber);
+  return info ? friendCount >= info.threshold : true;
+}
+
+function renderHomeStage() {
+  const stage = currentStageInfo();
+  if (!stage) return;
+  if ($("homeStageLabel")) {
+    $("homeStageLabel").querySelector(".stage-number").textContent = `Stage ${stage.stage}`;
+    $("homeStageName").textContent = stage.name;
+  }
+  $("japanPin")?.classList.toggle("pin-inactive", stage.location !== "japan");
+  $("canadaPin")?.classList.toggle("pin-inactive", stage.location !== "canada");
 }
 
 function wordCountForText(text) {
@@ -147,6 +172,8 @@ function animateFriendIncrease(gain) {
       saveFriendCount();
       renderFriendCount();
       renderHomeCrowd();
+      renderHomeStage();
+      renderContrastButtons();
       $("homeFriendCount")?.classList.add("count-pop");
       setTimeout(() => $("homeFriendCount")?.classList.remove("count-pop"), 450);
       resolve();
@@ -324,21 +351,63 @@ function ratePercentToBrowserRate(rate) {
   return 1 + Number(match[1]) / 100;
 }
 
+function selectContrastSet(index) {
+  selectedIndex = index;
+  renderContrastButtons();
+  renderReference();
+  clearModelVoice();
+  clearResult();
+}
+
+function appendContrastButton(container, set, index) {
+  const unlocked = !set.stage || isStageUnlocked(set.stage);
+  const button = document.createElement("button");
+  button.className = `contrast-button${index === selectedIndex ? " active" : ""}${unlocked ? "" : " locked"}`;
+  button.disabled = !unlocked;
+  button.innerHTML = unlocked
+    ? `<strong>${set.label}</strong><br>${set.text}<br><span class="minor">${set.focus}</span>`
+    : `<strong>🔒 ${set.label}</strong>`;
+  if (unlocked) button.onclick = () => selectContrastSet(index);
+  container.appendChild(button);
+}
+
 function renderContrastButtons() {
-  $("contrastButtons").innerHTML = "";
-  contrastSets.forEach((set, index) => {
-    const button = document.createElement("button");
-    button.className = `contrast-button${index === selectedIndex ? " active" : ""}`;
-    button.innerHTML = `<strong>${set.label}</strong><br>${set.text}<br><span class="minor">${set.focus}</span>`;
-    button.onclick = () => {
-      selectedIndex = index;
-      renderContrastButtons();
-      renderReference();
-      clearModelVoice();
-      clearResult();
-    };
-    $("contrastButtons").appendChild(button);
-  });
+  const container = $("contrastButtons");
+  container.innerHTML = "";
+
+  const storySets = contrastSets.filter((set) => set.stage);
+  const drillSets = contrastSets.filter((set) => !set.stage);
+
+  if (storySets.length) {
+    const heading = document.createElement("h3");
+    heading.className = "contrast-group-heading";
+    heading.textContent = "ストーリーモード";
+    container.appendChild(heading);
+
+    const stageNumbers = [...new Set(storySets.map((set) => set.stage))].sort((a, b) => a - b);
+    stageNumbers.forEach((stageNumber) => {
+      const info = storyStages.find((stage) => stage.stage === stageNumber);
+      const unlocked = isStageUnlocked(stageNumber);
+      const stageHeading = document.createElement("div");
+      stageHeading.className = `contrast-stage-heading${unlocked ? "" : " locked"}`;
+      stageHeading.textContent = info
+        ? `${unlocked ? "" : "🔒 "}Stage ${stageNumber}: ${info.name}${unlocked ? "" : `（友達${info.threshold}人で解放）`}`
+        : `Stage ${stageNumber}`;
+      container.appendChild(stageHeading);
+
+      storySets
+        .filter((set) => set.stage === stageNumber)
+        .forEach((set) => appendContrastButton(container, set, contrastSets.indexOf(set)));
+    });
+  }
+
+  if (drillSets.length) {
+    const heading = document.createElement("h3");
+    heading.className = "contrast-group-heading";
+    heading.textContent = "発音ドリル";
+    container.appendChild(heading);
+    drillSets.forEach((set) => appendContrastButton(container, set, contrastSets.indexOf(set)));
+  }
 }
 
 async function playModelVoice() {
@@ -395,8 +464,10 @@ async function loadContrastSets() {
   if (!response.ok) throw new Error("Contrast set を読み込めませんでした。");
   const body = await response.json();
   contrastSets = body.contrastSets || [];
+  storyStages = body.storyStages || [];
   renderContrastButtons();
   renderReference();
+  renderHomeStage();
 }
 
 async function startPcmRecording() {
@@ -1672,13 +1743,13 @@ $("clearSessionButton").onclick = () => {
 ["profileGender", "profileAge", "profileScene"].forEach((id) => {
   if ($(id)) $(id).onchange = saveMirrorProfile;
 });
+loadFriendCount();
+renderFriendCount();
+renderHomeCrowd();
 loadContrastSets().catch((error) => {
   console.error(error);
   $("contrastButtons").textContent = error.message;
 });
-loadFriendCount();
-renderFriendCount();
-renderHomeCrowd();
 loadMirrorProfile();
 saveMirrorProfile();
 loadSessionAttempts();

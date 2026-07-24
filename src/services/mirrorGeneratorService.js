@@ -215,6 +215,128 @@ const MEANING_MIRRORS = {
   "i have to work today.": {
     japanese: "今日は働かなければなりません。",
     listenerBase: "「今日は働かなければなりません。」と言いたいことは推測できます。"
+  },
+
+  // ここから下はストーリーモード用の練習文の意味。
+  "hi nice to meet you": {
+    japanese: "こんにちは、はじめまして。",
+    listenerBase: "「こんにちは、はじめまして。」と言いたいことは推測できます。"
+  },
+  "my name is sora": {
+    japanese: "私の名前はソラです。",
+    listenerBase: "「私の名前はソラです。」と言いたいことは推測できます。"
+  },
+  "thank you so much": {
+    japanese: "本当にありがとうございます。",
+    listenerBase: "「本当にありがとうございます。」と言いたいことは推測できます。"
+  },
+  "what time does school start": {
+    japanese: "学校は何時に始まりますか？",
+    listenerBase: "「学校は何時に始まりますか？」と言いたいことは推測できます。"
+  },
+  "lets walk together": {
+    japanese: "一緒に歩きましょう。",
+    listenerBase: "「一緒に歩きましょう。」と言いたいことは推測できます。"
+  },
+  "can i borrow your pen": {
+    japanese: "ペンを貸してもらえますか？",
+    listenerBase: "「ペンを貸してもらえますか？」と言いたいことは推測できます。"
+  },
+  "can i get a medium fries": {
+    japanese: "Mサイズのフライドポテトをください。",
+    listenerBase: "「Mサイズのフライドポテトをください。」と言いたいことは推測できます。"
+  },
+  "what time does the movie start": {
+    japanese: "映画は何時に始まりますか？",
+    listenerBase: "「映画は何時に始まりますか？」と言いたいことは推測できます。"
+  },
+  "how much is this": {
+    japanese: "これはいくらですか？",
+    listenerBase: "「これはいくらですか？」と言いたいことは推測できます。"
+  },
+  "can i use the bathroom first": {
+    japanese: "先にお風呂を使ってもいいですか？",
+    listenerBase: "「先にお風呂を使ってもいいですか？」と言いたいことは推測できます。"
+  },
+  "dinner smells great": {
+    japanese: "夕食がとてもいい匂いです。",
+    listenerBase: "「夕食がとてもいい匂いです。」と言いたいことは推測できます。"
+  },
+  "what time should i be back": {
+    japanese: "何時までに戻ればいいですか？",
+    listenerBase: "「何時までに戻ればいいですか？」と言いたいことは推測できます。"
+  },
+  "could you repeat the question": {
+    japanese: "質問をもう一度言ってもらえますか？",
+    listenerBase: "「質問をもう一度言ってもらえますか？」と言いたいことは推測できます。"
+  },
+  "i didnt catch that": {
+    japanese: "聞き取れませんでした。",
+    listenerBase: "「聞き取れませんでした。」と言いたいことは推測できます。"
+  },
+  "can i turn this in tomorrow": {
+    japanese: "これを明日提出してもいいですか？",
+    listenerBase: "「これを明日提出してもいいですか？」と言いたいことは推測できます。"
+  },
+  "let me walk you through this slide": {
+    japanese: "このスライドについて説明させてください。",
+    listenerBase: "「このスライドについて説明させてください。」と言いたいことは推測できます。"
+  },
+  "in conclusion this project was a success": {
+    japanese: "結論として、このプロジェクトは成功でした。",
+    listenerBase: "「結論として、このプロジェクトは成功でした。」と言いたいことは推測できます。"
+  },
+  "any questions so far": {
+    japanese: "ここまでで質問はありますか？",
+    listenerBase: "「ここまでで質問はありますか？」と言いたいことは推測できます。"
+  },
+  "i see your point but i disagree": {
+    japanese: "おっしゃることは分かりますが、私は反対です。",
+    listenerBase: "「おっしゃることは分かりますが、私は反対です。」と言いたいことは推測できます。"
+  },
+  "could you clarify that": {
+    japanese: "それを詳しく説明してもらえますか？",
+    listenerBase: "「それを詳しく説明してもらえますか？」と言いたいことは推測できます。"
+  },
+  "id like to add something": {
+    japanese: "一つ付け加えたいことがあります。",
+    listenerBase: "「一つ付け加えたいことがあります。」と言いたいことは推測できます。"
+  },
+  "ill have the draft ready by friday": {
+    japanese: "金曜日までに下書きを準備します。",
+    listenerBase: "「金曜日までに下書きを準備します。」と言いたいことは推測できます。"
+  },
+  "could you review this before the meeting": {
+    japanese: "会議の前にこれを確認してもらえますか？",
+    listenerBase: "「会議の前にこれを確認してもらえますか？」と言いたいことは推測できます。"
+  },
+  "im still learning but ill do my best": {
+    japanese: "まだ勉強中ですが、頑張ります。",
+    listenerBase: "「まだ勉強中ですが、頑張ります。」と言いたいことは推測できます。"
+  },
+  "id like to follow up on our last call": {
+    japanese: "前回のお電話の件でご連絡しました。",
+    listenerBase: "「前回のお電話の件でご連絡しました。」と言いたいことは推測できます。"
+  },
+  "lets align on next steps": {
+    japanese: "次のステップについてすり合わせましょう。",
+    listenerBase: "「次のステップについてすり合わせましょう。」と言いたいことは推測できます。"
+  },
+  "i look forward to working with you": {
+    japanese: "一緒に働けることを楽しみにしています。",
+    listenerBase: "「一緒に働けることを楽しみにしています。」と言いたいことは推測できます。"
+  },
+  "will you marry me": {
+    japanese: "結婚してくれますか？",
+    listenerBase: "「結婚してくれますか？」と言いたいことは推測できます。"
+  },
+  "i want to spend my life with you": {
+    japanese: "あなたと人生を共にしたいです。",
+    listenerBase: "「あなたと人生を共にしたいです。」と言いたいことは推測できます。"
+  },
+  "you mean everything to me": {
+    japanese: "あなたは私のすべてです。",
+    listenerBase: "「あなたは私のすべてです。」と言いたいことは推測できます。"
   }
 };
 
