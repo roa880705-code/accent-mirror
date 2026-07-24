@@ -3781,7 +3781,13 @@ function resampledDeviationForSegments(words, partCount) {
   });
 }
 
-const PITCH_PERCENT_PER_SEMITONE = 2.1;
+// SSMLの pitch="+X%" は乗算的な変化(周波数比)であり、1半音の周波数比は
+// 2^(1/12) ≈ 1.0595 なので、1半音を正しく表現するには約+5.9%が必要
+// (旧値の2.1%は約1/3しかなく、実測で「ネイティブが自然に思う音程の上下が
+// あるのに、ミラーは完璧な音程になっている」という実害があった。特に
+// モーラ単位の短い<prosody>タグに分割されるようになってからは、Azure側の
+// 補間でさらに弱まりやすい)。
+const PITCH_PERCENT_PER_SEMITONE = (Math.pow(2, 1 / 12) - 1) * 100;
 const PITCH_DEVIATION_PERCENT_CAP = 22;
 const PITCH_SEGMENT_PERCENT_CAP = 30;
 
