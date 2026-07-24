@@ -669,13 +669,27 @@ function inferMeaningFromFreeRecognition(text) {
 
   if (words.length < 3) return null;
 
-  if (words.join(" ") === "i will see you tomorrow") {
-    const japanese = "明日会いましょう。";
-    return {
-      japanese,
-      listenerBase: `「${japanese}」と言いたいことは推測できます。`,
-      inferred: true
-    };
+  // 完全一致("i will see you tomorrow")だけでなく、自由認識が実際に拾った
+  // 言い間違い(today への言い換えや、"and him" のような追加の人物)も日本語訳に
+  // 反映できるよう、"i will see you" の後ろを柔軟に解釈する(実機フィードバック:
+  // "自由認識が言い間違いをきちんと把握しているなら、mirror音声も、その言い
+  // 間違いの和訳を採用してほしい"。"I will see you and him today." が自由認識
+  // されたのに、日本語訳は参照文どおり「明日会いましょう」のままだった)。
+  if (words[0] === "i" && words[1] === "will" && words[2] === "see" && words[3] === "you" && words.length >= 5) {
+    const rest = words.slice(4);
+    const dayWord = rest[rest.length - 1];
+    const dayJapanese = dayWord === "today" ? "今日" : dayWord === "tomorrow" ? "明日" : null;
+    if (dayJapanese) {
+      const extraWords = rest.slice(0, -1);
+      const extraDictionary = { him: "彼", her: "彼女", them: "彼ら", us: "私たち" };
+      const extraJapanese = extraWords.length === 2 && extraWords[0] === "and" ? extraDictionary[extraWords[1]] : null;
+      const japanese = `${dayJapanese}${extraJapanese ? `${extraJapanese}と` : ""}会いましょう。`;
+      return {
+        japanese,
+        listenerBase: `「${japanese}」と言いたいことは推測できます。`,
+        inferred: true
+      };
+    }
   }
 
   if (words.join(" ") === "i have to work today") {
@@ -2632,7 +2646,18 @@ function confusableWordLocalEvents(words, meaningJapanese, freeRecognizedText) {
 function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature, freeRecognizedText }) {
   const meaningJapanese = meaning?.japanese || "";
   const byWord = new Map((words || []).map((word) => [String(word.word || word.original || "").toLowerCase(), word]));
-  const localEvents = [...confusableWordLocalEvents(words, meaningJapanese, freeRecognizedText)];
+  // meaning.source === "freeRecognition" のとき、inferMeaningFromFreeRecognition が
+  // 既に自由認識の言い換え(tomorrow→todayなど)を日本語訳全体に反映済み(実機
+  // フィードバックで追加した "i will see you and him today" 等のパターン)。
+  // confusableWordLocalEvents は同じ単語をさらに検出して alternate_word_local
+  // イベントを作り、dominantLocalTransformForRole で最優先(alternate)として
+  // セグメント全体を上書きしてしまう。文全体を反映済みのmeaningから作った
+  // セグメントの一部だけが単語1つ分の和訳に丸ごと置き換わり、他の反映が
+  // 消えてしまう(例: "今日彼と会いましょう。"が"今日"だけになる)ため、
+  // 自由認識ベースの意味がすでに使われている場合はこの重複検出をスキップする。
+  const localEvents = meaning?.source === "freeRecognition"
+    ? []
+    : [...confusableWordLocalEvents(words, meaningJapanese, freeRecognizedText)];
 
   (speechFeatures?.pronunciationEvents || []).forEach((event, index) => {
     const eventWord = String(event.word || "").toLowerCase().replace(/[^a-z]/g, "");
@@ -2855,10 +2880,18 @@ function splitMeaningForVoice(meaningJapanese) {
       { text: "持っています。", role: "predicate" }
     ];
   }
-  if (text.includes("明日会いましょう")) {
+  // 完全一致("明日会いましょう")だけでなく、自由認識の言い換え(今日への
+  // 差し替えや、"彼と"のような追加の人物)にも同じtime/predicate分割を
+  // 適用できるよう、日付語+残り(会いましょうまで)を正規表現で切り出す
+  // (実機フィードバック: "自由認識が言い間違いをきちんと把握しているなら、
+  // mirror音声も、その言い間違いの和訳を採用してほしい"。分割がこの完全一致に
+  // 頼っていたため、"今日彼と会いましょう。"が2区切りに分かれず、ピッチ輪郭の
+  // 粒度が粗くなっていた)。
+  const dayMeetingMatch = text.match(/^(今日|明日)(.*会いましょう。?)$/);
+  if (dayMeetingMatch) {
     return [
-      { text: "明日", role: "time" },
-      { text: "会いましょう。", role: "predicate" }
+      { text: dayMeetingMatch[1], role: "time" },
+      { text: dayMeetingMatch[2], role: "predicate" }
     ];
   }
   if (text.includes("今日は働かなければなりません")) {
