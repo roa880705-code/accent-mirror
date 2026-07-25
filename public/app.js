@@ -78,6 +78,20 @@ function renderSugorokuBoard() {
     const cell = document.createElement("div");
     cell.className = `sugoroku-cell${unlocked ? " unlocked" : " locked"}${isCurrent ? " current" : ""}`;
     cell.innerHTML = `${isCurrent ? '<span class="sugoroku-token">🚩</span>' : ""}<span class="cell-number">${unlocked ? stage.stage : "🔒"}</span><span class="cell-name">${stage.name}</span>`;
+    if (unlocked) {
+      cell.setAttribute("role", "button");
+      cell.setAttribute("tabindex", "0");
+      cell.title = `Stage ${stage.stage}: ${stage.name} を練習する`;
+      cell.onclick = () => goToStagePractice(stage.stage);
+      cell.onkeydown = (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          goToStagePractice(stage.stage);
+        }
+      };
+    } else {
+      cell.title = `友達${stage.threshold}人で解放`;
+    }
     track.appendChild(cell);
   });
 
@@ -91,6 +105,20 @@ function renderSugorokuBoard() {
 
   const currentCell = track.querySelector(".sugoroku-cell.current");
   if (currentCell) currentCell.scrollIntoView({ inline: "center", block: "nearest" });
+}
+
+// すごろくの解放済みマスをクリックしたときに、そのステージの最初の練習文を
+// 選んだ状態で練習画面へ移動し、練習セット一覧のそのステージまでスクロールする。
+function goToStagePractice(stageNumber) {
+  const target = contrastSets.find((set) => set.stage === stageNumber);
+  if (!target) return;
+  selectContrastSet(contrastSets.indexOf(target));
+  showPracticeScreen();
+  requestAnimationFrame(() => {
+    const heading = [...document.querySelectorAll(".contrast-stage-heading")]
+      .find((element) => element.textContent.includes(`Stage ${stageNumber}:`));
+    heading?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
 function wordCountForText(text) {

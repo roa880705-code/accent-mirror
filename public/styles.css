@@ -81,7 +81,10 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#111;color:#eee;borde
 .sugoroku-cell .cell-name{font-size:9.5px;line-height:1.15;padding:0 3px;color:inherit}
 .sugoroku-cell.locked{background:#eef0f5;border-color:#e2e5ee;color:#a3a8b3}
 .sugoroku-cell.locked .cell-number{color:#b7bccb}
-.sugoroku-cell.unlocked{background:#eafff3;border-color:#0f8a5f;color:#0f6b47}
+.sugoroku-cell.unlocked{background:#eafff3;border-color:#0f8a5f;color:#0f6b47;cursor:pointer}
+.sugoroku-cell.unlocked:hover,.sugoroku-cell.unlocked:focus-visible{transform:translateY(-3px);box-shadow:0 8px 16px rgba(15,138,95,.25);outline:none}
+.sugoroku-cell:nth-child(even).unlocked:hover,.sugoroku-cell:nth-child(even).unlocked:focus-visible{transform:translateY(-17px)}
+.sugoroku-cell.locked{cursor:not-allowed}
 .sugoroku-cell.current{background:#0f8a5f;border-color:#0b6f4c;color:#fff;box-shadow:0 0 0 4px rgba(15,138,95,.22)}
 .sugoroku-cell.current:nth-child(even){transform:translateY(-14px) scale(1.06)}
 .sugoroku-cell.current:nth-child(odd){transform:scale(1.06)}
