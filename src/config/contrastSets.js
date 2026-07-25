@@ -184,6 +184,24 @@ const contrastSets = [
     stage: 1
   },
   {
+    id: "greet-hi-hey",
+    label: "呼びかけ付きの挨拶",
+    text: "Hey, nice to meet you!",
+    critical: ["hey", "nice", "meet"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "hey の二重母音と nice/meet の子音連結を確認する",
+    stage: 1
+  },
+  {
+    id: "greet-thanks-oh",
+    label: "驚き付きのお礼",
+    text: "Oh, thank you so much!",
+    critical: ["thank"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "oh の母音と thank you の th 連結を確認する",
+    stage: 1
+  },
+  {
     id: "school-start-time",
     label: "登校中の会話",
     text: "What time does school start?",
@@ -202,12 +220,30 @@ const contrastSets = [
     stage: 2
   },
   {
+    id: "walk-together-yeah",
+    label: "同意しながらの提案",
+    text: "Yeah, let's walk together.",
+    critical: ["walk", "together"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "yeah の二重母音と walk together の連結を確認する",
+    stage: 2
+  },
+  {
     id: "borrow-pen",
     label: "文房具を借りる",
     text: "Can I borrow your pen?",
     critical: ["borrow", "pen"],
     intonationTarget: politeRequestQuestionIntonation,
     focus: "borrow の r と pen の語尾鼻音を確認する",
+    stage: 2
+  },
+  {
+    id: "borrow-pen-hey",
+    label: "呼びかけ付きのお願い",
+    text: "Hey, can I borrow your pen?",
+    critical: ["hey", "borrow", "pen"],
+    intonationTarget: politeRequestQuestionIntonation,
+    focus: "hey の呼びかけと borrow の r を確認する",
     stage: 2
   },
   {
@@ -238,6 +274,15 @@ const contrastSets = [
     stage: 3
   },
   {
+    id: "ask-price-oh",
+    label: "気づきながらの質問",
+    text: "Oh, how much is this?",
+    critical: ["much"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "oh の母音と how much の連結を確認する",
+    stage: 3
+  },
+  {
     id: "homestay-bathroom",
     label: "ホームステイの朝",
     text: "Can I use the bathroom first?",
@@ -253,6 +298,15 @@ const contrastSets = [
     critical: ["dinner", "smells"],
     intonationTarget: neutralStatementIntonation,
     focus: "dinner の n と smells の sm 連結を確認する",
+    stage: 4
+  },
+  {
+    id: "homestay-dinner-oh",
+    label: "驚き付きの夕食の時間",
+    text: "Oh, dinner smells great!",
+    critical: ["dinner", "smells"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "oh の母音と smells の語尾 z を確認する",
     stage: 4
   },
   {
@@ -388,6 +442,15 @@ const contrastSets = [
     critical: ["align"],
     intonationTarget: neutralStatementIntonation,
     focus: "align の l と語頭母音を確認する",
+    stage: 9
+  },
+  {
+    id: "biz-align-yeah",
+    label: "同意しながらの次ステップ確認",
+    text: "Yeah, let's align on next steps.",
+    critical: ["align"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "yeah の二重母音と align の l を確認する",
     stage: 9
   },
   {

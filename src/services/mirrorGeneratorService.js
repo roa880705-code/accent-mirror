@@ -431,6 +431,37 @@ const MEANING_MIRRORS = {
   "you mean everything to me": {
     japanese: "あなたは私のすべてです。",
     listenerBase: "「あなたは私のすべてです。」と言いたいことは推測できます。"
+  },
+
+  // 冒頭に相槌・感嘆詞を足した"追加"バリエーション(既存文は置き換えず、自然な
+  // 場合だけ別文として用意している)。
+  "hey nice to meet you": {
+    japanese: "ねえ、はじめまして！",
+    listenerBase: "「ねえ、はじめまして！」と言いたいことは推測できます。"
+  },
+  "oh thank you so much": {
+    japanese: "わあ、本当にありがとうございます！",
+    listenerBase: "「わあ、本当にありがとうございます！」と言いたいことは推測できます。"
+  },
+  "yeah lets walk together": {
+    japanese: "うん、一緒に歩きましょう。",
+    listenerBase: "「うん、一緒に歩きましょう。」と言いたいことは推測できます。"
+  },
+  "hey can i borrow your pen": {
+    japanese: "ねえ、ペンを貸してもらえますか？",
+    listenerBase: "「ねえ、ペンを貸してもらえますか？」と言いたいことは推測できます。"
+  },
+  "oh how much is this": {
+    japanese: "あ、これはいくらですか？",
+    listenerBase: "「あ、これはいくらですか？」と言いたいことは推測できます。"
+  },
+  "oh dinner smells great": {
+    japanese: "わあ、夕食がとてもいい匂いです！",
+    listenerBase: "「わあ、夕食がとてもいい匂いです！」と言いたいことは推測できます。"
+  },
+  "yeah lets align on next steps": {
+    japanese: "そうですね、次のステップについてすり合わせましょう。",
+    listenerBase: "「そうですね、次のステップについてすり合わせましょう。」と言いたいことは推測できます。"
   }
 };
 
