@@ -234,28 +234,54 @@ app.post("/api/contrast-session", (req, res) => {
   }
 });
 
-// 学習者のミラー音声プロフィール(性別・年代)に合わせて、Model English(お手本の
-// 英語音声)側の話者・速度・ピッチも変える。性別は別の話者(Neural voice)を
-// 選ぶ方が違いとして明確なのに対し、年代を専用の話者で表現できる確証がないため
-// (Azureの年代別ボイスは公式に保証された特性ではない)、年代は同じ話者のまま
-// 速度・ピッチを控えめに揺らす方法に留める。
+// 学習者のミラー音声プロフィール(性別・年代・場面)に合わせて、Model English(お手本の
+// 英語音声)・模範日本語ミラーの両方の話し方を「教科書的な読み上げ」ではなく、実際の
+// 会話の場面に近い自然な速さ・話し方に近づける(実機フィードバック: "現在の模範ミラー
+// 音声の読み上げは教科書的な読み上げ方だと思う。ビジネスシーンであればビジネス
+// パーソンが使うような言い回し、性別ぽい言い回しに")。性別は別の話者(Neural voice)を
+// 選ぶ方が違いとして明確なのに対し、年代・場面を専用の話者で表現できる確証がないため
+// (Azureの年代・場面別ボイスは公式に保証された特性ではない)、年代・場面は同じ話者の
+// まま速度・ピッチ・mstts:express-as styleを揺らす方法に留める。styleは話者によって
+// 対応可否が異なりここでは確証が持てないため、azureTtsService.synthesizeSpeech側で
+// 対応していない場合は自動的にstyleなしへフォールバックする。
 const MODEL_VOICE_BY_GENDER = { male: "en-US-GuyNeural", female: "en-US-JennyNeural" };
-const MODEL_VOICE_AGE_ADJUSTMENT = {
-  teens: { rate: "+4%", pitch: "+2%" },
-  "20s": { rate: "+0%", pitch: "+0%" },
-  "30s": { rate: "-3%", pitch: "-2%" }
+const SCENE_DELIVERY = {
+  daily: { style: "chat", rateDelta: 2 },
+  friend: { style: "chat", rateDelta: 4 },
+  business: { style: "", rateDelta: -2 },
+  travel: { style: "chat", rateDelta: 2 }
 };
+const AGE_DELIVERY = {
+  teens: { rateDelta: 4, pitchDelta: 2 },
+  "20s": { rateDelta: 0, pitchDelta: 0 },
+  "30s": { rateDelta: -3, pitchDelta: -2 }
+};
+
+function formatSignedPercent(value) {
+  const rounded = Math.round(value);
+  return `${rounded >= 0 ? "+" : ""}${rounded}%`;
+}
+
+function naturalDeliveryForProfile(profile) {
+  const scene = SCENE_DELIVERY[profile?.scene] || SCENE_DELIVERY.daily;
+  const age = AGE_DELIVERY[profile?.age] || AGE_DELIVERY["20s"];
+  return {
+    style: scene.style,
+    rate: formatSignedPercent(scene.rateDelta + age.rateDelta),
+    pitch: formatSignedPercent(age.pitchDelta)
+  };
+}
 
 app.post("/api/model-voice", async (req, res) => {
   try {
     const contrastSet = getContrastSet(req.body?.contrastSetId || req.body?.referenceText);
     const text = String(req.body?.referenceText || contrastSet.text || "").trim();
     const genderVoice = MODEL_VOICE_BY_GENDER[req.body?.gender];
-    const ageAdjustment = MODEL_VOICE_AGE_ADJUSTMENT[req.body?.age] || MODEL_VOICE_AGE_ADJUSTMENT["20s"];
+    const delivery = naturalDeliveryForProfile(req.body || {});
     const voice = req.body?.voice || genderVoice || process.env.MODEL_TTS_VOICE || "en-US-JennyNeural";
-    const rate = req.body?.rate || process.env.MODEL_TTS_RATE || ageAdjustment.rate;
-    const pitch = req.body?.pitch || process.env.MODEL_TTS_PITCH || ageAdjustment.pitch;
-    const style = req.body?.style || process.env.MODEL_TTS_STYLE || "";
+    const rate = req.body?.rate || process.env.MODEL_TTS_RATE || delivery.rate;
+    const pitch = req.body?.pitch || process.env.MODEL_TTS_PITCH || delivery.pitch;
+    const style = req.body?.style || process.env.MODEL_TTS_STYLE || delivery.style;
 
     if (!text) return res.status(400).json({ error: "referenceText is required" });
 
@@ -276,10 +302,17 @@ app.post("/api/mirror-voice", async (req, res) => {
     const source = req.body?.source === "meaning" ? "meaning" : "voice";
     const text = source === "meaning" ? req.body?.meaningJapanese : req.body?.voiceText;
     const voice = req.body?.voice || process.env.MIRROR_TTS_VOICE || "ja-JP-NanamiNeural";
-    const rate = req.body?.rate || "-4%";
-    const pitch = req.body?.pitch || "+0Hz";
+    // 模範日本語ミラー(source: "model-japanese-mirror")は、癖の反映を行わない
+    // 「正しい発音の基準」のはずが、rate/pitch固定("+0%"/"+0Hz")の平板な読み上げに
+    // なっていた。実際のミラー音声(癖の反映を含む、voicePlanで計算済みのrate/pitch)
+    // はそのまま使い、模範日本語ミラーの時だけ場面・性別・年代に応じた自然な
+    // 話し方(naturalDeliveryForProfile)に置き換える。
+    const isModelMirror = req.body?.source === "model-japanese-mirror";
+    const delivery = isModelMirror ? naturalDeliveryForProfile(req.body?.profile || {}) : null;
+    const rate = isModelMirror ? (process.env.MIRROR_TTS_RATE || delivery.rate) : (req.body?.rate || "-4%");
+    const pitch = isModelMirror ? (process.env.MIRROR_TTS_PITCH || delivery.pitch) : (req.body?.pitch || "+0Hz");
     const pausePattern = req.body?.pausePattern || "plain";
-    const style = req.body?.style || process.env.MIRROR_TTS_STYLE || "";
+    const style = isModelMirror ? (process.env.MIRROR_TTS_STYLE || delivery.style) : (req.body?.style || process.env.MIRROR_TTS_STYLE || "");
     const voiceScript = req.body?.voiceScript && Array.isArray(req.body.voiceScript.segments)
       ? req.body.voiceScript
       : null;

@@ -494,7 +494,8 @@ async function playModelVoice() {
         contrastSetId: set.id,
         referenceText: set.text,
         gender: mirrorProfile.gender,
-        age: mirrorProfile.age
+        age: mirrorProfile.age,
+        scene: mirrorProfile.scene
       })
     });
 
@@ -1692,8 +1693,6 @@ async function playModelMirrorVoice() {
         meaningJapanese: text,
         confidence: "high",
         voice: mirrorVoiceForProfile(),
-        rate: "+0%",
-        pitch: "+0Hz",
         pausePattern: "plain",
         profile: mirrorProfile,
         voiceScript: null

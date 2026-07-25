@@ -200,6 +200,28 @@ async function synthesizeJapaneseSpeech({
   });
 }
 
+async function requestSpeechAudio(ssml, { key, region, outputFormat }) {
+  const response = await fetch(`https://${encodeURIComponent(region)}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+    method: "POST",
+    headers: {
+      "Ocp-Apim-Subscription-Key": key,
+      "Content-Type": "application/ssml+xml",
+      "X-Microsoft-OutputFormat": outputFormat,
+      "User-Agent": "AccentMirror"
+    },
+    body: ssml
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    const error = new Error(`Azure TTS error: ${response.status} ${detail}`);
+    error.statusCode = response.status;
+    throw error;
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}
+
 async function synthesizeSpeech({
   text,
   voice,
@@ -222,30 +244,27 @@ async function synthesizeSpeech({
   }
 
   const ssml = buildSsml({ text: spokenText, voice, rate, pitch, pausePattern, style, voiceScript, language });
-  const response = await fetch(`https://${encodeURIComponent(region)}.tts.speech.microsoft.com/cognitiveservices/v1`, {
-    method: "POST",
-    headers: {
-      "Ocp-Apim-Subscription-Key": key,
-      "Content-Type": "application/ssml+xml",
-      "X-Microsoft-OutputFormat": outputFormat,
-      "User-Agent": "AccentMirror"
-    },
-    body: ssml
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    const error = new Error(`Azure TTS error: ${response.status} ${detail}`);
-    error.statusCode = response.status;
-    throw error;
+  let audio;
+  let appliedStyle = style;
+  try {
+    audio = await requestSpeechAudio(ssml, { key, region, outputFormat });
+  } catch (error) {
+    // mstts:express-as の style は話者(voice)によって対応不可の場合Azure側が
+    // エラーを返す。どの話者がどのstyleに対応しているかをここでは確証できない
+    // ため(実機での検証ができない)、style指定が原因の失敗ならstyleなしで
+    // 1度だけ再試行し、話し方の自然さ改善が丸ごと壊れないようにする。
+    if (!style || error.statusCode >= 500) throw error;
+    const fallbackSsml = buildSsml({ text: spokenText, voice, rate, pitch, pausePattern, style: "", voiceScript, language });
+    audio = await requestSpeechAudio(fallbackSsml, { key, region, outputFormat });
+    appliedStyle = "";
   }
 
   return {
-    audio: Buffer.from(await response.arrayBuffer()),
+    audio,
     contentType: outputFormat.startsWith("riff") ? "audio/wav" : "audio/mpeg",
     voice,
     spokenText,
-    ssmlPlan: { rate, pitch, pausePattern, style: style || "none", voiceScript: voiceScript?.version || "none", language }
+    ssmlPlan: { rate, pitch, pausePattern, style: appliedStyle || "none", voiceScript: voiceScript?.version || "none", language }
   };
 }
 
