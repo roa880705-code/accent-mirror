@@ -1648,6 +1648,33 @@ function buildLengthAndPronunciationSignals(words) {
       }
     }
 
+    if (THIRD_PERSON_S_VERBS.has(word.word)) {
+      const sPhoneName = String(finalPhone?.phone || "").toLowerCase();
+      if (finalPhone && (sPhoneName === "s" || sPhoneName === "z")) {
+        const sScore = Number(finalPhone.score ?? 100);
+        const sMs = phoneMs(finalPhone);
+        // スコア・長さのどちらかが「ほぼ聞こえない」域に入っている場合だけ、
+        // 三単現の -s が丸ごと抜けた(文法的な聞こえ方)候補として扱う。中途半端に
+        // 弱い程度(スコアがもう少し高い、長さがもう少し残っているなど)は、他の
+        // 語尾子音と同じ「輪郭が弱い」という一般的な調音の弱さ止まりとする。
+        const sNearlyGone = sScore < 40 || (sMs !== null && sMs < 40);
+        if (sNearlyGone) {
+          handledFinalPhones.add(sPhoneName);
+          signals.push(`${word.word}-third-person-s-drop`);
+          events.push({
+            key: `${word.word}:third-person-s-drop`,
+            type: "final-consonant",
+            word: word.original,
+            strength: "strong",
+            level: "high",
+            label: `${word.original} の三人称単数の s が抜けている`,
+            detail: `語尾の ${sPhoneName} は score ${Math.round(sScore)}${sMs !== null ? ` / 約${sMs}ms` : ""}で、ほぼ聞こえていません。語尾の子音がただ弱いというより、三人称単数現在の -s がまるごと抜けている(文法的な聞こえ方の)候補です。`,
+            action: `${word.original} の -s を、輪郭だけでも短く残す(主語が he/she/it のときに付く語尾だと意識する)。`
+          });
+        }
+      }
+    }
+
     const finalVowel = finalPhone && isVowelPhone(finalPhone.phone) ? finalPhone : null;
     const finalVowelMs = finalVowel ? phoneMs(finalVowel) : null;
     // 語尾の母音(here の ɪɹ など)はr音化・文末伸長で自然に長くなるため、絶対的な
@@ -2629,6 +2656,13 @@ function phoneNameFromPronunciationEvent(event) {
 // 「today」を注記し、ミラーにも反映する)なので同じ仕組みに載せる
 // (実機フィードバック: "todayと発音した部分を、tomorrowのまま分析している。
 // →tomorrowのまま分析した結果、todayに聞こえてる、が正解")。
+// 三人称単数現在の -s が語尾に付く動詞(このアプリの練習文で使われるもの)。
+// 語尾の s/z がほぼ完全に脱落している場合、単なる子音の弱さ(調音の問題)ではなく、
+// 三単現の -s を落とす文法的な癖として聞こえる可能性が高いため、分析まとめの
+// 文言だけを専用にする(音声ミラー自体の反映方法は他の語尾子音弱化と同じ
+// consonant_or_phonics 系のまま変えない)。
+const THIRD_PERSON_S_VERBS = new Set(["smells"]);
+
 const CONFUSABLE_WORD_PAIRS = {
   light: { alternate: "right", alternateJapanese: "右" },
   right: { alternate: "light", alternateJapanese: "軽い" },
@@ -2716,7 +2750,15 @@ function issueTypeForPronunciationEvent(event) {
 function mirrorActionForLocalEvent(issueType, event) {
   if (issueType === "pause_or_unlinked") return "該当する日本語の区切りだけに短い間を入れる。全体を遅くしない。";
   if (issueType === "katakana_delivery") return "子音を欠落させず、該当する日本語を粒立てて母音つきに聞こえるようにする。";
-  if (issueType === "consonant_or_phonics") return "該当する語句だけ子音の輪郭を少し弱める。別種類の癖には置き換えない。";
+  if (issueType === "consonant_or_phonics") {
+    // 三単現の -s 脱落は、他の語尾子音弱化と同じ音声反映(子音の輪郭を弱める)を
+    // 使うが、コーチングの文言だけは「調音が甘い」ではなく「-s を意識する」に
+    // する(絶対ルールで音声ミラー自体は変えないため、issueTypeは変えず文言のみ分岐)。
+    if (String(event?.key || "").includes("third-person-s-drop")) {
+      return "音声の反映自体は他の語尾子音と同じ弱化に留めるが、練習では主語(he/she/it)に対応する -s を意識して残す。";
+    }
+    return "該当する語句だけ子音の輪郭を少し弱める。別種類の癖には置き換えない。";
+  }
   if (issueType === "liquid_confusion") return "該当する語句のr/lの輪郭を少し弱める(母音だけ残す欠落)。他の子音弱化と同じ扱いにする。";
   if (issueType === "length") return "該当する母音・語尾だけを少し伸ばす。文全体を崩さない。";
   if (issueType === "linking") return "該当する語句だけを少し連結して聞こえるようにする。";
