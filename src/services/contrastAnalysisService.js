@@ -195,7 +195,8 @@ function analyzeAzureRaw(raw, contrastSet, options = {}) {
     rhythmHints: options.rhythmHints,
     intonationFeatures: options.intonationFeatures,
     freeRecognizedText,
-    utteranceCheck
+    utteranceCheck,
+    profile: options.profile
   });
 
   return {

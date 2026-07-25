@@ -410,6 +410,127 @@ const contrastSets = [
     intonationTarget: neutralStatementIntonation,
     focus: "everything の th と語尾 ng を確認する",
     stage: 10
+  },
+
+  // ここから下は相槌・感嘆詞・呼びかけ表現。ステージに関係なく常時解放し、
+  // 日本語ミラー訳は年代・性別のプロフィール(mirrorProfile)によって変わる
+  // ものがある(CASUAL_EXPRESSION_MIRRORS参照)。
+  {
+    id: "react-uhhuh",
+    label: "軽い相槌",
+    text: "Uh huh.",
+    critical: ["uh", "huh"],
+    intonationTarget: neutralFragmentIntonation,
+    focus: "uh/huh の弱い母音と鼻にかかる音を確認する",
+    category: "reaction"
+  },
+  {
+    id: "react-yeah",
+    label: "カジュアルな相槌",
+    text: "Yeah.",
+    critical: ["yeah"],
+    intonationTarget: neutralFragmentIntonation,
+    focus: "yeah の二重母音と語尾の抜き方を確認する",
+    category: "reaction"
+  },
+  {
+    id: "react-isee",
+    label: "納得の相槌",
+    text: "I see.",
+    critical: ["see"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "see の長母音と文末の下がり方を確認する",
+    category: "reaction"
+  },
+  {
+    id: "react-really",
+    label: "驚きの聞き返し",
+    text: "Really?",
+    critical: ["really"],
+    intonationTarget: politeRequestQuestionIntonation,
+    focus: "really の r と文末の上がり方を確認する",
+    category: "reaction"
+  },
+  {
+    id: "react-gotit",
+    label: "理解の相槌",
+    text: "Got it.",
+    critical: ["got"],
+    intonationTarget: neutralFragmentIntonation,
+    focus: "got it の連結と語尾の t を確認する",
+    category: "reaction"
+  },
+  {
+    id: "react-soundsgood",
+    label: "同意の相槌",
+    text: "Sounds good.",
+    critical: ["sounds"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "sounds の語尾の z と連結を確認する",
+    category: "reaction"
+  },
+  {
+    id: "react-noway",
+    label: "驚きの感嘆詞",
+    text: "No way!",
+    critical: ["way"],
+    intonationTarget: neutralFragmentIntonation,
+    focus: "way の二重母音と感嘆の強さを確認する",
+    category: "reaction"
+  },
+  {
+    id: "react-thatsgreat",
+    label: "喜びの感嘆詞",
+    text: "That's great!",
+    critical: ["great"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "great の gr 連結と語尾の t を確認する",
+    category: "reaction"
+  },
+  {
+    id: "react-ohiunderstand",
+    label: "納得の感嘆詞",
+    text: "Oh, I understand.",
+    critical: ["understand"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "understand の連結と語尾の d を確認する",
+    category: "reaction"
+  },
+  {
+    id: "react-sorrytohear",
+    label: "共感の相槌",
+    text: "I'm sorry to hear that.",
+    critical: ["sorry"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "sorry の r と文末の下がり方を確認する",
+    category: "reaction"
+  },
+  {
+    id: "react-hey",
+    label: "呼びかけ",
+    text: "Hey!",
+    critical: ["hey"],
+    intonationTarget: neutralFragmentIntonation,
+    focus: "hey の二重母音と呼びかけの強さを確認する",
+    category: "reaction"
+  },
+  {
+    id: "react-heyguys",
+    label: "グループへの呼びかけ",
+    text: "Hey, guys!",
+    critical: ["guys"],
+    intonationTarget: neutralFragmentIntonation,
+    focus: "guys の二重母音と語尾の z を確認する",
+    category: "reaction"
+  },
+  {
+    id: "react-thanksguys",
+    label: "みんなへのお礼",
+    text: "Thanks, guys.",
+    critical: ["thanks", "guys"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "thanks の子音連結と guys の語尾 z を確認する",
+    category: "reaction"
   }
 ];
 

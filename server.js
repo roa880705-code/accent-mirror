@@ -155,6 +155,11 @@ app.post("/api/assess", async (req, res) => {
 
     const recordingDurationMs = Number(req.query.durationMs || 0) || null;
     const rhythmHints = parseJsonQuery(req.query.rhythmHints) || {};
+    const profile = {
+      gender: req.query.gender === "male" ? "male" : req.query.gender === "female" ? "female" : undefined,
+      age: ["teens", "20s", "30s"].includes(req.query.age) ? req.query.age : undefined,
+      scene: req.query.scene || undefined
+    };
     const [azureResult, freeRecognition, modelReference] = await Promise.all([
       assessPronunciationFromWav(req.body, referenceText),
       recognizeEnglishFromWav(req.body).catch((error) => ({ text: "", raw: {}, error: String(error.message || error) })),
@@ -181,7 +186,8 @@ app.post("/api/assess", async (req, res) => {
       rhythmHints,
       intonationFeatures,
       freeRecognizedText: freeRecognition.text || "",
-      freeRecognitionError: freeRecognition.error || ""
+      freeRecognitionError: freeRecognition.error || "",
+      profile
     });
 
     res.json({
