@@ -267,7 +267,10 @@ function analyzePitchFromWav(buffer) {
     finalRise,
     finalFall,
     contour,
-    confidence: voicedFrameCount >= 8 ? "medium" : "low"
+    confidence: voicedFrameCount >= 8 ? "medium" : "low",
+    // buildDeviationTimelineFromSpansのuserTrackと同じ理由(二重計算回避)で、
+    // 既に計算済みのtrackをそのまま呼び出し元へ返す。
+    userTrack: track
   };
 }
 
@@ -283,8 +286,15 @@ function percentile(sortedValues, fraction) {
 // 単純なmax-minだと外れ値1つで大きく振れてしまうため。分類(flat/natural/
 // expressive)や反映量への変換はmirrorGeneratorService側の責務とし、ここでは
 // 生の音響指標だけを返す。
-function analyzeExpressiveness(buffer) {
-  const track = extractPitchTrack(buffer);
+// extractPitchTrackは自己相関ベースでそれなりに計算コストがかかり、モデル比較
+// (pitchAlignmentService.buildDeviationTimelineFromSpans)が既に同じユーザー音声で
+// 一度計算済みのことが多い。二重計算による処理時間の増加(実機フィードバック:
+// "進む時と進まない時がある")を避けるため、呼び出し側で既に計算済みのtrackが
+// あればそれをそのまま渡せるようにし、なければbufferから計算する。
+function analyzeExpressiveness(bufferOrTrack) {
+  const track = bufferOrTrack && bufferOrTrack.available !== undefined && Array.isArray(bufferOrTrack.frames)
+    ? bufferOrTrack
+    : extractPitchTrack(bufferOrTrack);
   if (!track.available) return { available: false, reason: track.reason };
 
   const semitoneOffsets = track.frames

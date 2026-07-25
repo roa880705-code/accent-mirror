@@ -185,7 +185,11 @@ app.post("/api/assess", async (req, res) => {
     // 感情をどれだけ込めているかの「程度」をミラーへ反映するための指標。
     // モデル比較(deviation)とは別に、録音そのもの(話者内)のピッチ・音量の
     // 動的レンジを見るので、モデル参照の有無に関わらず常に計算できる。
-    const expressiveness = analyzeExpressiveness(req.body);
+    // ただしextractPitchTrackは計算コストがあり、上のbuildDeviationTimelineが
+    // 既に同じユーザー音声で一度計算済み(userTrack)のことが多いため、二重に
+    // 計算せずそれを再利用する(実機フィードバック: 診断が時々止まって進まない=
+    // 負荷の高い環境で二重計算が処理時間を押し上げていた可能性への対応)。
+    const expressiveness = analyzeExpressiveness(intonationFeatures.userTrack || req.body);
 
     const analysis = analyzeAzureRaw(azureResult.raw, { ...contrastSet, text: referenceText }, {
       recordingDurationMs,

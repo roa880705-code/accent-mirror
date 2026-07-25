@@ -155,7 +155,14 @@ function buildDeviationTimelineFromSpans({ modelWavBuffer, modelSpans, userWavBu
     pairCount,
     modelWordCount: modelWords.length,
     userWordCount: userWords.length,
-    confidence: pairCount >= 3 && modelTrack.voicedFrameCount >= 8 && userTrack.voicedFrameCount >= 8 ? "high" : "medium"
+    confidence: pairCount >= 3 && modelTrack.voicedFrameCount >= 8 && userTrack.voicedFrameCount >= 8 ? "high" : "medium",
+    // ユーザー音声のピッチ抽出(extractPitchTrack)は自己相関ベースでそれなりに
+    // 計算コストがかかる。表現力(感情の込め方の程度)判定でも同じユーザー音声から
+    // 同じ抽出をもう一度行うと、1リクエストあたりの処理時間が単純に倍になり
+    // (実機フィードバック: "進む時と進まない時がある" = 負荷の高いRender
+    // Starterプランで時々タイムアウトしていた可能性)、二重計算を避けるために
+    // ここで一度だけ計算したuserTrackをそのまま呼び出し元へ返す。
+    userTrack
   };
 }
 
