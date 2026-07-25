@@ -110,9 +110,13 @@ const FREE_RECOGNITION_KANA = {
 // 変わるわけではない(uh huh/got itなどは年代差の方が大きい)ため、性別条件を
 // 付けない variant も許容する。
 const CASUAL_EXPRESSION_MIRRORS = {
+  // uh huh は「うん(=yes)」という単語ではなく、相槌としての鼻音の唸り(hum)なので、
+  // 実際の単語のように聞こえる「うん」「ええ」ではなく、唸り声に近い「んっ」
+  // 「んー」で和訳する(実機フィードバック: "和訳は「うん」ではない。相槌なので、
+  // 「んっ」")。
   "uh huh": {
-    japanese: "うん。",
-    variants: [{ ageGroups: ["30s"], japanese: "ええ。" }]
+    japanese: "んっ。",
+    variants: [{ ageGroups: ["30s"], japanese: "んー。" }]
   },
   yeah: {
     japanese: "そうですね。",
@@ -755,7 +759,10 @@ function normalizeText(text) {
 }
 
 function sentenceMeaningKey(text) {
-  return normalizeText(text).replace(/[^a-z\s]/g, "").replace(/\s+/g, " ").trim();
+  // contrastAnalysisService.sentenceNorm と同じ理由でハイフンを先にスペース化する
+  // (例: 自由認識の "Uh-huh." と参照文の "Uh huh." が別キーになって意味が引けない
+  // 実害を防ぐ)。
+  return normalizeText(text).replace(/-/g, " ").replace(/[^a-z\s]/g, "").replace(/\s+/g, " ").trim();
 }
 
 function freeRecognitionPhoneticText(text) {
@@ -1893,7 +1900,13 @@ function classifyIntonationAgainstTargetLegacy(intonationFeatures, intonationTar
 // 同じ値を参照できるよう、判定ロジックとは別関数として切り出しておく。
 function positiveDeviationToleranceFor(intonationTarget = {}) {
   const expected = intonationTarget.expectedFinalContour || "neutral";
-  return expected === "neutral_or_falling" && Number.isFinite(Number(intonationTarget.overRiseAbove))
+  // "neutral_or_falling"(平叙文)だけでなく "neutral"(Could/Help や相槌・感嘆詞などの
+  // 断片)も対象に含める。含めていなかったため、断片用の intonationTarget に
+  // overRiseAbove を設定していても常にグローバルな strongDeviationSemitone(2.2半音)
+  // にフォールバックしてしまい、設定値が死んでいた(実機フィードバック: 正しく
+  // 発音した"Uh huh."がモデル比較で+5.7半音の差となり、over_rising・疑問形寄りの
+  // 反映(「うん。」→「うん？」)にされてしまった)。
+  return (expected === "neutral_or_falling" || expected === "neutral") && Number.isFinite(Number(intonationTarget.overRiseAbove))
     ? Number(intonationTarget.overRiseAbove)
     : pitchThresholds.strongDeviationSemitone;
 }

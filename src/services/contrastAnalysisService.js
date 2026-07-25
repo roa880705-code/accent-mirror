@@ -15,7 +15,13 @@ function norm(word) {
 }
 
 function sentenceNorm(text) {
-  return String(text || "").toLowerCase().replace(/[^a-z\s]/g, "").replace(/\s+/g, " ").trim();
+  // ハイフンを先にスペースへ変換してから除去する。そうしないと "Uh-huh"(ハイフン
+  // あり)が "uhhuh" に、"Uh huh"(スペース区切り)が "uh huh" になり、同じ発話の
+  // 表記ゆれ(Azureの自由認識は "Uh-huh." のようにハイフン付きで書き起こすことが
+  // ある)なのに別文として possible_mismatch 判定されてしまう(実機フィードバック:
+  // "Uh huh."を参照文にした練習で、自由認識が"Uh-huh."と書き起こしたために
+  // 不一致候補として扱われた)。
+  return String(text || "").toLowerCase().replace(/-/g, " ").replace(/[^a-z\s]/g, "").replace(/\s+/g, " ").trim();
 }
 
 function isConsonant(phone) {

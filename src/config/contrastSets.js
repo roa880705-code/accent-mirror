@@ -25,6 +25,21 @@ const neutralFragmentIntonation = {
   flatRange: [-0.8, 0.8]
 };
 
+// 相槌・感嘆詞(uh huh, yeah, got itなど、疑問文ではないもの)は、一語文の
+// neutralFragmentIntonation よりもさらに自然な音程の振れ幅が大きい(正しく
+// 発音していても、モデル音声基準で数半音のズレが出やすい)。実機フィードバックで、
+// 正しく発音した"Uh huh."がモデル比較+5.7半音の差で「疑問形寄り」(うん。→うん？)
+// に誤反映された事例があったため、over_rising/falling_questionの許容幅を広げた
+// 専用のintonationTargetを用意する。
+const backchannelIntonation = {
+  sentenceType: "backchannel",
+  expectedFinalContour: "neutral",
+  naturalRiseRange: [-2.5, 4.0],
+  overRiseAbove: 7.5,
+  fallingBelow: -4.0,
+  flatRange: [-1.2, 1.5]
+};
+
 const contrastSets = [
   {
     id: "could-only",
@@ -420,7 +435,7 @@ const contrastSets = [
     label: "軽い相槌",
     text: "Uh huh.",
     critical: ["uh", "huh"],
-    intonationTarget: neutralFragmentIntonation,
+    intonationTarget: backchannelIntonation,
     focus: "uh/huh の弱い母音と鼻にかかる音を確認する",
     category: "reaction"
   },
@@ -429,7 +444,7 @@ const contrastSets = [
     label: "カジュアルな相槌",
     text: "Yeah.",
     critical: ["yeah"],
-    intonationTarget: neutralFragmentIntonation,
+    intonationTarget: backchannelIntonation,
     focus: "yeah の二重母音と語尾の抜き方を確認する",
     category: "reaction"
   },
@@ -438,7 +453,7 @@ const contrastSets = [
     label: "納得の相槌",
     text: "I see.",
     critical: ["see"],
-    intonationTarget: neutralStatementIntonation,
+    intonationTarget: backchannelIntonation,
     focus: "see の長母音と文末の下がり方を確認する",
     category: "reaction"
   },
@@ -456,7 +471,7 @@ const contrastSets = [
     label: "理解の相槌",
     text: "Got it.",
     critical: ["got"],
-    intonationTarget: neutralFragmentIntonation,
+    intonationTarget: backchannelIntonation,
     focus: "got it の連結と語尾の t を確認する",
     category: "reaction"
   },
@@ -465,7 +480,7 @@ const contrastSets = [
     label: "同意の相槌",
     text: "Sounds good.",
     critical: ["sounds"],
-    intonationTarget: neutralStatementIntonation,
+    intonationTarget: backchannelIntonation,
     focus: "sounds の語尾の z と連結を確認する",
     category: "reaction"
   },
@@ -474,7 +489,7 @@ const contrastSets = [
     label: "驚きの感嘆詞",
     text: "No way!",
     critical: ["way"],
-    intonationTarget: neutralFragmentIntonation,
+    intonationTarget: backchannelIntonation,
     focus: "way の二重母音と感嘆の強さを確認する",
     category: "reaction"
   },
@@ -483,7 +498,7 @@ const contrastSets = [
     label: "喜びの感嘆詞",
     text: "That's great!",
     critical: ["great"],
-    intonationTarget: neutralStatementIntonation,
+    intonationTarget: backchannelIntonation,
     focus: "great の gr 連結と語尾の t を確認する",
     category: "reaction"
   },
@@ -492,7 +507,7 @@ const contrastSets = [
     label: "納得の感嘆詞",
     text: "Oh, I understand.",
     critical: ["understand"],
-    intonationTarget: neutralStatementIntonation,
+    intonationTarget: backchannelIntonation,
     focus: "understand の連結と語尾の d を確認する",
     category: "reaction"
   },
@@ -501,7 +516,7 @@ const contrastSets = [
     label: "共感の相槌",
     text: "I'm sorry to hear that.",
     critical: ["sorry"],
-    intonationTarget: neutralStatementIntonation,
+    intonationTarget: backchannelIntonation,
     focus: "sorry の r と文末の下がり方を確認する",
     category: "reaction"
   },
@@ -510,7 +525,7 @@ const contrastSets = [
     label: "呼びかけ",
     text: "Hey!",
     critical: ["hey"],
-    intonationTarget: neutralFragmentIntonation,
+    intonationTarget: backchannelIntonation,
     focus: "hey の二重母音と呼びかけの強さを確認する",
     category: "reaction"
   },
@@ -519,7 +534,7 @@ const contrastSets = [
     label: "グループへの呼びかけ",
     text: "Hey, guys!",
     critical: ["guys"],
-    intonationTarget: neutralFragmentIntonation,
+    intonationTarget: backchannelIntonation,
     focus: "guys の二重母音と語尾の z を確認する",
     category: "reaction"
   },
@@ -528,7 +543,7 @@ const contrastSets = [
     label: "みんなへのお礼",
     text: "Thanks, guys.",
     critical: ["thanks", "guys"],
-    intonationTarget: neutralStatementIntonation,
+    intonationTarget: backchannelIntonation,
     focus: "thanks の子音連結と guys の語尾 z を確認する",
     category: "reaction"
   }
