@@ -492,7 +492,9 @@ async function playModelVoice() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contrastSetId: set.id,
-        referenceText: set.text
+        referenceText: set.text,
+        gender: mirrorProfile.gender,
+        age: mirrorProfile.age
       })
     });
 

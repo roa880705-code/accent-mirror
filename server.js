@@ -234,13 +234,27 @@ app.post("/api/contrast-session", (req, res) => {
   }
 });
 
+// 学習者のミラー音声プロフィール(性別・年代)に合わせて、Model English(お手本の
+// 英語音声)側の話者・速度・ピッチも変える。性別は別の話者(Neural voice)を
+// 選ぶ方が違いとして明確なのに対し、年代を専用の話者で表現できる確証がないため
+// (Azureの年代別ボイスは公式に保証された特性ではない)、年代は同じ話者のまま
+// 速度・ピッチを控えめに揺らす方法に留める。
+const MODEL_VOICE_BY_GENDER = { male: "en-US-GuyNeural", female: "en-US-JennyNeural" };
+const MODEL_VOICE_AGE_ADJUSTMENT = {
+  teens: { rate: "+4%", pitch: "+2%" },
+  "20s": { rate: "+0%", pitch: "+0%" },
+  "30s": { rate: "-3%", pitch: "-2%" }
+};
+
 app.post("/api/model-voice", async (req, res) => {
   try {
     const contrastSet = getContrastSet(req.body?.contrastSetId || req.body?.referenceText);
     const text = String(req.body?.referenceText || contrastSet.text || "").trim();
-    const voice = req.body?.voice || process.env.MODEL_TTS_VOICE || "en-US-JennyNeural";
-    const rate = req.body?.rate || process.env.MODEL_TTS_RATE || "+0%";
-    const pitch = req.body?.pitch || process.env.MODEL_TTS_PITCH || "+0Hz";
+    const genderVoice = MODEL_VOICE_BY_GENDER[req.body?.gender];
+    const ageAdjustment = MODEL_VOICE_AGE_ADJUSTMENT[req.body?.age] || MODEL_VOICE_AGE_ADJUSTMENT["20s"];
+    const voice = req.body?.voice || genderVoice || process.env.MODEL_TTS_VOICE || "en-US-JennyNeural";
+    const rate = req.body?.rate || process.env.MODEL_TTS_RATE || ageAdjustment.rate;
+    const pitch = req.body?.pitch || process.env.MODEL_TTS_PITCH || ageAdjustment.pitch;
     const style = req.body?.style || process.env.MODEL_TTS_STYLE || "";
 
     if (!text) return res.status(400).json({ error: "referenceText is required" });
