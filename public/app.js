@@ -418,6 +418,10 @@ function selectContrastSet(index) {
   clearResult();
 }
 
+function scrollToRecordSection() {
+  $("stepRecordSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function appendContrastButton(container, set, index) {
   const unlocked = !set.stage || isStageUnlocked(set.stage);
   const button = document.createElement("button");
@@ -428,7 +432,12 @@ function appendContrastButton(container, set, index) {
   button.innerHTML = unlocked
     ? `${badge}<strong>${set.label}</strong><br>${set.text}<br><span class="minor">${set.focus}</span>`
     : `<strong>🔒 ${set.label}</strong>`;
-  if (unlocked) button.onclick = () => selectContrastSet(index);
+  if (unlocked) {
+    button.onclick = () => {
+      selectContrastSet(index);
+      scrollToRecordSection();
+    };
+  }
   container.appendChild(button);
 }
 
