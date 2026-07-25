@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node server.js",
     "start:3003": "set PORT=3003&& node server.js",
-    "check": "node --check server.js && node --check src/services/mirrorGeneratorService.js && node --check src/services/azureTtsService.js && node --check public/app.js",
+    "check": "node --check server.js && node --check src/services/mirrorGeneratorService.js && node --check src/services/azureTtsService.js && node --check src/services/openaiTtsService.js && node --check public/app.js",
     "smoke:v012": "node scripts/smoke-v012.js"
   },
   "dependencies": {

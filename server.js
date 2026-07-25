@@ -10,6 +10,7 @@ const { synthesizeJapaneseSpeech, synthesizeEnglishModelSpeech, synthesizeEnglis
 const { analyzePitchFromWav, analyzeExpressiveness } = require("./src/services/audioPitchService");
 const { buildDeviationTimeline, buildDeviationTimelineFromSpans } = require("./src/services/pitchAlignmentService");
 const { buildNeutralVoiceScriptFromSegments, buildJapaneseMirrorPitchAnalysis } = require("./src/services/mirrorGeneratorService");
+const { synthesizeExpressiveJapaneseSpeech, openAiVoiceForGender, buildDeliveryInstructions } = require("./src/services/openaiTtsService");
 const app = express();
 const PORT = Number(process.env.PORT || 3003);
 // Azure App Service 等でGitHub連携デプロイを使う場合、デプロイのたびにアプリコード
@@ -327,6 +328,29 @@ app.post("/api/mirror-voice", async (req, res) => {
     const voiceScript = req.body?.voiceScript && Array.isArray(req.body.voiceScript.segments)
       ? req.body.voiceScript
       : null;
+
+    // 実際のミラー音声(癖の反映)だけ、設定されていればOpenAIのinstructions式TTSを
+    // 先に試す(Azureの固定スタイル+度合いより人間らしい抑揚が期待できるため)。
+    // 未設定・失敗時は既存のAzure経路にフォールスルーし、この機能自体が壊れて
+    // 聞けなくなることがないようにする。
+    if (!isModelMirror && process.env.OPENAI_API_KEY) {
+      try {
+        const instructions = buildDeliveryInstructions({
+          profile: req.body?.profile,
+          expressivenessLevel: req.body?.expressivenessLevel
+        });
+        const openAiVoice = req.body?.openAiVoice || openAiVoiceForGender(req.body?.profile?.gender);
+        const result = await synthesizeExpressiveJapaneseSpeech({ text, voice: openAiVoice, instructions });
+        res.setHeader("Content-Type", result.contentType);
+        res.setHeader("X-Accent-Mirror-Voice", `openai:${result.voice}`);
+        res.setHeader("X-Accent-Mirror-Spoken-Text", encodeURIComponent(result.spokenText));
+        res.setHeader("X-Accent-Mirror-Confidence", confidence || "unknown");
+        res.setHeader("X-Accent-Mirror-Voice-Plan", encodeURIComponent(JSON.stringify({ engine: "openai", voice: result.voice, instructions })));
+        return res.send(result.audio);
+      } catch (openAiError) {
+        console.warn("[mirror-voice] OpenAI TTS failed, falling back to Azure:", String(openAiError.message || openAiError));
+      }
+    }
 
     const result = await synthesizeJapaneseSpeech({ text, voice, rate, pitch, pausePattern, style, styleDegree, voiceScript });
     res.setHeader("Content-Type", result.contentType);

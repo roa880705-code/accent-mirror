@@ -1634,6 +1634,7 @@ async function playMirrorVoice() {
         pausePattern: mirror.voicePlan?.pausePattern,
         profile: mirrorProfile,
         styleDegree: mirror.expressiveness?.styleDegree,
+        expressivenessLevel: mirror.expressiveness?.level,
         voiceScript: mirror.voiceScript
       })
     });
