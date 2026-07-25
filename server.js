@@ -7,7 +7,7 @@ const { analyzeAzureRaw } = require("./src/services/contrastAnalysisService");
 const { assessPronunciationFromWav, recognizeEnglishFromWav, assertAzureConfig } = require("./src/services/azurePronunciationService");
 const { compareAttempts } = require("./src/services/contrastSessionService");
 const { synthesizeJapaneseSpeech, synthesizeEnglishModelSpeech, synthesizeEnglishModelSpeechWav, synthesizeJapaneseSpeechWithSegmentTimings } = require("./src/services/azureTtsService");
-const { analyzePitchFromWav } = require("./src/services/audioPitchService");
+const { analyzePitchFromWav, analyzeExpressiveness } = require("./src/services/audioPitchService");
 const { buildDeviationTimeline, buildDeviationTimelineFromSpans } = require("./src/services/pitchAlignmentService");
 const { buildNeutralVoiceScriptFromSegments, buildJapaneseMirrorPitchAnalysis } = require("./src/services/mirrorGeneratorService");
 const app = express();
@@ -181,10 +181,16 @@ app.post("/api/assess", async (req, res) => {
       intonationFeatures = analyzePitchFromWav(req.body);
     }
 
+    // 感情をどれだけ込めているかの「程度」をミラーへ反映するための指標。
+    // モデル比較(deviation)とは別に、録音そのもの(話者内)のピッチ・音量の
+    // 動的レンジを見るので、モデル参照の有無に関わらず常に計算できる。
+    const expressiveness = analyzeExpressiveness(req.body);
+
     const analysis = analyzeAzureRaw(azureResult.raw, { ...contrastSet, text: referenceText }, {
       recordingDurationMs,
       rhythmHints,
       intonationFeatures,
+      expressiveness,
       freeRecognizedText: freeRecognition.text || "",
       freeRecognitionError: freeRecognition.error || "",
       profile
@@ -308,16 +314,21 @@ app.post("/api/mirror-voice", async (req, res) => {
     // はそのまま使い、模範日本語ミラーの時だけ場面・性別・年代に応じた自然な
     // 話し方(naturalDeliveryForProfile)に置き換える。
     const isModelMirror = req.body?.source === "model-japanese-mirror";
-    const delivery = isModelMirror ? naturalDeliveryForProfile(req.body?.profile || {}) : null;
+    const delivery = naturalDeliveryForProfile(req.body?.profile || {});
     const rate = isModelMirror ? (process.env.MIRROR_TTS_RATE || delivery.rate) : (req.body?.rate || "-4%");
     const pitch = isModelMirror ? (process.env.MIRROR_TTS_PITCH || delivery.pitch) : (req.body?.pitch || "+0Hz");
     const pausePattern = req.body?.pausePattern || "plain";
-    const style = isModelMirror ? (process.env.MIRROR_TTS_STYLE || delivery.style) : (req.body?.style || process.env.MIRROR_TTS_STYLE || "");
+    const style = req.body?.style || process.env.MIRROR_TTS_STYLE || delivery.style;
+    // 実際のミラー音声(癖の反映)だけ、学習者の録音の表現力(expressiveness)から
+    // 計算したstyledegreeをそのまま渡す。模範日本語ミラーは常に既定の度合い
+    // (styledegree指定なし=1)にし、癖の反映と同じく「録音の感情の込め方」を
+    // 反映するのはミラー音声側だけにする。
+    const styleDegree = isModelMirror ? undefined : req.body?.styleDegree;
     const voiceScript = req.body?.voiceScript && Array.isArray(req.body.voiceScript.segments)
       ? req.body.voiceScript
       : null;
 
-    const result = await synthesizeJapaneseSpeech({ text, voice, rate, pitch, pausePattern, style, voiceScript });
+    const result = await synthesizeJapaneseSpeech({ text, voice, rate, pitch, pausePattern, style, styleDegree, voiceScript });
     res.setHeader("Content-Type", result.contentType);
     res.setHeader("X-Accent-Mirror-Voice", result.voice);
     res.setHeader("X-Accent-Mirror-Spoken-Text", encodeURIComponent(result.spokenText));

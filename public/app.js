@@ -1633,6 +1633,7 @@ async function playMirrorVoice() {
         pitch: mirror.voicePlan?.pitch,
         pausePattern: mirror.voicePlan?.pausePattern,
         profile: mirrorProfile,
+        styleDegree: mirror.expressiveness?.styleDegree,
         voiceScript: mirror.voiceScript
       })
     });

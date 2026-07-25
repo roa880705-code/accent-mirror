@@ -3774,7 +3774,7 @@ function shouldApplyLocalLengthEffect(transferPlan, role) {
   return localEventsForRole(transferPlan, role, ["length"]).length > 0;
 }
 
-function buildAccentTransferPlan({ speechFeatures, mirrorTimeline, voicePlan, soundSignature, mirrorLocalEvents }) {
+function buildAccentTransferPlan({ speechFeatures, mirrorTimeline, voicePlan, soundSignature, mirrorLocalEvents, expressivenessScale = 1 }) {
   const events = speechFeatures?.pronunciationEvents || [];
   const hasType = (type) => events.some((event) => event.type === type);
   const strongEvents = events.filter(eventIsStrong);
@@ -3886,7 +3886,8 @@ function buildAccentTransferPlan({ speechFeatures, mirrorTimeline, voicePlan, so
     intonationStatus,
     intonationMoves,
     intonationDeviationWords,
-    intonationExpected: speechFeatures?.intonationTarget?.expectedFinalContour || "unknown"
+    intonationExpected: speechFeatures?.intonationTarget?.expectedFinalContour || "unknown",
+    expressivenessScale
   };
 }
 
@@ -4117,6 +4118,34 @@ function intonationReflectionScale(status) {
   return 0.6;
 }
 
+// 感情をどれだけ込めているかの「程度」を、ミラー音声にも反映する。
+// audioPitchService.analyzeExpressiveness が返す生の音響指標(ピッチ・音量の
+// 動的レンジ)を、平坦(flat)・自然(natural)・豊か(expressive)の3段階に分類し、
+// (1) ミラーの音程カーブの振れ幅そのもののスケール(scale。intonationReflectionScale
+// と掛け合わせて使う。既存の安全上限(PITCH_DEVIATION_PERCENT_CAP等)はそのまま
+// 効くため、豊かな表現の学習者でも音程が無制限に暴れることはない)と、
+// (2) Azure SSMLのmstts:express-as styledegree属性(そのスタイルをどれだけ強く
+// 出すか、0.01〜2)の2箇所に変換する。どちらの閾値がどちらかに極端に振れている
+// だけでは判定せず、ピッチ・音量の両方の符号を合算することでノイズ耐性を持たせる。
+function classifyExpressiveness(expressiveness) {
+  if (!expressiveness?.available) return { level: "unknown", scale: 1, styleDegree: 1 };
+
+  const pitchRange = Number(expressiveness.pitchRangeSemitones || 0);
+  const energyRange = Number(expressiveness.energyRangeDb || 0);
+  const pitchSignal = pitchRange < pitchThresholds.expressivenessPitchRangeFlatBelowSemitone
+    ? -1
+    : pitchRange > pitchThresholds.expressivenessPitchRangeExpressiveAboveSemitone ? 1 : 0;
+  const energySignal = energyRange < pitchThresholds.expressivenessEnergyRangeFlatBelowDb
+    ? -1
+    : energyRange > pitchThresholds.expressivenessEnergyRangeExpressiveAboveDb ? 1 : 0;
+  const combined = pitchSignal + energySignal;
+  const level = combined <= -1 ? "flat" : combined >= 1 ? "expressive" : "natural";
+  const scale = level === "flat" ? 0.7 : level === "expressive" ? 1.35 : 1;
+  const styleDegree = level === "flat" ? 0.7 : level === "expressive" ? 1.4 : 1;
+
+  return { level, scale, styleDegree };
+}
+
 function pitchForVoiceSegment({ index, parts, basePitch, weakPitch, transferPlan }) {
   const isFinal = index === parts.length - 1;
   const deviationCurve = resampledDeviationForSegments(transferPlan?.intonationDeviationWords, parts.length);
@@ -4128,7 +4157,7 @@ function pitchForVoiceSegment({ index, parts, basePitch, weakPitch, transferPlan
   // 実測差分を上乗せする形にし、既存の子音の弱さ等の反映は維持する。
   if (Number.isFinite(deviation)) {
     const baselinePercent = parsePercentValue(isFinal ? basePitch : weakPitch);
-    const scale = intonationReflectionScale(transferPlan?.intonationStatus);
+    const scale = intonationReflectionScale(transferPlan?.intonationStatus) * (transferPlan?.expressivenessScale ?? 1);
     const deviationPercent = Math.max(-PITCH_DEVIATION_PERCENT_CAP, Math.min(PITCH_DEVIATION_PERCENT_CAP, deviation * PITCH_PERCENT_PER_SEMITONE * scale));
     return formatSignedPercent(baselinePercent + deviationPercent);
   }
@@ -4180,7 +4209,7 @@ function moraPitchCurveForSegment({ text, segmentIndex, segmentCount, transferPl
   const segStart = segmentCount > 0 ? segmentIndex / segmentCount : 0;
   const segEnd = segmentCount > 0 ? (segmentIndex + 1) / segmentCount : 1;
   const baselinePercent = parsePercentValue(isFinal ? basePitch : weakPitch);
-  const scale = intonationReflectionScale(transferPlan?.intonationStatus);
+  const scale = intonationReflectionScale(transferPlan?.intonationStatus) * (transferPlan?.expressivenessScale ?? 1);
 
   return tokens.map((token, tokenIndex) => {
     const localT = (tokenIndex + 0.5) / tokens.length;
@@ -4211,12 +4240,12 @@ function applyIntonationPunctuation(text, index, parts, transferPlan) {
   return value;
 }
 
-function timelineToVoiceScript({ meaning, mirrorTimeline, voicePlan, speechFeatures, soundSignature, mirrorLocalEvents }) {
+function timelineToVoiceScript({ meaning, mirrorTimeline, voicePlan, speechFeatures, soundSignature, mirrorLocalEvents, expressivenessScale = 1 }) {
   const maxPause = maxTimelinePauseMs(mirrorTimeline);
   const weakness = timelineWeaknessLevel(mirrorTimeline);
   const speedLevel = mirrorTimeline?.rhythm?.speedLevel || "unknown";
   const linking = hasTimelineLinking(mirrorTimeline);
-  const transferPlan = buildAccentTransferPlan({ speechFeatures, mirrorTimeline, voicePlan, soundSignature, mirrorLocalEvents });
+  const transferPlan = buildAccentTransferPlan({ speechFeatures, mirrorTimeline, voicePlan, soundSignature, mirrorLocalEvents, expressivenessScale });
   const parts = splitForPitchContour(
     splitForLocalSyllableMapping(
       splitForSegmentedDelivery(splitMeaningForVoice(meaning.japanese), transferPlan),
@@ -4584,7 +4613,8 @@ function neutralMirrorTimelineForFreeMeaning(mirrorTimeline, speechFeatures) {
   };
 }
 
-function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonantAvg, consonantMin, muffled, couldBlindSpot, recordingDurationMs, rhythmHints, intonationFeatures, freeRecognizedText, utteranceCheck, profile }) {
+function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonantAvg, consonantMin, muffled, couldBlindSpot, recordingDurationMs, rhythmHints, intonationFeatures, freeRecognizedText, utteranceCheck, profile, expressiveness }) {
+  const expressivenessInfo = classifyExpressiveness(expressiveness);
   const words = wordDiagnostics.length
     ? wordDiagnostics
     : String(contrastSet.text || "").split(/\s+/).map((word) => ({ original: word, word: word.toLowerCase().replace(/[^a-z]/g, ""), score: 100, consonantMin: null }));
@@ -4670,7 +4700,7 @@ function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonan
   const voiceSeverity = useFreeMeaningNaturalMirror ? "ok" : maxSeverity;
   const mirrorLocalEvents = buildMirrorLocalEvents({ meaning, words, mirroredWords, speechFeatures: voiceSpeechFeatures, soundSignature: voiceSoundSignature, freeRecognizedText });
   const voicePlan = buildVoicePlan({ meaning, severity: voiceSeverity, muffled: useFreeMeaningNaturalMirror ? false : muffled, speechFeatures: voiceSpeechFeatures, soundSignature: voiceSoundSignature });
-  const voiceScript = timelineToVoiceScript({ meaning, mirrorTimeline: voiceMirrorTimeline, voicePlan, speechFeatures: voiceSpeechFeatures, soundSignature: voiceSoundSignature, mirrorLocalEvents });
+  const voiceScript = timelineToVoiceScript({ meaning, mirrorTimeline: voiceMirrorTimeline, voicePlan, speechFeatures: voiceSpeechFeatures, soundSignature: voiceSoundSignature, mirrorLocalEvents, expressivenessScale: expressivenessInfo.scale });
   const listenerExperience = utteranceMismatch
     ? meaning.source === "referenceFallback"
       ? `${meaning.listenerBase} Mirror Voiceは、選択中の例文の意味を保ったまま、子音の弱さや音の崩れを反映する確認用のミラーです。`
@@ -4711,6 +4741,7 @@ function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonan
     deviationModel,
     speechFeatures,
     voicePlan,
+    expressiveness: { level: expressivenessInfo.level, styleDegree: expressivenessInfo.styleDegree },
     voiceSpeechFeatures,
     voiceSoundSignature,
     severity: maxSeverity,

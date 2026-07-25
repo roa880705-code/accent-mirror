@@ -271,4 +271,45 @@ function analyzePitchFromWav(buffer) {
   };
 }
 
-module.exports = { analyzePitchFromWav, extractPitchTrack, toSemitone, sampleHzAt };
+function percentile(sortedValues, fraction) {
+  if (!sortedValues.length) return null;
+  const index = Math.min(sortedValues.length - 1, Math.max(0, Math.round((sortedValues.length - 1) * fraction)));
+  return sortedValues[index];
+}
+
+// 感情をどれだけ込めているかの「程度」の目安として、話者内のピッチ動的レンジと
+// 音量(エネルギー)の動的レンジを抽出する。P10-P90(パーセンタイル差)を使うのは、
+// 自己相関ベースのピッチ推定は単発のオクターブ誤りなどのノイズが残りやすく、
+// 単純なmax-minだと外れ値1つで大きく振れてしまうため。分類(flat/natural/
+// expressive)や反映量への変換はmirrorGeneratorService側の責務とし、ここでは
+// 生の音響指標だけを返す。
+function analyzeExpressiveness(buffer) {
+  const track = extractPitchTrack(buffer);
+  if (!track.available) return { available: false, reason: track.reason };
+
+  const semitoneOffsets = track.frames
+    .map((frame) => semitoneDiff(frame.hz, track.medianHz))
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  const energyValuesDb = track.frames
+    .map((frame) => Number(frame.energy))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .map((value) => 20 * Math.log10(value))
+    .sort((a, b) => a - b);
+
+  if (semitoneOffsets.length < 4 || energyValuesDb.length < 4) {
+    return { available: false, reason: "not-enough-frames-for-expressiveness" };
+  }
+
+  const pitchRangeSemitones = Number((percentile(semitoneOffsets, 0.9) - percentile(semitoneOffsets, 0.1)).toFixed(1));
+  const energyRangeDb = Number((percentile(energyValuesDb, 0.9) - percentile(energyValuesDb, 0.1)).toFixed(1));
+
+  return {
+    available: true,
+    pitchRangeSemitones,
+    energyRangeDb,
+    voicedFrameCount: track.voicedFrameCount
+  };
+}
+
+module.exports = { analyzePitchFromWav, extractPitchTrack, toSemitone, sampleHzAt, analyzeExpressiveness };

@@ -167,9 +167,15 @@ function buildProsodyBody({ text, rate, pitch, pausePattern, voiceScript }) {
   return renderNaturalPauses(text, rate, pitch);
 }
 
-function buildSsml({ text, voice, rate, pitch, pausePattern, style, voiceScript, language = "ja-JP" }) {
+function buildSsml({ text, voice, rate, pitch, pausePattern, style, styleDegree, voiceScript, language = "ja-JP" }) {
   const body = buildProsodyBody({ text, rate, pitch, pausePattern, voiceScript });
-  const styledBody = style ? `<mstts:express-as style="${escapeXml(style)}">${body}</mstts:express-as>` : body;
+  // styledegree(0.01〜2、既定1)は、そのスタイルをどれだけ強く出すかの度合い。
+  // 感情をどれだけ込めているか(学習者の録音の表現力)をミラー音声にも反映する
+  // ための"程度"のノブとして使う。
+  const degreeAttr = styleDegree && Number.isFinite(Number(styleDegree)) && Number(styleDegree) !== 1
+    ? ` styledegree="${escapeXml(Number(styleDegree).toFixed(2))}"`
+    : "";
+  const styledBody = style ? `<mstts:express-as style="${escapeXml(style)}"${degreeAttr}>${body}</mstts:express-as>` : body;
   return [
     `<speak version="1.0" xml:lang="${escapeXml(language)}" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts">`,
     `<voice name="${escapeXml(voice)}">`,
@@ -186,6 +192,7 @@ async function synthesizeJapaneseSpeech({
   pitch = "+0Hz",
   pausePattern = "plain",
   style = process.env.MIRROR_TTS_STYLE || "",
+  styleDegree = null,
   voiceScript = null
 }) {
   return synthesizeSpeech({
@@ -195,6 +202,7 @@ async function synthesizeJapaneseSpeech({
     pitch,
     pausePattern,
     style,
+    styleDegree,
     voiceScript,
     language: "ja-JP"
   });
@@ -229,6 +237,7 @@ async function synthesizeSpeech({
   pitch = "+0Hz",
   pausePattern = "plain",
   style = "",
+  styleDegree = null,
   voiceScript = null,
   language = "ja-JP",
   outputFormat = "audio-24khz-48kbitrate-mono-mp3"
@@ -243,7 +252,7 @@ async function synthesizeSpeech({
     throw error;
   }
 
-  const ssml = buildSsml({ text: spokenText, voice, rate, pitch, pausePattern, style, voiceScript, language });
+  const ssml = buildSsml({ text: spokenText, voice, rate, pitch, pausePattern, style, styleDegree, voiceScript, language });
   let audio;
   let appliedStyle = style;
   try {

@@ -60,5 +60,17 @@ module.exports = {
   zigzagRangeSemitone: 3.0,
 
   // 方向転換1回でもレンジがこれ以上なら「目立つ上げ下げ」(phrase_movement)。
-  phraseMovementRangeSemitone: 2.0
+  phraseMovementRangeSemitone: 2.0,
+
+  // 表現力(感情をどれだけ込めているかの「程度」)判定用の閾値。
+  // 実機フィードバック: "話し方には、感情をどれだけ込めるかというのに「程度」が
+  // あると思いますが、それもミラーで表現できると学習者の満足度も上がると思う"。
+  // 話者内のピッチ動的レンジ(P10-P90、半音)と音量の動的レンジ(P10-P90、dB)を
+  // 組み合わせて、平坦(flat)・自然(natural)・豊か(expressive)の3段階に分類する。
+  // 実測分布のログがまだ無いため、一般的な会話音声の目安から出発した初期値
+  // (要チューニング)。
+  expressivenessPitchRangeFlatBelowSemitone: 2.5,
+  expressivenessPitchRangeExpressiveAboveSemitone: 6.5,
+  expressivenessEnergyRangeFlatBelowDb: 5,
+  expressivenessEnergyRangeExpressiveAboveDb: 13
 };
