@@ -15,6 +15,9 @@ let mirrorProfile = {
   age: "20s",
   scene: "daily"
 };
+// Model English / 模範日本語ミラー共通の感情の込め具合。無(ただの読み上げ)/
+// 弱(普通の会話)/中(明るい会話)/強(映画・舞台調)の4段階から選ぶ。
+let modelEmotionLevel = "weak";
 
 const $ = (id) => document.getElementById(id);
 const FRIEND_COUNT_KEY = "accentMirrorFriendCount";
@@ -504,7 +507,8 @@ async function playModelVoice() {
         referenceText: set.text,
         gender: mirrorProfile.gender,
         age: mirrorProfile.age,
-        scene: mirrorProfile.scene
+        scene: mirrorProfile.scene,
+        emotionLevel: modelEmotionLevel
       })
     });
 
@@ -1706,6 +1710,7 @@ async function playModelMirrorVoice() {
         voice: mirrorVoiceForProfile(),
         pausePattern: "plain",
         profile: mirrorProfile,
+        emotionLevel: modelEmotionLevel,
         voiceScript: null
       })
     });
@@ -1828,6 +1833,14 @@ $("clearSessionButton").onclick = () => {
 };
 ["profileGender", "profileAge", "profileScene"].forEach((id) => {
   if ($(id)) $(id).onchange = saveMirrorProfile;
+});
+$("emotionLevelPicker")?.querySelectorAll(".emotion-level-button").forEach((button) => {
+  button.onclick = () => {
+    modelEmotionLevel = button.dataset.level;
+    $("emotionLevelPicker").querySelectorAll(".emotion-level-button").forEach((other) => {
+      other.classList.toggle("active", other === button);
+    });
+  };
 });
 loadFriendCount();
 renderFriendCount();

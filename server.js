@@ -287,14 +287,36 @@ app.post("/api/model-voice", async (req, res) => {
   try {
     const contrastSet = getContrastSet(req.body?.contrastSetId || req.body?.referenceText);
     const text = String(req.body?.referenceText || contrastSet.text || "").trim();
+    if (!text) return res.status(400).json({ error: "referenceText is required" });
+
+    // 感情の込め具合(無/弱/中/強)が明示的に選ばれている場合、Azureの固定style+
+    // 度合いより自然な自由指示ができるOpenAI経路を優先する。未設定・失敗時は
+    // 既存のAzure経路にそのままフォールスルーする。
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const instructions = buildDeliveryInstructions({
+          profile: req.body,
+          emotionLevel: req.body?.emotionLevel,
+          language: "english"
+        });
+        const openAiVoice = req.body?.openAiVoice || openAiVoiceForGender(req.body?.gender);
+        const result = await synthesizeExpressiveJapaneseSpeech({ text, voice: openAiVoice, instructions });
+        res.setHeader("Content-Type", result.contentType);
+        res.setHeader("X-Accent-Mirror-Voice", `openai:${result.voice}`);
+        res.setHeader("X-Accent-Mirror-Spoken-Text", encodeURIComponent(result.spokenText));
+        res.setHeader("X-Accent-Mirror-Voice-Plan", encodeURIComponent(JSON.stringify({ engine: "openai", voice: result.voice, instructions })));
+        return res.send(result.audio);
+      } catch (openAiError) {
+        console.warn("[model-voice] OpenAI TTS failed, falling back to Azure:", String(openAiError.message || openAiError));
+      }
+    }
+
     const genderVoice = MODEL_VOICE_BY_GENDER[req.body?.gender];
     const delivery = naturalDeliveryForProfile(req.body || {});
     const voice = req.body?.voice || genderVoice || process.env.MODEL_TTS_VOICE || "en-US-JennyNeural";
     const rate = req.body?.rate || process.env.MODEL_TTS_RATE || delivery.rate;
     const pitch = req.body?.pitch || process.env.MODEL_TTS_PITCH || delivery.pitch;
     const style = req.body?.style || process.env.MODEL_TTS_STYLE || delivery.style;
-
-    if (!text) return res.status(400).json({ error: "referenceText is required" });
 
     const result = await synthesizeEnglishModelSpeech({ text, voice, rate, pitch, style });
     res.setHeader("Content-Type", result.contentType);
@@ -333,15 +355,19 @@ app.post("/api/mirror-voice", async (req, res) => {
       ? req.body.voiceScript
       : null;
 
-    // 実際のミラー音声(癖の反映)だけ、設定されていればOpenAIのinstructions式TTSを
+    // 実際のミラー音声(癖の反映)は常に、模範日本語ミラーは明示的な感情の込め具合
+    // (emotionLevel: 無/弱/中/強)が選ばれている時だけ、OpenAIのinstructions式TTSを
     // 先に試す(Azureの固定スタイル+度合いより人間らしい抑揚が期待できるため)。
+    // 模範日本語ミラーはModel Englishに対するミラーとして同じ度合いを再現したい
+    // という要望のため、emotionLevel未指定時は従来通りAzureの自然な話し方のまま。
     // 未設定・失敗時は既存のAzure経路にフォールスルーし、この機能自体が壊れて
     // 聞けなくなることがないようにする。
-    if (!isModelMirror && process.env.OPENAI_API_KEY) {
+    if ((!isModelMirror || req.body?.emotionLevel) && process.env.OPENAI_API_KEY) {
       try {
         const instructions = buildDeliveryInstructions({
           profile: req.body?.profile,
-          expressivenessLevel: req.body?.expressivenessLevel
+          expressivenessLevel: req.body?.expressivenessLevel,
+          emotionLevel: req.body?.emotionLevel
         });
         const openAiVoice = req.body?.openAiVoice || openAiVoiceForGender(req.body?.profile?.gender);
         const result = await synthesizeExpressiveJapaneseSpeech({ text, voice: openAiVoice, instructions });

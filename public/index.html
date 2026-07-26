@@ -108,6 +108,13 @@
 <h2>2. Step A：録音再生</h2>
 <div class="minor">参照英文</div>
 <div id="referenceText" class="english"></div>
+<div class="minor">感情の込め具合(Model English・模範日本語ミラー共通)</div>
+<div id="emotionLevelPicker" class="emotion-level-picker" role="group" aria-label="感情の込め具合">
+<button type="button" class="emotion-level-button" data-level="none">無<span class="emotion-level-caption">ただの読み上げ</span></button>
+<button type="button" class="emotion-level-button active" data-level="weak">弱<span class="emotion-level-caption">普通の会話</span></button>
+<button type="button" class="emotion-level-button" data-level="medium">中<span class="emotion-level-caption">明るい会話</span></button>
+<button type="button" class="emotion-level-button" data-level="strong">強<span class="emotion-level-caption">映画・舞台調</span></button>
+</div>
 <button id="modelVoiceButton" class="secondary-button">Model Englishを再生</button>
 <audio id="modelVoicePlayback" controls class="audio hidden"></audio>
 <div id="modelVoiceStatus" class="panel">モデル音声はまだありません。</div>
