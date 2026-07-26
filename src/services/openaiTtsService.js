@@ -32,11 +32,16 @@ const EXPRESSIVENESS_DESCRIPTOR = {
 // 学習者が明示的に選ぶ4段階(無/弱/中/強)。Model English・模範日本語ミラー専用
 // (実機フィードバック: "無(ただの読み上げ)/弱(普通の会話)/中(明るい会話)/
 // 強(映画、舞台、ハイテンション)に分けて、モデル音声の再生時に選択できるように")。
+// 各段階を独立した「場面」の説明(教科書/会話/明るい会話/映画)としてだけ書くと、
+// LLM系TTSが単一の強度の軸として解釈しづらく、4段階を並べて聞いても強度の
+// 一貫した順序に聞こえない(実機フィードバック: "4段階の設定が一貫していない
+// ように感じる")。「4段階中の何段目か」「隣の段より強い/弱い」という相対的な
+// 比較を明示することで、1つの強度軸上の目盛りとして解釈されやすくする。
 const EMOTION_LEVEL_DESCRIPTOR = {
-  none: "Read this in a completely flat, neutral, textbook-style voice, like a formal announcement or a dictionary pronunciation guide -- no emotional inflection, no personality, just a plain, neutral reading.",
-  weak: "Read this the way an ordinary person would in a normal, calm, everyday conversation -- natural and relaxed, understated. Not flat, but not lively either -- just an average, low-key conversational tone.",
-  medium: "Read this the way an ordinary person would in a bright, cheerful, engaged everyday conversation -- warm, friendly, and clearly emotionally present, with natural ups and downs in pitch and energy.",
-  strong: "Read this with the full dramatic intensity of a movie or stage performance -- highly expressive, with big emotional swings in pitch, energy, and pacing, like an actor delivering a passionate, high-stakes line."
+  none: "This is level 1 of 4 on an emotional-intensity scale, the flattest possible level: read this in a completely flat, neutral, textbook-style voice, like a formal announcement or a dictionary pronunciation guide -- no emotional inflection, no personality, deliberately flatter and calmer than any real conversation would ever be.",
+  weak: "This is level 2 of 4 on an emotional-intensity scale, a mild, low-key level: read this the way an ordinary person would in a normal, calm, everyday conversation. It should sound noticeably more natural and alive than the completely flat textbook level 1, but still clearly calmer and less lively than levels 3 or 4 -- just an average, low-energy conversational tone.",
+  medium: "This is level 3 of 4 on an emotional-intensity scale, a moderately high level: read this the way an ordinary person would in a bright, cheerful, engaged everyday conversation. It should sound clearly more energetic, warm, and expressive than the calm level-2 conversation, with noticeable ups and downs in pitch and energy -- but still well short of the full theatrical drama of level 4.",
+  strong: "This is level 4 of 4 on an emotional-intensity scale, the maximum level: read this with the full dramatic intensity of a movie or stage performance. It should sound dramatically more expressive and energetic than even the cheerful level-3 conversation -- big, bold swings in pitch, energy, and pacing, like an actor delivering the most emotionally charged line of a film."
 };
 
 // 性別ごとの既定ボイス。OpenAIの音声は言語非依存の名前(alloy/onyx/nova等)で、
