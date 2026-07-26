@@ -10,7 +10,7 @@ const { synthesizeJapaneseSpeech, synthesizeEnglishModelSpeech, synthesizeEnglis
 const { analyzePitchFromWav, analyzeExpressiveness } = require("./src/services/audioPitchService");
 const { buildDeviationTimeline, buildDeviationTimelineFromSpans } = require("./src/services/pitchAlignmentService");
 const { buildNeutralVoiceScriptFromSegments, buildJapaneseMirrorPitchAnalysis } = require("./src/services/mirrorGeneratorService");
-const { synthesizeExpressiveJapaneseSpeech, openAiVoiceForGender, buildDeliveryInstructions } = require("./src/services/openaiTtsService");
+const { synthesizeExpressiveJapaneseSpeech, openAiVoiceForGender, buildDeliveryInstructions, speedForEmotionLevel } = require("./src/services/openaiTtsService");
 const app = express();
 const PORT = Number(process.env.PORT || 3003);
 // Azure App Service 等でGitHub連携デプロイを使う場合、デプロイのたびにアプリコード
@@ -304,8 +304,9 @@ app.post("/api/model-voice", async (req, res) => {
           language: "english"
         });
         const openAiVoice = req.body?.openAiVoice || openAiVoiceForGender(req.body?.gender);
-        const result = await synthesizeExpressiveJapaneseSpeech({ text, voice: openAiVoice, instructions });
-        console.log(`[model-voice] engine=openai voice=${openAiVoice} succeeded`);
+        const speed = speedForEmotionLevel(req.body?.emotionLevel);
+        const result = await synthesizeExpressiveJapaneseSpeech({ text, voice: openAiVoice, instructions, speed });
+        console.log(`[model-voice] engine=openai voice=${openAiVoice} speed=${speed} succeeded`);
         res.setHeader("Content-Type", result.contentType);
         res.setHeader("X-Accent-Mirror-Voice", `openai:${result.voice}`);
         res.setHeader("X-Accent-Mirror-Spoken-Text", encodeURIComponent(result.spokenText));
@@ -380,8 +381,9 @@ app.post("/api/mirror-voice", async (req, res) => {
           emotionLevel: req.body?.emotionLevel
         });
         const openAiVoice = req.body?.openAiVoice || openAiVoiceForGender(req.body?.profile?.gender);
-        const result = await synthesizeExpressiveJapaneseSpeech({ text, voice: openAiVoice, instructions });
-        console.log(`[mirror-voice] engine=openai voice=${openAiVoice} succeeded`);
+        const speed = speedForEmotionLevel(req.body?.emotionLevel);
+        const result = await synthesizeExpressiveJapaneseSpeech({ text, voice: openAiVoice, instructions, speed });
+        console.log(`[mirror-voice] engine=openai voice=${openAiVoice} speed=${speed} succeeded`);
         res.setHeader("Content-Type", result.contentType);
         res.setHeader("X-Accent-Mirror-Voice", `openai:${result.voice}`);
         res.setHeader("X-Accent-Mirror-Spoken-Text", encodeURIComponent(result.spokenText));

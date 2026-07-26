@@ -57,6 +57,22 @@ function openAiVoiceForGender(gender) {
 // 無ければ従来通りexpressivenessLevel(録音からの自動検出3段階)を使う。
 // language: "japanese"(既定, ミラー音声用)| "english"(Model English用)で、
 // 文言の「どの言語のテキストを読むか」の部分だけ切り替える。
+// instructions(自由文)だけに頼ると、モデルの指示追従のばらつきで「段階として
+// 一貫して聞こえない」ことがある(実機フィードバック: "変化は起きているけど、
+// 感情の込め方での段階づけにはなっていない")。文章の解釈に依存しない、確実に
+// 反映される数値パラメータ(speed: OpenAI音声合成APIの再生速度、0.25〜4.0)も
+// 段階に応じて変えることで、指示文だけでは安定しない部分を技術的に補強する。
+const EMOTION_LEVEL_SPEED = {
+  none: 0.9,
+  weak: 1.0,
+  medium: 1.08,
+  strong: 1.2
+};
+
+function speedForEmotionLevel(emotionLevel) {
+  return EMOTION_LEVEL_SPEED[emotionLevel] ?? 1.0;
+}
+
 function buildDeliveryInstructions({ profile, expressivenessLevel, emotionLevel, language = "japanese" } = {}) {
   const genderDescriptor = profile?.gender === "male" ? "a Japanese man" : "a Japanese woman";
   const ageDescriptor = AGE_DESCRIPTOR[profile?.age] || "a Japanese adult";
@@ -80,7 +96,7 @@ function buildDeliveryInstructions({ profile, expressivenessLevel, emotionLevel,
   ].join(" ");
 }
 
-async function synthesizeExpressiveJapaneseSpeech({ text, voice, instructions, model }) {
+async function synthesizeExpressiveJapaneseSpeech({ text, voice, instructions, model, speed }) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     const error = new Error("OPENAI_API_KEY is not configured");
@@ -106,6 +122,7 @@ async function synthesizeExpressiveJapaneseSpeech({ text, voice, instructions, m
       voice: voice || "alloy",
       input: spokenText,
       instructions,
+      speed: Number.isFinite(Number(speed)) ? Number(speed) : 1.0,
       response_format: "mp3"
     })
   });
@@ -126,4 +143,4 @@ async function synthesizeExpressiveJapaneseSpeech({ text, voice, instructions, m
   };
 }
 
-module.exports = { synthesizeExpressiveJapaneseSpeech, openAiVoiceForGender, buildDeliveryInstructions };
+module.exports = { synthesizeExpressiveJapaneseSpeech, openAiVoiceForGender, buildDeliveryInstructions, speedForEmotionLevel };
