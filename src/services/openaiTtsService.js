@@ -29,19 +29,19 @@ const EXPRESSIVENESS_DESCRIPTOR = {
   unknown: "Use natural, everyday emotional inflection, like a real person casually talking."
 };
 
-// 学習者が明示的に選ぶ4段階(無/弱/中/強)。Model English・模範日本語ミラー専用
-// (実機フィードバック: "無(ただの読み上げ)/弱(普通の会話)/中(明るい会話)/
-// 強(映画、舞台、ハイテンション)に分けて、モデル音声の再生時に選択できるように")。
-// 各段階を独立した「場面」の説明(教科書/会話/明るい会話/映画)としてだけ書くと、
-// LLM系TTSが単一の強度の軸として解釈しづらく、4段階を並べて聞いても強度の
-// 一貫した順序に聞こえない(実機フィードバック: "4段階の設定が一貫していない
-// ように感じる")。「4段階中の何段目か」「隣の段より強い/弱い」という相対的な
-// 比較を明示することで、1つの強度軸上の目盛りとして解釈されやすくする。
+// 学習者が明示的に選ぶ4段階(無/弱/中/強)。Model English・模範日本語ミラー専用。
+// 長い相対比較の文章(v1)はAIにうまく反映されなかった(実機フィードバック:
+// "あなたの指示は悪くないですが、AIがうまく反映できていないようです")。
+// 代わりに、短く直接的で分かりやすい合言葉的な指示(弱=普通の発話、中=ハイ
+// テンション、強=超ハイテンション)に変えた。"ハイテンション"は英語に直訳
+// すると"high tension"(緊張・ストレス状態)という逆の意味に取られるため、
+// 意図(興奮気味・テンションが高い)が伝わる"excited / hyped-up / high-energy"
+// という表現を使う。
 const EMOTION_LEVEL_DESCRIPTOR = {
-  none: "This is level 1 of 4 on an emotional-intensity scale, the flattest possible level: read this in a completely flat, neutral, textbook-style voice, like a formal announcement or a dictionary pronunciation guide -- no emotional inflection, no personality, deliberately flatter and calmer than any real conversation would ever be.",
-  weak: "This is level 2 of 4 on an emotional-intensity scale, a mild, low-key level: read this the way an ordinary person would in a normal, calm, everyday conversation. It should sound noticeably more natural and alive than the completely flat textbook level 1, but still clearly calmer and less lively than levels 3 or 4 -- just an average, low-energy conversational tone.",
-  medium: "This is level 3 of 4 on an emotional-intensity scale, a moderately high level: read this the way an ordinary person would in a bright, cheerful, engaged everyday conversation. It should sound clearly more energetic, warm, and expressive than the calm level-2 conversation, with noticeable ups and downs in pitch and energy -- but still well short of the full theatrical drama of level 4.",
-  strong: "This is level 4 of 4 on an emotional-intensity scale, the maximum level: read this with the full dramatic intensity of a movie or stage performance. It should sound dramatically more expressive and energetic than even the cheerful level-3 conversation -- big, bold swings in pitch, energy, and pacing, like an actor delivering the most emotionally charged line of a film."
+  none: "This is level 1 of 4 on an emotional-intensity scale. Read this in a completely flat, neutral, textbook-style voice, with no emotional inflection at all -- like a plain announcement or a dictionary pronunciation guide.",
+  weak: "This is level 2 of 4 on an emotional-intensity scale. Read this in an ordinary, normal speaking voice -- just standard, everyday, natural speech, the way anyone would casually talk.",
+  medium: "This is level 3 of 4 on an emotional-intensity scale. Read this in a high-energy, excited, hyped-up voice -- like someone who is genuinely enthusiastic and pumped up right now.",
+  strong: "This is level 4 of 4 on an emotional-intensity scale, the maximum. Read this in an extremely high-energy, super excited, over-the-top hyped-up voice -- like someone shouting with excitement, as energetic and intense as humanly possible."
 };
 
 // 性別ごとの既定ボイス。OpenAIの音声は言語非依存の名前(alloy/onyx/nova等)で、
@@ -87,9 +87,15 @@ function buildDeliveryInstructions({ profile, expressivenessLevel, emotionLevel,
   const naturalnessReminder = emotionLevel === "none"
     ? []
     : ["Do not sound like a textbook reading, an announcement, or a formal recitation -- sound like a real, natural spoken conversation."];
+  // emotionLevel(明示選択)がある時は、場面の説明("relaxed, everyday tone"など)を
+  // 文頭に混ぜない。例えば強(超ハイテンション)を選んでいるのに daily 場面の
+  // "relaxed" が同じ文に混在すると、指示同士が矛盾して伝わってしまう
+  // (実機フィードバック: "AIがうまく反映できていないようです"の一因と思われる)。
+  // 場面の雰囲気は expressivenessLevel(自動検出、場面選択と連動)側でのみ使う。
+  const sceneClause = emotionLevel ? "" : `, using ${sceneDescriptor}`;
 
   return [
-    `Speak this ${languageLabel} text the way ${genderDescriptor} (${ageDescriptor}) would actually speak it out loud, using ${sceneDescriptor}.`,
+    `Speak this ${languageLabel} text the way ${genderDescriptor} (${ageDescriptor}) would actually speak it out loud${sceneClause}.`,
     emotionDescriptor,
     ...naturalnessReminder,
     "Follow the pronunciation exactly as written (including any deliberately non-standard or simplified spellings), but apply natural human intonation, rhythm, and emotion on top of it."
