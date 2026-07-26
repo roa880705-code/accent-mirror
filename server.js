@@ -292,6 +292,10 @@ app.post("/api/model-voice", async (req, res) => {
     // 感情の込め具合(無/弱/中/強)が明示的に選ばれている場合、Azureの固定style+
     // 度合いより自然な自由指示ができるOpenAI経路を優先する。未設定・失敗時は
     // 既存のAzure経路にそのままフォールスルーする。
+    // 成功・失敗どちらの場合もログに残す(実機フィードバック: "その時間帯のログが
+    // ありません" -- 失敗時のwarnしか無く、成功時は何もログが残らないため、
+    // 実際にどちらの経路を通ったのか外側から確認できなかった)。
+    console.log(`[model-voice] request text="${text}" emotionLevel=${req.body?.emotionLevel || "(none)"} openaiConfigured=${Boolean(process.env.OPENAI_API_KEY)}`);
     if (process.env.OPENAI_API_KEY) {
       try {
         const instructions = buildDeliveryInstructions({
@@ -301,6 +305,7 @@ app.post("/api/model-voice", async (req, res) => {
         });
         const openAiVoice = req.body?.openAiVoice || openAiVoiceForGender(req.body?.gender);
         const result = await synthesizeExpressiveJapaneseSpeech({ text, voice: openAiVoice, instructions });
+        console.log(`[model-voice] engine=openai voice=${openAiVoice} succeeded`);
         res.setHeader("Content-Type", result.contentType);
         res.setHeader("X-Accent-Mirror-Voice", `openai:${result.voice}`);
         res.setHeader("X-Accent-Mirror-Spoken-Text", encodeURIComponent(result.spokenText));
@@ -309,6 +314,8 @@ app.post("/api/model-voice", async (req, res) => {
       } catch (openAiError) {
         console.warn("[model-voice] OpenAI TTS failed, falling back to Azure:", String(openAiError.message || openAiError));
       }
+    } else {
+      console.log("[model-voice] OPENAI_API_KEY not set, using Azure");
     }
 
     const genderVoice = MODEL_VOICE_BY_GENDER[req.body?.gender];
@@ -318,6 +325,7 @@ app.post("/api/model-voice", async (req, res) => {
     const pitch = req.body?.pitch || process.env.MODEL_TTS_PITCH || delivery.pitch;
     const style = req.body?.style || process.env.MODEL_TTS_STYLE || delivery.style;
 
+    console.log(`[model-voice] engine=azure voice=${voice} rate=${rate} pitch=${pitch} style=${style || "(none)"}`);
     const result = await synthesizeEnglishModelSpeech({ text, voice, rate, pitch, style });
     res.setHeader("Content-Type", result.contentType);
     res.setHeader("X-Accent-Mirror-Voice", result.voice);
@@ -325,6 +333,7 @@ app.post("/api/model-voice", async (req, res) => {
     res.setHeader("X-Accent-Mirror-Voice-Plan", encodeURIComponent(JSON.stringify(result.ssmlPlan || {})));
     res.send(result.audio);
   } catch (e) {
+    console.error("[model-voice] request failed entirely:", String(e.message || e));
     res.status(e.statusCode || 500).json({ error: "Model voice failed", detail: String(e.message || e) });
   }
 });
@@ -362,6 +371,7 @@ app.post("/api/mirror-voice", async (req, res) => {
     // という要望のため、emotionLevel未指定時は従来通りAzureの自然な話し方のまま。
     // 未設定・失敗時は既存のAzure経路にフォールスルーし、この機能自体が壊れて
     // 聞けなくなることがないようにする。
+    console.log(`[mirror-voice] request source=${req.body?.source || "voice"} emotionLevel=${req.body?.emotionLevel || "(none)"} openaiConfigured=${Boolean(process.env.OPENAI_API_KEY)}`);
     if ((!isModelMirror || req.body?.emotionLevel) && process.env.OPENAI_API_KEY) {
       try {
         const instructions = buildDeliveryInstructions({
@@ -371,6 +381,7 @@ app.post("/api/mirror-voice", async (req, res) => {
         });
         const openAiVoice = req.body?.openAiVoice || openAiVoiceForGender(req.body?.profile?.gender);
         const result = await synthesizeExpressiveJapaneseSpeech({ text, voice: openAiVoice, instructions });
+        console.log(`[mirror-voice] engine=openai voice=${openAiVoice} succeeded`);
         res.setHeader("Content-Type", result.contentType);
         res.setHeader("X-Accent-Mirror-Voice", `openai:${result.voice}`);
         res.setHeader("X-Accent-Mirror-Spoken-Text", encodeURIComponent(result.spokenText));
@@ -380,8 +391,11 @@ app.post("/api/mirror-voice", async (req, res) => {
       } catch (openAiError) {
         console.warn("[mirror-voice] OpenAI TTS failed, falling back to Azure:", String(openAiError.message || openAiError));
       }
+    } else if (!process.env.OPENAI_API_KEY) {
+      console.log("[mirror-voice] OPENAI_API_KEY not set, using Azure");
     }
 
+    console.log(`[mirror-voice] engine=azure voice=${voice} rate=${rate} pitch=${pitch} style=${style || "(none)"}`);
     const result = await synthesizeJapaneseSpeech({ text, voice, rate, pitch, pausePattern, style, styleDegree, voiceScript });
     res.setHeader("Content-Type", result.contentType);
     res.setHeader("X-Accent-Mirror-Voice", result.voice);
@@ -390,6 +404,7 @@ app.post("/api/mirror-voice", async (req, res) => {
     res.setHeader("X-Accent-Mirror-Voice-Plan", encodeURIComponent(JSON.stringify(result.ssmlPlan || {})));
     res.send(result.audio);
   } catch (e) {
+    console.error("[mirror-voice] request failed entirely:", String(e.message || e));
     res.status(e.statusCode || 500).json({ error: "Mirror voice failed", detail: String(e.message || e) });
   }
 });
