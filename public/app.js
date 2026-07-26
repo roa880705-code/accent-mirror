@@ -780,6 +780,7 @@ async function postAssessment() {
     gender: mirrorProfile.gender || "",
     age: mirrorProfile.age || "",
     scene: mirrorProfile.scene || "",
+    emotionLevel: modelEmotionLevel || "",
     rhythmHints: JSON.stringify({
       voicedSegmentCount: lastRecording.features?.voicedSegmentCount || 0,
       localVoicedMs: lastRecording.features?.localVoicedMs || 0,
@@ -1607,7 +1608,11 @@ function renderMirror(mirror) {
   const freeRecognitionNote = mirror.meaningSource === "freeRecognition" && latestAssessment?.utteranceCheck?.status !== "match"
     ? `<div class="notice"><strong>自由認識を優先中</strong>: 選択文と違う英文として聞こえたため、ミラー音声は自由認識された意味を優先します。下の分析は診断参考で、ミラー音声の直接材料ではありません。</div>`
     : "";
-  $("mirrorAnalysisSummary").innerHTML = (freeRecognitionNote || "") + buildMirrorAnalysisSummary(mirror);
+  const comparison = mirror.expressiveness?.comparisonToTarget;
+  const expressivenessNote = comparison
+    ? `<div class="notice"><strong>目標との比較</strong>: ${escapeHtml(comparison.comment)}</div>`
+    : "";
+  $("mirrorAnalysisSummary").innerHTML = (freeRecognitionNote || "") + (expressivenessNote || "") + buildMirrorAnalysisSummary(mirror);
   $("mirrorVoiceStatus").textContent = mirror.confidence?.level === "high"
     ? "ミラー音声を生成できます。"
     : "ミラー音声を仮説として生成できます。確信度が低い場合は、聞こえ方の候補として確認してください。";

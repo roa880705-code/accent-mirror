@@ -203,7 +203,8 @@ function analyzeAzureRaw(raw, contrastSet, options = {}) {
     freeRecognizedText,
     utteranceCheck,
     profile: options.profile,
-    expressiveness: options.expressiveness
+    expressiveness: options.expressiveness,
+    targetEmotionLevel: options.targetEmotionLevel
   });
 
   return {

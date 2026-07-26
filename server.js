@@ -191,11 +191,21 @@ app.post("/api/assess", async (req, res) => {
     // 負荷の高い環境で二重計算が処理時間を押し上げていた可能性への対応)。
     const expressiveness = analyzeExpressiveness(intonationFeatures.userTrack || req.body);
 
+    // 学習者がModel English/模範ミラーで選んでいた目標の感情強度(無/弱/中/強)。
+    // 実際の発話の表現力(expressiveness)と比べて、目標との差を分析結果に含める
+    // (実機フィードバック: "modelと録音音声の違いをそれぞれ見極める必要があるし、
+    // その違いを...模範ミラーと生成されたミラーでの違いとして反映させる必要が
+    // ある")。
+    const targetEmotionLevel = ["none", "weak", "medium", "strong"].includes(req.query.emotionLevel)
+      ? req.query.emotionLevel
+      : undefined;
+
     const analysis = analyzeAzureRaw(azureResult.raw, { ...contrastSet, text: referenceText }, {
       recordingDurationMs,
       rhythmHints,
       intonationFeatures,
       expressiveness,
+      targetEmotionLevel,
       freeRecognizedText: freeRecognition.text || "",
       freeRecognitionError: freeRecognition.error || "",
       profile
