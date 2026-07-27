@@ -29,19 +29,19 @@ const EXPRESSIVENESS_DESCRIPTOR = {
   unknown: "Use natural, everyday emotional inflection, like a real person casually talking."
 };
 
-// 学習者が明示的に選ぶ4段階(無/弱/中/強)。Model English・模範日本語ミラー専用。
-// 長い相対比較の文章(v1)はAIにうまく反映されなかった(実機フィードバック:
-// "あなたの指示は悪くないですが、AIがうまく反映できていないようです")。
-// 代わりに、短く直接的で分かりやすい合言葉的な指示(弱=普通の発話、中=ハイ
-// テンション、強=超ハイテンション)に変えた。"ハイテンション"は英語に直訳
-// すると"high tension"(緊張・ストレス状態)という逆の意味に取られるため、
-// 意図(興奮気味・テンションが高い)が伝わる"excited / hyped-up / high-energy"
-// という表現を使う。
+// 学習者が明示的に選ぶ段階。当初は4段階(無/弱/中/強)だったが、実機フィードバックで
+// 「段階として一貫して聞こえない」「AIがうまく反映できていない」という課題が続いた
+// ため、自然(=普段の会話)/豊か(=感情豊かに)の2段階まで絞り込んだ(実機フィード
+// バック: "感情の混み具合の程度は、「自然」と「豊か」だけにしましょう")。この2つの
+// 呼び名は、録音から自動検出する表現力の分類(flat/natural/expressive、
+// classifyExpressiveness)とも語彙を合わせてあり、目標(このemotionLevel)と実際の
+// 発話の表現力を同じ尺度で比較できる(compareExpressivenessToTarget参照)。
+// "ハイテンション"は英語に直訳すると"high tension"(緊張・ストレス状態)という
+// 逆の意味に取られるため、意図(興奮気味・テンションが高い)が伝わる
+// "excited / hyped-up / high-energy" という表現を使う。
 const EMOTION_LEVEL_DESCRIPTOR = {
-  none: "This is level 1 of 4 on an emotional-intensity scale. Read this in a completely flat, neutral, textbook-style voice, with no emotional inflection at all -- like a plain announcement or a dictionary pronunciation guide.",
-  weak: "This is level 2 of 4 on an emotional-intensity scale. Read this in an ordinary, normal speaking voice -- just standard, everyday, natural speech, the way anyone would casually talk.",
-  medium: "This is level 3 of 4 on an emotional-intensity scale. Read this in a high-energy, excited, hyped-up voice -- like someone who is genuinely enthusiastic and pumped up right now.",
-  strong: "This is level 4 of 4 on an emotional-intensity scale, the maximum. Read this in an extremely high-energy, super excited, over-the-top hyped-up voice -- like someone shouting with excitement, as energetic and intense as humanly possible."
+  natural: "This is the natural, everyday level of emotional expression. Read this in an ordinary, normal speaking voice -- just standard, everyday, natural speech, the way anyone would casually talk, with normal conversational emotion.",
+  expressive: "This is the rich, emotionally expressive level. Read this in a noticeably animated, emotionally expressive voice, high-energy and excited -- let the pitch and energy genuinely rise and fall, like someone speaking with real enthusiasm and feeling."
 };
 
 // 性別ごとの既定ボイス。OpenAIの音声は言語非依存の名前(alloy/onyx/nova等)で、
@@ -53,7 +53,7 @@ function openAiVoiceForGender(gender) {
   return process.env.OPENAI_TTS_VOICE_FEMALE || "nova";
 }
 
-// emotionLevel(明示選択の4段階)が指定されていればそちらを優先し、
+// emotionLevel(明示選択の自然/豊かの2段階)が指定されていればそちらを優先し、
 // 無ければ従来通りexpressivenessLevel(録音からの自動検出3段階)を使う。
 // language: "japanese"(既定, ミラー音声用)| "english"(Model English用)で、
 // 文言の「どの言語のテキストを読むか」の部分だけ切り替える。
@@ -63,10 +63,8 @@ function openAiVoiceForGender(gender) {
 // 反映される数値パラメータ(speed: OpenAI音声合成APIの再生速度、0.25〜4.0)も
 // 段階に応じて変えることで、指示文だけでは安定しない部分を技術的に補強する。
 const EMOTION_LEVEL_SPEED = {
-  none: 0.9,
-  weak: 1.0,
-  medium: 1.08,
-  strong: 1.2
+  natural: 1.0,
+  expressive: 1.1
 };
 
 function speedForEmotionLevel(emotionLevel) {
@@ -81,12 +79,7 @@ function buildDeliveryInstructions({ profile, expressivenessLevel, emotionLevel,
     || EXPRESSIVENESS_DESCRIPTOR[expressivenessLevel]
     || EXPRESSIVENESS_DESCRIPTOR.unknown;
   const languageLabel = language === "english" ? "English" : "Japanese";
-  // textbookのようなフラットな読み上げが明示的に選ばれた(emotionLevel === "none")
-  // 場合は、逆に"sound natural, not like a textbook"という指示が矛盾するため、
-  // その指示を差し込まない。
-  const naturalnessReminder = emotionLevel === "none"
-    ? []
-    : ["Do not sound like a textbook reading, an announcement, or a formal recitation -- sound like a real, natural spoken conversation."];
+  const naturalnessReminder = ["Do not sound like a textbook reading, an announcement, or a formal recitation -- sound like a real, natural spoken conversation."];
   // emotionLevel(明示選択)がある時は、場面の説明("relaxed, everyday tone"など)を
   // 文頭に混ぜない。例えば強(超ハイテンション)を選んでいるのに daily 場面の
   // "relaxed" が同じ文に混在すると、指示同士が矛盾して伝わってしまう

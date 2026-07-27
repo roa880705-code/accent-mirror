@@ -110,14 +110,13 @@
 <div id="referenceText" class="english"></div>
 <div class="minor">感情の込め具合(Model English・模範日本語ミラー共通)</div>
 <div id="emotionLevelPicker" class="emotion-level-picker" role="group" aria-label="感情の込め具合">
-<button type="button" class="emotion-level-button" data-level="none">無<span class="emotion-level-caption">ただの読み上げ</span></button>
-<button type="button" class="emotion-level-button active" data-level="weak">弱<span class="emotion-level-caption">普通の会話</span></button>
-<button type="button" class="emotion-level-button" data-level="medium">中<span class="emotion-level-caption">明るい会話</span></button>
-<button type="button" class="emotion-level-button" data-level="strong">強<span class="emotion-level-caption">映画・舞台調</span></button>
+<button type="button" class="emotion-level-button active" data-level="natural">自然<span class="emotion-level-caption">普段の会話</span></button>
+<button type="button" class="emotion-level-button" data-level="expressive">豊か<span class="emotion-level-caption">感情豊かに</span></button>
 </div>
 <button id="modelVoiceButton" class="secondary-button">Model Englishを再生</button>
 <audio id="modelVoicePlayback" controls class="audio hidden"></audio>
 <div id="modelVoiceStatus" class="panel">モデル音声はまだありません。</div>
+<button id="saveModelVoiceButton" class="secondary-button">この音声を保存(理想の発音を記録)</button>
 <button id="recordLocalButton">① 録音を開始する</button>
 <div id="localStatus" class="panel">未録音です。</div>
 <audio id="audioPlayback" controls class="audio hidden"></audio>
@@ -141,6 +140,7 @@
 <audio id="modelMirrorVoicePlayback" controls class="audio hidden"></audio>
 <div id="mirrorVoiceStatus" class="panel">ミラー音声はまだありません。</div>
 <div id="modelMirrorVoiceStatus" class="panel">模範日本語ミラーはまだありません。</div>
+<button id="saveModelMirrorVoiceButton" class="secondary-button">模範日本語ミラーを保存(理想の発音を記録)</button>
 <div class="voice-actions">
 <button id="mirrorPitchContourButton" class="secondary-button">模範ミラー vs ミラー音声のピッチを分析</button>
 </div>

@@ -15,9 +15,9 @@ let mirrorProfile = {
   age: "20s",
   scene: "daily"
 };
-// Model English / 模範日本語ミラー共通の感情の込め具合。無(ただの読み上げ)/
-// 弱(普通の会話)/中(明るい会話)/強(映画・舞台調)の4段階から選ぶ。
-let modelEmotionLevel = "weak";
+// Model English / 模範日本語ミラー共通の感情の込め具合。自然(普段の会話)/
+// 豊か(感情豊かに)の2段階から選ぶ。
+let modelEmotionLevel = "natural";
 
 const $ = (id) => document.getElementById(id);
 const FRIEND_COUNT_KEY = "accentMirrorFriendCount";
@@ -490,6 +490,24 @@ function renderContrastButtons() {
     container.appendChild(heading);
     drillSets.forEach((set) => appendContrastButton(container, set, contrastSets.indexOf(set)));
   }
+}
+
+// 「理想通りに発音できた」と思う再生済み音声を、固定リファレンス用にダウンロード
+// 保存するためのボタン。ダウンロードしたファイルを開発者に送ると、
+// public/audio-cache/<kind>/<contrastSetId>/<emotionLevel>/<gender>.mp3 として
+// 恒久的に組み込まれ、その組み合わせでは以後ライブ生成をせず常に同じ音声を返す。
+function downloadCurrentAudio(audioElementId, filenameHint, statusId) {
+  const src = $(audioElementId)?.src;
+  if (!src) {
+    if (statusId) $(statusId).textContent = "先に音声を再生してください。";
+    return;
+  }
+  const link = document.createElement("a");
+  link.href = src;
+  link.download = filenameHint;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 async function playModelVoice() {
@@ -1699,6 +1717,7 @@ async function playModelMirrorVoice() {
     return;
   }
 
+  const set = currentSet();
   const button = $("modelMirrorVoiceButton");
   button.disabled = true;
   $("modelMirrorVoiceStatus").textContent = "模範日本語ミラーを生成中です。";
@@ -1709,6 +1728,7 @@ async function playModelMirrorVoice() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         source: "model-japanese-mirror",
+        contrastSetId: set?.id,
         voiceText: text,
         meaningJapanese: text,
         confidence: "high",
@@ -1847,6 +1867,22 @@ $("emotionLevelPicker")?.querySelectorAll(".emotion-level-button").forEach((butt
     });
   };
 });
+$("saveModelVoiceButton").onclick = () => {
+  const set = currentSet();
+  downloadCurrentAudio(
+    "modelVoicePlayback",
+    `model-english_${set?.id || "unknown"}_${modelEmotionLevel}_${mirrorProfile.gender}.mp3`,
+    "modelVoiceStatus"
+  );
+};
+$("saveModelMirrorVoiceButton").onclick = () => {
+  const set = currentSet();
+  downloadCurrentAudio(
+    "modelMirrorVoicePlayback",
+    `model-mirror_${set?.id || "unknown"}_${modelEmotionLevel}_${mirrorProfile.gender}.mp3`,
+    "modelMirrorVoiceStatus"
+  );
+};
 loadFriendCount();
 renderFriendCount();
 renderHomeCrowd();

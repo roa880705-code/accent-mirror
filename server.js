@@ -11,6 +11,7 @@ const { analyzePitchFromWav, analyzeExpressiveness } = require("./src/services/a
 const { buildDeviationTimeline, buildDeviationTimelineFromSpans } = require("./src/services/pitchAlignmentService");
 const { buildNeutralVoiceScriptFromSegments, buildJapaneseMirrorPitchAnalysis } = require("./src/services/mirrorGeneratorService");
 const { synthesizeExpressiveJapaneseSpeech, openAiVoiceForGender, buildDeliveryInstructions, speedForEmotionLevel } = require("./src/services/openaiTtsService");
+const { findCachedAudio } = require("./src/services/audioCacheService");
 const app = express();
 const PORT = Number(process.env.PORT || 3003);
 // Azure App Service 等でGitHub連携デプロイを使う場合、デプロイのたびにアプリコード
@@ -191,12 +192,12 @@ app.post("/api/assess", async (req, res) => {
     // 負荷の高い環境で二重計算が処理時間を押し上げていた可能性への対応)。
     const expressiveness = analyzeExpressiveness(intonationFeatures.userTrack || req.body);
 
-    // 学習者がModel English/模範ミラーで選んでいた目標の感情強度(無/弱/中/強)。
+    // 学習者がModel English/模範ミラーで選んでいた目標の感情強度(自然/豊か)。
     // 実際の発話の表現力(expressiveness)と比べて、目標との差を分析結果に含める
     // (実機フィードバック: "modelと録音音声の違いをそれぞれ見極める必要があるし、
     // その違いを...模範ミラーと生成されたミラーでの違いとして反映させる必要が
     // ある")。
-    const targetEmotionLevel = ["none", "weak", "medium", "strong"].includes(req.query.emotionLevel)
+    const targetEmotionLevel = ["natural", "expressive"].includes(req.query.emotionLevel)
       ? req.query.emotionLevel
       : undefined;
 
@@ -299,7 +300,22 @@ app.post("/api/model-voice", async (req, res) => {
     const text = String(req.body?.referenceText || contrastSet.text || "").trim();
     if (!text) return res.status(400).json({ error: "referenceText is required" });
 
-    // 感情の込め具合(無/弱/中/強)が明示的に選ばれている場合、Azureの固定style+
+    // 人間が「理想通りに発音できた」と選んで保存した固定音声(public/audio-cache配下、
+    // gitコミット済みで再デプロイでも消えない)があれば、ライブ生成を一切せずそれを返す。
+    const cachedAudio = findCachedAudio({
+      kind: "model-english",
+      contrastSetId: req.body?.contrastSetId,
+      emotionLevel: req.body?.emotionLevel,
+      gender: req.body?.gender
+    });
+    if (cachedAudio) {
+      console.log(`[model-voice] serving cached audio contrastSetId=${req.body?.contrastSetId} emotionLevel=${req.body?.emotionLevel} gender=${req.body?.gender}`);
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("X-Accent-Mirror-Voice", "cached");
+      return res.send(cachedAudio);
+    }
+
+    // 感情の込め具合(自然/豊か)が明示的に選ばれている場合、Azureの固定style+
     // 度合いより自然な自由指示ができるOpenAI経路を優先する。未設定・失敗時は
     // 既存のAzure経路にそのままフォールスルーする。
     // 成功・失敗どちらの場合もログに残す(実機フィードバック: "その時間帯のログが
@@ -375,8 +391,26 @@ app.post("/api/mirror-voice", async (req, res) => {
       ? req.body.voiceScript
       : null;
 
+    // 模範日本語ミラーのみ、人間が選んで保存した固定音声(public/audio-cache配下)が
+    // あればそれを返す。実際のミラー音声(癖の反映)は録音ごとに変わるためキャッシュ対象外。
+    if (isModelMirror) {
+      const cachedAudio = findCachedAudio({
+        kind: "model-mirror",
+        contrastSetId: req.body?.contrastSetId,
+        emotionLevel: req.body?.emotionLevel,
+        gender: req.body?.profile?.gender
+      });
+      if (cachedAudio) {
+        console.log(`[mirror-voice] serving cached audio contrastSetId=${req.body?.contrastSetId} emotionLevel=${req.body?.emotionLevel} gender=${req.body?.profile?.gender}`);
+        res.setHeader("Content-Type", "audio/mpeg");
+        res.setHeader("X-Accent-Mirror-Voice", "cached");
+        res.setHeader("X-Accent-Mirror-Confidence", confidence || "unknown");
+        return res.send(cachedAudio);
+      }
+    }
+
     // 実際のミラー音声(癖の反映)は常に、模範日本語ミラーは明示的な感情の込め具合
-    // (emotionLevel: 無/弱/中/強)が選ばれている時だけ、OpenAIのinstructions式TTSを
+    // (emotionLevel: 自然/豊か)が選ばれている時だけ、OpenAIのinstructions式TTSを
     // 先に試す(Azureの固定スタイル+度合いより人間らしい抑揚が期待できるため)。
     // 模範日本語ミラーはModel Englishに対するミラーとして同じ度合いを再現したい
     // という要望のため、emotionLevel未指定時は従来通りAzureの自然な話し方のまま。
