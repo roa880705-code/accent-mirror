@@ -9,7 +9,7 @@ const { compareAttempts } = require("./src/services/contrastSessionService");
 const { synthesizeJapaneseSpeech, synthesizeEnglishModelSpeech, synthesizeEnglishModelSpeechWav, synthesizeJapaneseSpeechWithSegmentTimings } = require("./src/services/azureTtsService");
 const { analyzePitchFromWav, analyzeExpressiveness } = require("./src/services/audioPitchService");
 const { buildDeviationTimeline, buildDeviationTimelineFromSpans } = require("./src/services/pitchAlignmentService");
-const { buildNeutralVoiceScriptFromSegments, buildJapaneseMirrorPitchAnalysis } = require("./src/services/mirrorGeneratorService");
+const { buildNeutralVoiceScriptFromSegments, buildJapaneseMirrorPitchAnalysis, findMeaning } = require("./src/services/mirrorGeneratorService");
 const { synthesizeExpressiveJapaneseSpeech, openAiVoiceForGender, buildDeliveryInstructions, speedForEmotionLevel } = require("./src/services/openaiTtsService");
 const { findCachedAudio } = require("./src/services/audioCacheService");
 const app = express();
@@ -253,6 +253,31 @@ app.post("/api/contrast-session", (req, res) => {
     res.json(compareAttempts(attempts));
   } catch (e) {
     res.status(500).json({ error: "Contrast session failed", detail: String(e.message || e) });
+  }
+});
+
+// 模範日本語ミラーの訳文は、録音・診断結果(wordDiagnostics等)に依存せず、参照英文と
+// プロフィールだけで決まる(findMeaningは発音スコアを一切見ない)。そのため、録音前
+// でもModel English/模範ミラーを単独で聞けるように、訳文だけを返す軽量エンドポイントを
+// 用意する(実機フィードバック: "録音をしなくても、模範ミラー音声を聞けるようにして
+// ほしい")。
+app.post("/api/model-mirror-text", (req, res) => {
+  try {
+    const contrastSet = getContrastSet(req.body?.contrastSetId || req.body?.referenceText);
+    const referenceText = String(req.body?.referenceText || contrastSet.text || "").trim();
+    if (!referenceText) return res.status(400).json({ error: "referenceText is required" });
+
+    const profile = {
+      gender: req.body?.profile?.gender === "male" ? "male" : "female",
+      age: ["teens", "20s", "30s"].includes(req.body?.profile?.age) ? req.body.profile.age : undefined,
+      scene: req.body?.profile?.scene || undefined
+    };
+    const meaning = findMeaning(referenceText, profile);
+    if (!meaning?.japanese) return res.status(404).json({ error: "No Japanese meaning found for this text" });
+
+    res.json({ meaningJapanese: meaning.japanese });
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ error: "Model mirror text failed", detail: String(e.message || e) });
   }
 });
 

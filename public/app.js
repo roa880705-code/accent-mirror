@@ -1705,24 +1705,40 @@ async function playMirrorVoice() {
 }
 
 async function playModelMirrorVoice() {
-  if (!latestAssessment?.mirror) {
-    $("modelMirrorVoiceStatus").textContent = "先に診断してください。";
-    return;
-  }
-
-  const mirror = latestAssessment.mirror;
-  const text = mirror.meaningJapanese || mirror.voiceText;
-  if (!text) {
-    $("modelMirrorVoiceStatus").textContent = "再生できる日本語がまだありません。";
-    return;
-  }
-
   const set = currentSet();
   const button = $("modelMirrorVoiceButton");
   button.disabled = true;
   $("modelMirrorVoiceStatus").textContent = "模範日本語ミラーを生成中です。";
 
+  // 録音・診断済みならその訳文をそのまま使う(latestAssessment.mirror)。まだ録音
+  // していない場合は、参照英文から模範訳をその場で取得する。model englishと
+  // 模範ミラーをまず一致させたい、という要望のため、録音なしでも模範ミラーだけ
+  // 単独で聞けるようにする(実機フィードバック: "録音をしなくても、模範ミラー
+  // 音声を聞けるようにしてほしい")。
+  let text = latestAssessment?.mirror?.meaningJapanese || latestAssessment?.mirror?.voiceText;
+
   try {
+    if (!text) {
+      const textResponse = await fetch("/api/model-mirror-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contrastSetId: set?.id,
+          referenceText: set?.text,
+          profile: mirrorProfile
+        })
+      });
+      if (!textResponse.ok) {
+        const body = await textResponse.json().catch(() => ({}));
+        throw new Error(body.detail || body.error || "Model mirror text failed");
+      }
+      text = (await textResponse.json()).meaningJapanese;
+    }
+    if (!text) {
+      $("modelMirrorVoiceStatus").textContent = "再生できる日本語がまだありません。";
+      return;
+    }
+
     const response = await fetch("/api/mirror-voice", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

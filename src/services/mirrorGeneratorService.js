@@ -4794,4 +4794,4 @@ function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonan
   };
 }
 
-module.exports = { generateJapaneseMirror, buildNeutralVoiceScriptFromSegments, buildJapaneseMirrorPitchAnalysis };
+module.exports = { generateJapaneseMirror, buildNeutralVoiceScriptFromSegments, buildJapaneseMirrorPitchAnalysis, findMeaning };
