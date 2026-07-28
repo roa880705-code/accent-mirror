@@ -434,15 +434,21 @@ app.post("/api/mirror-voice", async (req, res) => {
       }
     }
 
-    // 実際のミラー音声(癖の反映)は常に、模範日本語ミラーは明示的な感情の込め具合
-    // (emotionLevel: 自然/豊か)が選ばれている時だけ、OpenAIのinstructions式TTSを
-    // 先に試す(Azureの固定スタイル+度合いより人間らしい抑揚が期待できるため)。
-    // 模範日本語ミラーはModel Englishに対するミラーとして同じ度合いを再現したい
-    // という要望のため、emotionLevel未指定時は従来通りAzureの自然な話し方のまま。
-    // 未設定・失敗時は既存のAzure経路にフォールスルーし、この機能自体が壊れて
-    // 聞けなくなることがないようにする。
+    // 模範日本語ミラーは、明示的な感情の込め具合(emotionLevel: 自然/豊か)が選ばれて
+    // いる時だけ、OpenAIのinstructions式TTSを先に試す(Azureの固定スタイル+度合い
+    // より人間らしい抑揚が期待できるため)。emotionLevel未指定時は従来通りAzureの
+    // 自然な話し方のまま。未設定・失敗時は既存のAzure経路にフォールスルーする。
+    //
+    // 実際のミラー音声(癖の反映、source: "voice")は常にAzure(voiceScript)で合成する。
+    // OpenAIのTTSはフラットな文字列(voiceText)しか受け取れず、モーラ単位の
+    // ピッチカーブ・抑揚による句読点変更(？への切り替え)など、voiceScript.segments に
+    // エンコードされた癖反映ロジックを一切再現できない。以前はここもOpenAIを先に
+    // 試していたため、OPENAI_API_KEY設定時は実際の癖反映が音声に出ないまま
+    // OpenAIの一般的な発話になっていた(実機フィードバック: "このアプリのコンセプトを
+    // 踏まえた上であなたの意見も聞かせて欲しい" -> 精密な癖反映こそが核なので、
+    // 癖反映の精密さをOpenAIの自然さより優先すべきと判断)。
     console.log(`[mirror-voice] request source=${req.body?.source || "voice"} emotionLevel=${req.body?.emotionLevel || "(none)"} openaiConfigured=${Boolean(process.env.OPENAI_API_KEY)}`);
-    if ((!isModelMirror || req.body?.emotionLevel) && process.env.OPENAI_API_KEY) {
+    if (isModelMirror && req.body?.emotionLevel && process.env.OPENAI_API_KEY) {
       try {
         const instructions = buildDeliveryInstructions({
           profile: req.body?.profile,
@@ -462,8 +468,12 @@ app.post("/api/mirror-voice", async (req, res) => {
       } catch (openAiError) {
         console.warn("[mirror-voice] OpenAI TTS failed, falling back to Azure:", String(openAiError.message || openAiError));
       }
+    } else if (!isModelMirror) {
+      console.log("[mirror-voice] source=voice always uses Azure (voiceScript-based accent reflection)");
     } else if (!process.env.OPENAI_API_KEY) {
       console.log("[mirror-voice] OPENAI_API_KEY not set, using Azure");
+    } else {
+      console.log("[mirror-voice] model-japanese-mirror without emotionLevel, using Azure natural delivery");
     }
 
     console.log(`[mirror-voice] engine=azure voice=${voice} rate=${rate} pitch=${pitch} style=${style || "(none)"}`);
