@@ -2818,10 +2818,13 @@ function japaneseRolesForEnglishWord(word) {
   const value = String(word || "").toLowerCase();
   const roles = new Set();
 
-  if (["help", "teach", "pass", "work", "see", "live", "leave", "consider", "love"].includes(value)) {
+  if (["help", "teach", "pass", "work", "see", "live", "leave", "consider", "love", "get"].includes(value)) {
     roles.add("request-action");
     roles.add("predicate");
     roles.add("predicate-head");
+    // see は "I see your point, but I disagree."(discuss-disagree)の前半節にも
+    // 使われる。clause-1/clause-2に分割した文でも反映先を持てるようにする。
+    if (value === "see") roles.add("clause-1");
   }
   if (["me", "him", "her", "us", "them", "you"].includes(value)) {
     roles.add("request-object");
@@ -2833,9 +2836,13 @@ function japaneseRolesForEnglishWord(word) {
     // 候補として持たせておくことで、「youが和訳されていないように見える」
     // (実際は会いましょうに含まれている)実機フィードバックに対応する。
     roles.add("predicate");
+    // "You mean everything to me."(everything-to-me)では you が文の主語
+    // (あなたは)に対応するため、subjectも候補に持たせる。
+    if (value === "you") roles.add("subject");
   }
-  if (["phone", "number", "salt", "pen", "today", "tomorrow", "here", "it",
-    "light", "right", "correct", "collect", "grass", "glass", "road", "load"].includes(value)) {
+  if (["phone", "number", "salt", "pen", "today", "tomorrow", "here", "it", "this",
+    "light", "right", "correct", "collect", "grass", "glass", "road", "load",
+    "medium", "fries"].includes(value)) {
     roles.add("request-object");
     roles.add("object");
     roles.add("time");
@@ -2856,6 +2863,41 @@ function japaneseRolesForEnglishWord(word) {
     roles.add("subject");
     // i/she も、主語が明示されない意訳(「明日会いましょう」など)では
     // 独立したsubjectセグメントを持たず、動詞句に畳み込まれる。上と同じ理由。
+    roles.add("predicate");
+    // discuss-disagreeの後半節(clause-2、「私は反対です。」)にも対応する。
+    if (value === "i") roles.add("clause-2");
+  }
+  // ここから下は、7語以上・複文構造の練習文をフレーズ単位に分割したことに伴う
+  // 追加(実機フィードバック: "それぞれの英文の分析が、フレーズ単位の大きすぎる
+  // ものになっていないか確認をしてください。なるべく、フレーズや単語を細分化
+  // したもので分析をして、その細分化されたところで反映させたい")。role が
+  // "sentence"にしか対応しない単語は、細分化した文では単語自身の癖がどの
+  // セグメントにも一致せず反映が失われるため、対応する新セグメントのroleを
+  // 明示的に持たせる。
+  if (["school", "movie", "dinner", "project", "name"].includes(value)) {
+    roles.add("subject");
+  }
+  if (["time", "first", "friday", "far"].includes(value)) {
+    roles.add("time");
+  }
+  if (["bathroom", "slide", "something", "draft", "call", "working"].includes(value)) {
+    roles.add("object");
+  }
+  if (["start", "use", "smells", "great", "back", "be", "should", "turn",
+    "walk", "success", "was", "questions", "add", "follow", "look", "forward",
+    "life", "spend", "want", "everything", "mean", "ready"].includes(value)) {
+    roles.add("predicate");
+  }
+  if (["conclusion"].includes(value)) {
+    roles.add("opener");
+  }
+  if (["point", "learning"].includes(value)) {
+    roles.add("clause-1");
+  }
+  if (["disagree", "best"].includes(value)) {
+    roles.add("clause-2");
+  }
+  if (["sora"].includes(value)) {
     roles.add("predicate");
   }
   if (!roles.size) roles.add("sentence");
@@ -3250,6 +3292,135 @@ function splitMeaningForVoiceRest(text) {
       { text: "私は", role: "subject" },
       { text: "ここを", role: "time" },
       { text: "去ります。", role: "predicate" }
+    ];
+  }
+  // 以下、長め・複文の練習文を追加で細分化する(実機フィードバック: "それぞれの
+  // 英文の分析が、フレーズ単位の大きすぎるものになっていないか確認をしてください。
+  // なるべく、フレーズや単語を細分化したもので分析をして、その細分化された
+  // ところで反映させたい"。監査の結果、64文中48文が専用の分割ルールを持たず
+  // role="sentence"の1セグメントに畳み込まれていた。3〜4語の短い文はそのままで
+  // 実用上問題ないため、7語以上・複文構造の文を中心に追加する)。
+  if (text.includes("何時に始まりますか")) {
+    const boundary = text.indexOf("何時に");
+    return [
+      { text: text.slice(0, boundary), role: "subject" },
+      { text: "何時に", role: "time" },
+      { text: text.slice(boundary + "何時に".length), role: "predicate" }
+    ];
+  }
+  if (text.includes("先にお風呂を使ってもいいですか")) {
+    return [
+      { text: "先に", role: "time" },
+      { text: "お風呂を", role: "object" },
+      { text: "使ってもいいですか。", role: "predicate" }
+    ];
+  }
+  if (text.includes("夕食が") && text.includes("いい匂いです")) {
+    const boundary = text.indexOf("とても");
+    return [
+      { text: text.slice(0, boundary), role: "subject" },
+      { text: text.slice(boundary), role: "predicate" }
+    ];
+  }
+  if (text.includes("何時までに戻ればいいですか")) {
+    return [
+      { text: "何時までに", role: "time" },
+      { text: "戻ればいいですか。", role: "predicate" }
+    ];
+  }
+  if (text.includes("これを明日提出してもいいですか")) {
+    return [
+      { text: "これを", role: "object" },
+      { text: "明日", role: "time" },
+      { text: "提出してもいいですか。", role: "predicate" }
+    ];
+  }
+  if (text.includes("このスライドについて説明させてください")) {
+    return [
+      { text: "このスライドについて", role: "object" },
+      { text: "説明させてください。", role: "predicate" }
+    ];
+  }
+  if (text.includes("結論として")) {
+    const projectBoundary = text.indexOf("このプロジェクトは");
+    const predicateBoundary = text.indexOf("成功");
+    return [
+      { text: text.slice(0, projectBoundary), role: "opener" },
+      { text: text.slice(projectBoundary, predicateBoundary), role: "subject" },
+      { text: text.slice(predicateBoundary), role: "predicate" }
+    ];
+  }
+  if (text.includes("ここまでで質問はありますか")) {
+    return [
+      { text: "ここまでで", role: "time" },
+      { text: "質問はありますか。", role: "predicate" }
+    ];
+  }
+  // "but"を挟む複文(相手の話は理解しつつ反対する/謙遜しつつ頑張る、の2節構成)。
+  // 前半・後半で全く違う内容の癖が出ても、それぞれ独立して反映できるように
+  // clause-1/clause-2に分ける。
+  if (text.includes("おっしゃることは分かりますが")) {
+    const boundary = text.indexOf("私は反対です");
+    return [
+      { text: text.slice(0, boundary), role: "clause-1" },
+      { text: text.slice(boundary), role: "clause-2" }
+    ];
+  }
+  if (text.includes("一つ付け加えたいことがあります")) {
+    return [
+      { text: "一つ", role: "object" },
+      { text: "付け加えたいことがあります。", role: "predicate" }
+    ];
+  }
+  if (text.includes("金曜日までに下書きを準備します")) {
+    return [
+      { text: "金曜日までに", role: "time" },
+      { text: "下書きを", role: "object" },
+      { text: "準備します。", role: "predicate" }
+    ];
+  }
+  if (text.includes("まだ勉強中ですが")) {
+    const boundary = text.indexOf("頑張ります");
+    return [
+      { text: text.slice(0, boundary), role: "clause-1" },
+      { text: text.slice(boundary), role: "clause-2" }
+    ];
+  }
+  if (text.includes("前回のお電話の件でご連絡しました")) {
+    return [
+      { text: "前回のお電話の件で", role: "object" },
+      { text: "ご連絡しました。", role: "predicate" }
+    ];
+  }
+  if (text.includes("一緒に働けることを楽しみにしています")) {
+    return [
+      { text: "一緒に働けることを", role: "object" },
+      { text: "楽しみにしています。", role: "predicate" }
+    ];
+  }
+  if (text.includes("あなたと人生を共にしたいです")) {
+    return [
+      { text: "あなたと", role: "object" },
+      { text: "人生を共にしたいです。", role: "predicate" }
+    ];
+  }
+  if (text.includes("あなたは私のすべてです")) {
+    return [
+      { text: "あなたは", role: "subject" },
+      { text: "私のすべてです。", role: "predicate" }
+    ];
+  }
+  if (text.includes("フライドポテトをください")) {
+    const boundary = text.indexOf("ください");
+    return [
+      { text: text.slice(0, boundary), role: "request-object" },
+      { text: text.slice(boundary), role: "request-ending" }
+    ];
+  }
+  if (text.includes("私の名前は")) {
+    return [
+      { text: "私の名前は", role: "subject" },
+      { text: text.slice(text.indexOf("は") + 1), role: "predicate" }
     ];
   }
   return [{ text, role: "sentence" }];
