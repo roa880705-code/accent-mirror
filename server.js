@@ -10,7 +10,6 @@ const { synthesizeJapaneseSpeech, synthesizeEnglishModelSpeech, synthesizeEnglis
 const { analyzePitchFromWav, analyzeExpressiveness } = require("./src/services/audioPitchService");
 const { buildDeviationTimeline, buildDeviationTimelineFromSpans } = require("./src/services/pitchAlignmentService");
 const { buildNeutralVoiceScriptFromSegments, buildJapaneseMirrorPitchAnalysis, findMeaning } = require("./src/services/mirrorGeneratorService");
-const { findCachedAudio } = require("./src/services/audioCacheService");
 const app = express();
 const PORT = Number(process.env.PORT || 3003);
 // Azure App Service 等でGitHub連携デプロイを使う場合、デプロイのたびにアプリコード
@@ -313,20 +312,6 @@ app.post("/api/model-voice", async (req, res) => {
     const text = String(req.body?.referenceText || contrastSet.text || "").trim();
     if (!text) return res.status(400).json({ error: "referenceText is required" });
 
-    // 人間が「理想通りに発音できた」と選んで保存した固定音声(public/audio-cache配下、
-    // gitコミット済みで再デプロイでも消えない)があれば、ライブ生成を一切せずそれを返す。
-    const cachedAudio = findCachedAudio({
-      kind: "model-english",
-      contrastSetId: req.body?.contrastSetId,
-      gender: req.body?.gender
-    });
-    if (cachedAudio) {
-      console.log(`[model-voice] serving cached audio contrastSetId=${req.body?.contrastSetId} gender=${req.body?.gender}`);
-      res.setHeader("Content-Type", "audio/mpeg");
-      res.setHeader("X-Accent-Mirror-Voice", "cached");
-      return res.send(cachedAudio);
-    }
-
     const genderVoice = MODEL_VOICE_BY_GENDER[req.body?.gender];
     const delivery = deliveryForProfile(req.body || {});
     const voice = req.body?.voice || genderVoice || process.env.MODEL_TTS_VOICE || "en-US-JennyNeural";
@@ -371,23 +356,6 @@ app.post("/api/mirror-voice", async (req, res) => {
     const voiceScript = req.body?.voiceScript && Array.isArray(req.body.voiceScript.segments)
       ? req.body.voiceScript
       : null;
-
-    // 模範日本語ミラーのみ、人間が選んで保存した固定音声(public/audio-cache配下)が
-    // あればそれを返す。実際のミラー音声(癖の反映)は録音ごとに変わるためキャッシュ対象外。
-    if (isModelMirror) {
-      const cachedAudio = findCachedAudio({
-        kind: "model-mirror",
-        contrastSetId: req.body?.contrastSetId,
-        gender: req.body?.profile?.gender
-      });
-      if (cachedAudio) {
-        console.log(`[mirror-voice] serving cached audio contrastSetId=${req.body?.contrastSetId} gender=${req.body?.profile?.gender}`);
-        res.setHeader("Content-Type", "audio/mpeg");
-        res.setHeader("X-Accent-Mirror-Voice", "cached");
-        res.setHeader("X-Accent-Mirror-Confidence", confidence || "unknown");
-        return res.send(cachedAudio);
-      }
-    }
 
     console.log(`[mirror-voice] engine=azure voice=${voice} rate=${rate} pitch=${pitch} style=${style || "(none)"}`);
     const result = await synthesizeJapaneseSpeech({ text, voice, rate, pitch, pausePattern, style, styleDegree, voiceScript });
