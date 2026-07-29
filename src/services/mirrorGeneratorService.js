@@ -3138,8 +3138,39 @@ function voicePitchFromTimeline(mirrorTimeline, fallbackPitch) {
   return fallbackPitch || "+0%";
 }
 
+// 文頭の感嘆詞("わあ、dinner smells great!"の"わあ、"部分)を、独立したセグメント
+// (role: "interjection")として切り出す。感嘆詞だけAI音声(OpenAI)にできないか
+// という要望に対し、声質が変わってしまう懸念(エンジンを跨ぐ音声の継ぎ目)を
+// 避けつつ、Azureのまま感嘆詞部分だけ音程・速度を変えて弾んだ聞こえ方に
+// 近づける代替案として導入した(実機フィードバック: "感嘆詞だけAIにすることは
+// 難しい？...Azureのまま、感嘆詞の部分だけ抑揚を強くする")。ここで切り出した
+// セグメントは timelineToVoiceScript 側で role==="interjection" として検出し、
+// 通常の癖反映とは別に、山なりのピッチカーブ・やや速い速度・大きめの音量を
+// 与える。
+const INTERJECTION_OPENERS = ["ねえ", "わあ", "うわ", "おお", "そうですね", "うん", "あ"];
+
+function splitLeadingInterjection(text) {
+  for (const opener of INTERJECTION_OPENERS) {
+    if (text.startsWith(`${opener}、`)) {
+      return { interjection: `${opener}、`, rest: text.slice(opener.length + 1) };
+    }
+  }
+  return null;
+}
+
 function splitMeaningForVoice(meaningJapanese) {
   const text = String(meaningJapanese || "");
+  const leadingInterjection = splitLeadingInterjection(text);
+  if (leadingInterjection) {
+    return [
+      { text: leadingInterjection.interjection, role: "interjection" },
+      ...splitMeaningForVoiceRest(leadingInterjection.rest)
+    ];
+  }
+  return splitMeaningForVoiceRest(text);
+}
+
+function splitMeaningForVoiceRest(text) {
   if (text.includes("塩を取ってもらえ")) {
     return [
       { text: "塩を", role: "request-object" },
@@ -4256,6 +4287,28 @@ function moraPitchCurveForSegment({ text, segmentIndex, segmentCount, transferPl
   });
 }
 
+const INTERJECTION_RATE = "+8%";
+const INTERJECTION_PITCH = "+30%";
+const INTERJECTION_VOLUME = "loud";
+// PITCH_SEGMENT_PERCENT_CAP(±30%)の範囲内で、確実にクランプされない値にしておく。
+const INTERJECTION_PITCH_START_PERCENT = 30;
+const INTERJECTION_PITCH_END_PERCENT = 10;
+const INTERJECTION_MIN_BREAK_MS = 160;
+
+// 感嘆詞セグメント専用のピッチカーブ。録音の実測ピッチ差(moraPitchCurveForSegment)は
+// 使わず、常に「立ち上がりが高く、語尾にかけて落ち着く」山なりの形を与えることで、
+// AI音声が持つような弾んだ・驚いた聞こえ方に近づける。学習者の癖の反映とは無関係の、
+// 一定の演出として全プロフィール共通で使う。
+function interjectionPitchCurve(text) {
+  const tokens = splitIntoMorae(toReadableKana(text));
+  if (!tokens.length) return null;
+  return tokens.map((token, index) => {
+    const t = tokens.length > 1 ? index / (tokens.length - 1) : 0;
+    const percent = Math.round(INTERJECTION_PITCH_START_PERCENT - t * (INTERJECTION_PITCH_START_PERCENT - INTERJECTION_PITCH_END_PERCENT));
+    return { text: token.text, pitch: formatSignedPercent(percent) };
+  });
+}
+
 function applyIntonationPunctuation(text, index, parts, transferPlan) {
   const value = String(text || "");
   const isFinal = index === parts.length - 1;
@@ -4329,28 +4382,36 @@ function timelineToVoiceScript({ meaning, mirrorTimeline, voicePlan, speechFeatu
       const segmentKatakanaDelivery = hasKatakanaDeliveryForRole(transferPlan, part.role);
       const isFinalSegment = index === parts.length - 1;
       const finalText = applyIntonationPunctuation(accentText, index, parts, transferPlan);
+      const isInterjection = part.role === "interjection";
+      const baseBreakAfterMs = index < parts.length - 1
+        ? fastDelivery
+          ? Math.min(340, Math.max(transferPlan.hasSegmentedDelivery ? 240 : 0, transferPlan.hasPause ? Math.round(transferPause * 0.8) : 0))
+          : Math.max(segmentKatakanaDelivery ? 90 : 0, transferPlan.hasPause ? transferPause : 0, index === 0 ? pauseAfterFirst : 0, weakBreak, slowSegmentPause)
+        : 0;
       return {
         text: finalText,
         sourceText: part.text,
         role: part.role,
-        rate: index === 0 && useWeakTiming ? weakRate : useWeakTiming ? weakRate : compressedRate,
-        pitch: pitchForVoiceSegment({ index, parts, basePitch, weakPitch, transferPlan }),
-        pitchCurve: moraPitchCurveForSegment({
-          text: finalText,
-          segmentIndex: index,
-          segmentCount: parts.length,
-          transferPlan,
-          basePitch,
-          weakPitch,
-          isFinal: isFinalSegment
-        }),
-        volume: segmentVolumeForArticulation(baseVolume, segmentArticulation),
+        // 感嘆詞セグメントは、癖の反映(weakRate/compressedRate)ではなく、常に一定の
+        // 弾んだ速度・音程・音量にする(学習者の発音の癖とは無関係の演出のため)。
+        rate: isInterjection ? INTERJECTION_RATE : index === 0 && useWeakTiming ? weakRate : useWeakTiming ? weakRate : compressedRate,
+        pitch: isInterjection ? INTERJECTION_PITCH : pitchForVoiceSegment({ index, parts, basePitch, weakPitch, transferPlan }),
+        pitchCurve: isInterjection
+          ? interjectionPitchCurve(finalText)
+          : moraPitchCurveForSegment({
+              text: finalText,
+              segmentIndex: index,
+              segmentCount: parts.length,
+              transferPlan,
+              basePitch,
+              weakPitch,
+              isFinal: isFinalSegment
+            }),
+        volume: isInterjection ? INTERJECTION_VOLUME : segmentVolumeForArticulation(baseVolume, segmentArticulation),
         articulation: segmentArticulation,
-        breakAfterMs: index < parts.length - 1
-          ? fastDelivery
-            ? Math.min(340, Math.max(transferPlan.hasSegmentedDelivery ? 240 : 0, transferPlan.hasPause ? Math.round(transferPause * 0.8) : 0))
-            : Math.max(segmentKatakanaDelivery ? 90 : 0, transferPlan.hasPause ? transferPause : 0, index === 0 ? pauseAfterFirst : 0, weakBreak, slowSegmentPause)
-          : 0
+        breakAfterMs: isInterjection && index < parts.length - 1
+          ? Math.max(INTERJECTION_MIN_BREAK_MS, baseBreakAfterMs)
+          : baseBreakAfterMs
       };
     })
   };
