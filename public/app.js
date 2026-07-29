@@ -15,10 +15,6 @@ let mirrorProfile = {
   age: "20s",
   scene: "daily"
 };
-// Model English / 模範日本語ミラー共通の感情の込め具合。自然(普段の会話)/
-// 豊か(感情豊かに)の2段階から選ぶ。
-let modelEmotionLevel = "natural";
-
 const $ = (id) => document.getElementById(id);
 const FRIEND_COUNT_KEY = "accentMirrorFriendCount";
 
@@ -494,8 +490,8 @@ function renderContrastButtons() {
 
 // 「理想通りに発音できた」と思う再生済み音声を、固定リファレンス用にダウンロード
 // 保存するためのボタン。ダウンロードしたファイルを開発者に送ると、
-// public/audio-cache/<kind>/<contrastSetId>/<emotionLevel>/<gender>.mp3 として
-// 恒久的に組み込まれ、その組み合わせでは以後ライブ生成をせず常に同じ音声を返す。
+// public/audio-cache/<kind>/<contrastSetId>/<gender>.mp3 として恒久的に組み込まれ、
+// その組み合わせでは以後ライブ生成をせず常に同じ音声を返す。
 function downloadCurrentAudio(audioElementId, filenameHint, statusId) {
   const src = $(audioElementId)?.src;
   if (!src) {
@@ -525,8 +521,7 @@ async function playModelVoice() {
         referenceText: set.text,
         gender: mirrorProfile.gender,
         age: mirrorProfile.age,
-        scene: mirrorProfile.scene,
-        emotionLevel: modelEmotionLevel
+        scene: mirrorProfile.scene
       })
     });
 
@@ -798,7 +793,6 @@ async function postAssessment() {
     gender: mirrorProfile.gender || "",
     age: mirrorProfile.age || "",
     scene: mirrorProfile.scene || "",
-    emotionLevel: modelEmotionLevel || "",
     rhythmHints: JSON.stringify({
       voicedSegmentCount: lastRecording.features?.voicedSegmentCount || 0,
       localVoicedMs: lastRecording.features?.localVoicedMs || 0,
@@ -1626,11 +1620,7 @@ function renderMirror(mirror) {
   const freeRecognitionNote = mirror.meaningSource === "freeRecognition" && latestAssessment?.utteranceCheck?.status !== "match"
     ? `<div class="notice"><strong>自由認識を優先中</strong>: 選択文と違う英文として聞こえたため、ミラー音声は自由認識された意味を優先します。下の分析は診断参考で、ミラー音声の直接材料ではありません。</div>`
     : "";
-  const comparison = mirror.expressiveness?.comparisonToTarget;
-  const expressivenessNote = comparison
-    ? `<div class="notice"><strong>目標との比較</strong>: ${escapeHtml(comparison.comment)}</div>`
-    : "";
-  $("mirrorAnalysisSummary").innerHTML = (freeRecognitionNote || "") + (expressivenessNote || "") + buildMirrorAnalysisSummary(mirror);
+  $("mirrorAnalysisSummary").innerHTML = (freeRecognitionNote || "") + buildMirrorAnalysisSummary(mirror);
   $("mirrorVoiceStatus").textContent = mirror.confidence?.level === "high"
     ? "ミラー音声を生成できます。"
     : "ミラー音声を仮説として生成できます。確信度が低い場合は、聞こえ方の候補として確認してください。";
@@ -1751,7 +1741,6 @@ async function playModelMirrorVoice() {
         voice: mirrorVoiceForProfile(),
         pausePattern: "plain",
         profile: mirrorProfile,
-        emotionLevel: modelEmotionLevel,
         voiceScript: null
       })
     });
@@ -1875,19 +1864,11 @@ $("clearSessionButton").onclick = () => {
 ["profileGender", "profileAge", "profileScene"].forEach((id) => {
   if ($(id)) $(id).onchange = saveMirrorProfile;
 });
-$("emotionLevelPicker")?.querySelectorAll(".emotion-level-button").forEach((button) => {
-  button.onclick = () => {
-    modelEmotionLevel = button.dataset.level;
-    $("emotionLevelPicker").querySelectorAll(".emotion-level-button").forEach((other) => {
-      other.classList.toggle("active", other === button);
-    });
-  };
-});
 $("saveModelVoiceButton").onclick = () => {
   const set = currentSet();
   downloadCurrentAudio(
     "modelVoicePlayback",
-    `model-english_${set?.id || "unknown"}_${modelEmotionLevel}_${mirrorProfile.gender}.mp3`,
+    `model-english_${set?.id || "unknown"}_${mirrorProfile.gender}.mp3`,
     "modelVoiceStatus"
   );
 };
@@ -1895,7 +1876,7 @@ $("saveModelMirrorVoiceButton").onclick = () => {
   const set = currentSet();
   downloadCurrentAudio(
     "modelMirrorVoicePlayback",
-    `model-mirror_${set?.id || "unknown"}_${modelEmotionLevel}_${mirrorProfile.gender}.mp3`,
+    `model-mirror_${set?.id || "unknown"}_${mirrorProfile.gender}.mp3`,
     "modelMirrorVoiceStatus"
   );
 };

@@ -4177,37 +4177,6 @@ function classifyExpressiveness(expressiveness) {
   return { level, scale, styleDegree };
 }
 
-// 学習者が選んだ目標の感情強度(emotionLevel: 自然/豊か、Model English・模範
-// ミラー側で使うもの)と、実際の録音から自動検出した表現力(flat/natural/
-// expressive)を比べる。「目標(模範ミラー)と実際の発話(生成されたミラー)の
-// 違いを、選んだ強度ごとに見極めて反映してほしい」という要望に対応するため、
-// 目標が問題なく再現できているか・不足しているか・上回っているかを判定して
-// 分析結果に含める(音声そのものの反映は、目標側=emotionLevelによるModel
-// English/模範ミラーのinstructions、実際側=このexpressivenessによるミラー音声の
-// scale/styleDegreeで、それぞれ既に別々に行われている。ここでは両者を並べて
-// 見比べるための「差」の判定だけを追加する)。目標側の選択肢は自然/豊かの2段階に
-// 絞ったので、実際側の判定(flat/natural/expressive)と同じ尺度をそのまま使う。
-const EXPRESSIVENESS_ORDINAL = { flat: 0, natural: 1.5, expressive: 3 };
-
-function compareExpressivenessToTarget(actualLevel, targetEmotionLevel) {
-  if (!targetEmotionLevel || !(targetEmotionLevel in EXPRESSIVENESS_ORDINAL)) return null;
-  if (!(actualLevel in EXPRESSIVENESS_ORDINAL)) return null;
-
-  const targetOrdinal = EXPRESSIVENESS_ORDINAL[targetEmotionLevel];
-  const actualOrdinal = EXPRESSIVENESS_ORDINAL[actualLevel];
-  const diff = actualOrdinal - targetOrdinal;
-  const verdict = diff <= -1 ? "under" : diff >= 1 ? "over" : "match";
-  const labels = { natural: "自然", expressive: "豊か" };
-  const actualLabels = { flat: "平坦", natural: "自然", expressive: "豊か" };
-
-  const comment = verdict === "match"
-    ? `目標(${labels[targetEmotionLevel]})に近い感情の込め方で発話できています。`
-    : verdict === "under"
-      ? `目標(${labels[targetEmotionLevel]})に対して、実際の発話は${actualLabels[actualLevel]}寄りで、やや控えめでした。もう少し感情を込めてみましょう。`
-      : `目標(${labels[targetEmotionLevel]})に対して、実際の発話は${actualLabels[actualLevel]}寄りで、想定より感情がこもっていました。`;
-
-  return { targetEmotionLevel, actualLevel, verdict, comment };
-}
 
 function pitchForVoiceSegment({ index, parts, basePitch, weakPitch, transferPlan }) {
   const isFinal = index === parts.length - 1;
@@ -4706,9 +4675,8 @@ function neutralMirrorTimelineForFreeMeaning(mirrorTimeline, speechFeatures) {
   };
 }
 
-function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonantAvg, consonantMin, muffled, couldBlindSpot, recordingDurationMs, rhythmHints, intonationFeatures, freeRecognizedText, utteranceCheck, profile, expressiveness, targetEmotionLevel }) {
+function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonantAvg, consonantMin, muffled, couldBlindSpot, recordingDurationMs, rhythmHints, intonationFeatures, freeRecognizedText, utteranceCheck, profile, expressiveness }) {
   const expressivenessInfo = classifyExpressiveness(expressiveness);
-  const expressivenessComparison = compareExpressivenessToTarget(expressivenessInfo.level, targetEmotionLevel);
   const words = wordDiagnostics.length
     ? wordDiagnostics
     : String(contrastSet.text || "").split(/\s+/).map((word) => ({ original: word, word: word.toLowerCase().replace(/[^a-z]/g, ""), score: 100, consonantMin: null }));
@@ -4835,7 +4803,7 @@ function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonan
     deviationModel,
     speechFeatures,
     voicePlan,
-    expressiveness: { level: expressivenessInfo.level, styleDegree: expressivenessInfo.styleDegree, comparisonToTarget: expressivenessComparison },
+    expressiveness: { level: expressivenessInfo.level, styleDegree: expressivenessInfo.styleDegree },
     voiceSpeechFeatures,
     voiceSoundSignature,
     severity: maxSeverity,

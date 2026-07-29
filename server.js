@@ -191,21 +191,11 @@ app.post("/api/assess", async (req, res) => {
     // 負荷の高い環境で二重計算が処理時間を押し上げていた可能性への対応)。
     const expressiveness = analyzeExpressiveness(intonationFeatures.userTrack || req.body);
 
-    // 学習者がModel English/模範ミラーで選んでいた目標の感情強度(自然/豊か)。
-    // 実際の発話の表現力(expressiveness)と比べて、目標との差を分析結果に含める
-    // (実機フィードバック: "modelと録音音声の違いをそれぞれ見極める必要があるし、
-    // その違いを...模範ミラーと生成されたミラーでの違いとして反映させる必要が
-    // ある")。
-    const targetEmotionLevel = ["natural", "expressive"].includes(req.query.emotionLevel)
-      ? req.query.emotionLevel
-      : undefined;
-
     const analysis = analyzeAzureRaw(azureResult.raw, { ...contrastSet, text: referenceText }, {
       recordingDurationMs,
       rhythmHints,
       intonationFeatures,
       expressiveness,
-      targetEmotionLevel,
       freeRecognizedText: freeRecognition.text || "",
       freeRecognitionError: freeRecognition.error || "",
       profile
@@ -302,29 +292,18 @@ const AGE_DELIVERY = {
   "20s": { rateDelta: 0, pitchDelta: 0 },
   "30s": { rateDelta: -3, pitchDelta: -2 }
 };
-// 感情の込め具合(自然/豊か)は、以前はOpenAIの自由指示TTSで表現していたが、
-// 声質(音質)が悪いという実機フィードバックのためAzureのみに戻した。Azure単体でも
-// 「自然」と「豊か」の違いは、速度・ピッチの上乗せとmstts:express-as styledegree
-// (スタイルが設定されているシーンのみ効く)で表現可能なため、選択肢自体は残す。
-const EMOTION_LEVEL_DELIVERY = {
-  natural: { rateDelta: 0, pitchDelta: 0, styleDegree: undefined },
-  expressive: { rateDelta: 6, pitchDelta: 5, styleDegree: 1.4 }
-};
-
 function formatSignedPercent(value) {
   const rounded = Math.round(value);
   return `${rounded >= 0 ? "+" : ""}${rounded}%`;
 }
 
-function deliveryForProfile(profile, emotionLevel) {
+function deliveryForProfile(profile) {
   const scene = SCENE_DELIVERY[profile?.scene] || SCENE_DELIVERY.daily;
   const age = AGE_DELIVERY[profile?.age] || AGE_DELIVERY["20s"];
-  const emotion = EMOTION_LEVEL_DELIVERY[emotionLevel] || EMOTION_LEVEL_DELIVERY.natural;
   return {
     style: scene.style,
-    rate: formatSignedPercent(scene.rateDelta + age.rateDelta + emotion.rateDelta),
-    pitch: formatSignedPercent(age.pitchDelta + emotion.pitchDelta),
-    styleDegree: emotion.styleDegree
+    rate: formatSignedPercent(scene.rateDelta + age.rateDelta),
+    pitch: formatSignedPercent(age.pitchDelta)
   };
 }
 
@@ -339,26 +318,24 @@ app.post("/api/model-voice", async (req, res) => {
     const cachedAudio = findCachedAudio({
       kind: "model-english",
       contrastSetId: req.body?.contrastSetId,
-      emotionLevel: req.body?.emotionLevel,
       gender: req.body?.gender
     });
     if (cachedAudio) {
-      console.log(`[model-voice] serving cached audio contrastSetId=${req.body?.contrastSetId} emotionLevel=${req.body?.emotionLevel} gender=${req.body?.gender}`);
+      console.log(`[model-voice] serving cached audio contrastSetId=${req.body?.contrastSetId} gender=${req.body?.gender}`);
       res.setHeader("Content-Type", "audio/mpeg");
       res.setHeader("X-Accent-Mirror-Voice", "cached");
       return res.send(cachedAudio);
     }
 
     const genderVoice = MODEL_VOICE_BY_GENDER[req.body?.gender];
-    const delivery = deliveryForProfile(req.body || {}, req.body?.emotionLevel);
+    const delivery = deliveryForProfile(req.body || {});
     const voice = req.body?.voice || genderVoice || process.env.MODEL_TTS_VOICE || "en-US-JennyNeural";
     const rate = req.body?.rate || process.env.MODEL_TTS_RATE || delivery.rate;
     const pitch = req.body?.pitch || process.env.MODEL_TTS_PITCH || delivery.pitch;
     const style = req.body?.style || process.env.MODEL_TTS_STYLE || delivery.style;
-    const styleDegree = delivery.styleDegree;
 
-    console.log(`[model-voice] engine=azure voice=${voice} rate=${rate} pitch=${pitch} style=${style || "(none)"} emotionLevel=${req.body?.emotionLevel || "(none)"}`);
-    const result = await synthesizeEnglishModelSpeech({ text, voice, rate, pitch, style, styleDegree });
+    console.log(`[model-voice] engine=azure voice=${voice} rate=${rate} pitch=${pitch} style=${style || "(none)"}`);
+    const result = await synthesizeEnglishModelSpeech({ text, voice, rate, pitch, style });
     res.setHeader("Content-Type", result.contentType);
     res.setHeader("X-Accent-Mirror-Voice", result.voice);
     res.setHeader("X-Accent-Mirror-Spoken-Text", encodeURIComponent(result.spokenText));
@@ -379,21 +356,18 @@ app.post("/api/mirror-voice", async (req, res) => {
     // 模範日本語ミラー(source: "model-japanese-mirror")は、癖の反映を行わない
     // 「正しい発音の基準」のはずが、rate/pitch固定("+0%"/"+0Hz")の平板な読み上げに
     // なっていた。実際のミラー音声(癖の反映を含む、voicePlanで計算済みのrate/pitch)
-    // はそのまま使い、模範日本語ミラーの時だけ場面・性別・年代・感情の込め具合
-    // (emotionLevel: 自然/豊か)に応じた自然な話し方(deliveryForProfile)に置き換える。
-    // 感情の込め具合は以前OpenAIの自由指示TTSで表現していたが、声質(音質)が悪いという
-    // 実機フィードバックのためAzureのみに戻した(実機フィードバック: "modelや模範は
-    // AI音声だと思いますが、声質(音質)が悪いので、ここももうAzureに戻してください")。
+    // はそのまま使い、模範日本語ミラーの時だけ場面・性別・年代に応じた自然な
+    // 話し方(deliveryForProfile)に置き換える。
     const isModelMirror = req.body?.source === "model-japanese-mirror";
-    const delivery = deliveryForProfile(req.body?.profile || {}, isModelMirror ? req.body?.emotionLevel : undefined);
+    const delivery = deliveryForProfile(req.body?.profile || {});
     const rate = isModelMirror ? (process.env.MIRROR_TTS_RATE || delivery.rate) : (req.body?.rate || "-4%");
     const pitch = isModelMirror ? (process.env.MIRROR_TTS_PITCH || delivery.pitch) : (req.body?.pitch || "+0Hz");
     const pausePattern = req.body?.pausePattern || "plain";
     const style = req.body?.style || process.env.MIRROR_TTS_STYLE || delivery.style;
-    // 実際のミラー音声(癖の反映)は学習者の録音の表現力(expressiveness)から計算した
-    // styledegreeを、模範日本語ミラーは選んだ感情の込め具合(自然/豊か)由来の
-    // styledegreeを、それぞれ渡す。
-    const styleDegree = isModelMirror ? delivery.styleDegree : req.body?.styleDegree;
+    // 実際のミラー音声(癖の反映)だけ、学習者の録音の表現力(expressiveness)から
+    // 計算したstyledegreeをそのまま渡す。模範日本語ミラーは常に既定の度合い
+    // (styledegree指定なし=1)にする。
+    const styleDegree = isModelMirror ? undefined : req.body?.styleDegree;
     const voiceScript = req.body?.voiceScript && Array.isArray(req.body.voiceScript.segments)
       ? req.body.voiceScript
       : null;
@@ -404,11 +378,10 @@ app.post("/api/mirror-voice", async (req, res) => {
       const cachedAudio = findCachedAudio({
         kind: "model-mirror",
         contrastSetId: req.body?.contrastSetId,
-        emotionLevel: req.body?.emotionLevel,
         gender: req.body?.profile?.gender
       });
       if (cachedAudio) {
-        console.log(`[mirror-voice] serving cached audio contrastSetId=${req.body?.contrastSetId} emotionLevel=${req.body?.emotionLevel} gender=${req.body?.profile?.gender}`);
+        console.log(`[mirror-voice] serving cached audio contrastSetId=${req.body?.contrastSetId} gender=${req.body?.profile?.gender}`);
         res.setHeader("Content-Type", "audio/mpeg");
         res.setHeader("X-Accent-Mirror-Voice", "cached");
         res.setHeader("X-Accent-Mirror-Confidence", confidence || "unknown");
@@ -416,7 +389,7 @@ app.post("/api/mirror-voice", async (req, res) => {
       }
     }
 
-    console.log(`[mirror-voice] engine=azure voice=${voice} rate=${rate} pitch=${pitch} style=${style || "(none)"} emotionLevel=${req.body?.emotionLevel || "(none)"}`);
+    console.log(`[mirror-voice] engine=azure voice=${voice} rate=${rate} pitch=${pitch} style=${style || "(none)"}`);
     const result = await synthesizeJapaneseSpeech({ text, voice, rate, pitch, pausePattern, style, styleDegree, voiceScript });
     res.setHeader("Content-Type", result.contentType);
     res.setHeader("X-Accent-Mirror-Voice", result.voice);
