@@ -282,7 +282,8 @@ async function synthesizeEnglishModelSpeech({
   voice = process.env.MODEL_TTS_VOICE || "en-US-JennyNeural",
   rate = process.env.MODEL_TTS_RATE || "+0%",
   pitch = process.env.MODEL_TTS_PITCH || "+0Hz",
-  style = process.env.MODEL_TTS_STYLE || ""
+  style = process.env.MODEL_TTS_STYLE || "",
+  styleDegree = null
 }) {
   return synthesizeSpeech({
     text,
@@ -291,6 +292,7 @@ async function synthesizeEnglishModelSpeech({
     pitch,
     pausePattern: "plain",
     style,
+    styleDegree,
     language: "en-US"
   });
 }
