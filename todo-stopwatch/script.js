@@ -144,9 +144,57 @@
     otherOptionOf(select).textContent = item.custom.trim() || OTHER;
   }
 
-  function promptForCustomName(index, select) {
+  // --- name modal (custom, since window.prompt is blocked in sandboxed views) ---
+
+  const nameModal = document.getElementById("nameModal");
+  const nameModalInput = document.getElementById("nameModalInput");
+  const nameModalOk = document.getElementById("nameModalOk");
+  const nameModalCancel = document.getElementById("nameModalCancel");
+
+  function openNameModal(initial) {
+    return new Promise((resolve) => {
+      nameModalInput.value = initial;
+      nameModal.hidden = false;
+      nameModalInput.focus();
+      nameModalInput.select();
+
+      function cleanup(result) {
+        nameModal.hidden = true;
+        nameModalOk.removeEventListener("click", onOk);
+        nameModalCancel.removeEventListener("click", onCancel);
+        nameModal.removeEventListener("mousedown", onBackdrop);
+        nameModalInput.removeEventListener("keydown", onKeydown);
+        resolve(result);
+      }
+      function onOk() {
+        cleanup(nameModalInput.value);
+      }
+      function onCancel() {
+        cleanup(null);
+      }
+      function onBackdrop(e) {
+        if (e.target === nameModal) cleanup(null);
+      }
+      function onKeydown(e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onOk();
+        } else if (e.key === "Escape") {
+          onCancel();
+        }
+      }
+
+      nameModalOk.addEventListener("click", onOk);
+      nameModalCancel.addEventListener("click", onCancel);
+      nameModal.addEventListener("mousedown", onBackdrop);
+      nameModalInput.addEventListener("keydown", onKeydown);
+    });
+  }
+
+  async function promptForCustomName(index, select) {
     const item = state.items[index];
-    const name = window.prompt("項目名を入力してください", item.custom);
+    if (item.running) return;
+    const name = await openNameModal(item.custom);
     if (name !== null) {
       item.custom = name;
       syncOtherOptionLabel(select, item);
@@ -193,7 +241,7 @@
         resetItem(index);
       });
 
-      tileEls.push({ node, select, circle, timeDisplay });
+      tileEls.push({ node, select, editBtn, circle, timeDisplay });
       grid.appendChild(node);
     });
   }
@@ -384,13 +432,17 @@
     state.items.forEach((item, index) => {
       const elapsed = currentElapsed(item);
       total += elapsed;
-      const { node, timeDisplay, circle } = tileEls[index];
+      const { node, timeDisplay, circle, select, editBtn } = tileEls[index];
       timeDisplay.textContent = formatTime(elapsed);
       node.classList.toggle("running", item.running);
       circle.setAttribute(
         "aria-label",
         `${labelOf(item)} ${formatTime(elapsed)} ${item.running ? "停止する" : "開始する"}`
       );
+      select.disabled = item.running;
+      select.title = item.running ? "実行中は変更できません" : "";
+      editBtn.disabled = item.running;
+      editBtn.title = item.running ? "実行中は変更できません" : "名前を編集";
     });
     totalTimeEl.textContent = formatTime(total);
     renderBreakdown();

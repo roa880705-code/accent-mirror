@@ -252,6 +252,11 @@ body {
   color: var(--accent);
 }
 
+.label-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .edit-btn {
   all: unset;
   flex: none;
@@ -280,7 +285,14 @@ body {
   display: none;
 }
 
+.edit-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .circle-wrap {
+  container-type: size;
   position: relative;
   flex: 1;
   min-height: 0;
@@ -297,19 +309,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: min(9vw, 11vh, 94px);
-  height: min(9vw, 11vh, 94px);
+  width: min(96cqw, 96cqh);
+  height: min(96cqw, 96cqh);
   border-radius: 50%;
   border: 2.5px solid var(--line);
   background: var(--card-bg);
   transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-@media (max-width: 720px) {
-  .circle {
-    width: min(19vw, 10vh, 94px);
-    height: min(19vw, 10vh, 94px);
-  }
 }
 
 .circle:focus-visible {
@@ -515,4 +520,75 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* --- name modal --- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 14, 10, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 20px;
+}
+
+.modal-backdrop[hidden] {
+  display: none;
+}
+
+.modal-box {
+  width: min(90vw, 320px);
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+.modal-box h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.modal-box input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+
+.modal-box input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.modal-actions .btn {
+  padding: 8px 16px;
+}
+
+.btn-modal-cancel {
+  background: var(--panel);
+  color: var(--muted);
+}
+
+.btn-modal-ok {
+  background: var(--accent);
+  color: #fff;
 }
