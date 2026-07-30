@@ -19,7 +19,23 @@
     </div>
   </header>
 
-  <main id="grid" class="grid"></main>
+  <nav class="tabs" id="tabs">
+    <button class="tab-btn active" data-page="0" type="button">タイマー</button>
+    <button class="tab-btn" data-page="1" type="button">内訳</button>
+    <button class="tab-btn" data-page="2" type="button">履歴</button>
+  </nav>
+
+  <div class="pages" id="pages">
+    <section class="page">
+      <main id="grid" class="grid"></main>
+    </section>
+    <section class="page">
+      <div id="breakdown" class="breakdown"></div>
+    </section>
+    <section class="page">
+      <div id="history" class="history"></div>
+    </section>
+  </div>
 </div>
 
 <template id="tileTemplate">
