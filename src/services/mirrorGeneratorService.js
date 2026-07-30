@@ -824,9 +824,15 @@ function objectJapanese(words) {
     pen: "ペン",
     salt: "塩"
   };
+  // 辞書に無い単語(例: "salt"が自由認識で"fault"と聞き取られた場合の"fault")は、
+  // 英単語をそのまま和訳されずに日本語文へ埋め込んでいた(実機フィードバック:
+  // "間違って発音されたまたは間違って聞き取られたfaultを和訳してくれなかった"
+  // -- 「faultを取ってもらえますか？」のように英単語がそのまま残っていた)。
+  // 正確な和訳語彙が無くても、綴りからカタカナ化(spellingToKatakana)して
+  // 埋め込めば、少なくとも英単語がそのまま混ざることは避けられる。
   const values = words
     .filter((word) => word && word !== "the" && word !== "a" && word !== "an")
-    .map((word) => word === "and" ? "と" : dictionary[word] || word);
+    .map((word) => word === "and" ? "と" : dictionary[word] || spellingToKatakana(word) || word);
   return values.join("").replace(/と$/, "");
 }
 
