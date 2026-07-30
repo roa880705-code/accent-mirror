@@ -7,25 +7,32 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="app-header">
-  <h1>やることウォッチ</h1>
-  <div class="header-right">
-    <div class="total-time">
-      合計 <span id="totalTime">00:00:00</span>
+<div class="wrap">
+  <header class="app-header">
+    <h1>やることウォッチ</h1>
+    <div class="header-right">
+      <div class="total-panel">
+        <span class="caption">合計</span>
+        <span class="value" id="totalTime">00:00:00</span>
+      </div>
+      <button id="resetAllBtn" class="btn btn-reset-all">全リセット</button>
     </div>
-    <button id="resetAllBtn" class="btn btn-danger">今日の記録をリセット</button>
-  </div>
-</header>
+  </header>
 
-<main id="grid" class="grid"></main>
+  <main id="grid" class="grid"></main>
+</div>
 
-<template id="cardTemplate">
-  <section class="card">
-    <input class="label-input" type="text" maxlength="20" placeholder="項目名">
-    <div class="time-display">00:00:00</div>
-    <div class="card-actions">
-      <button class="btn btn-toggle">開始</button>
-      <button class="btn btn-reset" title="この項目をリセット">リセット</button>
+<template id="tileTemplate">
+  <section class="tile">
+    <div class="field">
+      <select class="label-select"></select>
+      <button class="edit-btn" type="button" title="名前を編集" hidden>&#9998;</button>
+    </div>
+    <div class="circle-wrap">
+      <button class="circle" type="button">
+        <span class="time-display">00:00:00</span>
+      </button>
+      <button class="reset-btn" type="button" title="リセット">&#8635;</button>
     </div>
   </section>
 </template>

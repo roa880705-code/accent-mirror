@@ -1,7 +1,19 @@
 (() => {
-  const STORAGE_KEY = "todoStopwatch:v1";
+  const STORAGE_KEY = "todoStopwatch:v2";
   const ITEM_COUNT = 12;
-  const DEFAULT_LABELS = ["休憩", "作業", "移動", "食事", "運動"];
+  const PRESETS = ["休憩", "作業", "移動", "食事", "運動", "睡眠", "学習", "家事", "買い物", "趣味", "その他"];
+  const OTHER = "その他";
+  const DEFAULT_PICKS = ["休憩", "作業", "移動", "食事", "運動", "睡眠", "学習", "家事", "買い物", "趣味", OTHER, OTHER];
+
+  function defaultState() {
+    return Array.from({ length: ITEM_COUNT }, (_, i) => ({
+      select: DEFAULT_PICKS[i] || OTHER,
+      custom: "",
+      elapsedMs: 0,
+      running: false,
+      startedAt: null,
+    }));
+  }
 
   function loadState() {
     try {
@@ -15,18 +27,20 @@
     } catch (e) {
       // corrupt storage, fall through to defaults
     }
-    return Array.from({ length: ITEM_COUNT }, (_, i) => ({
-      label: DEFAULT_LABELS[i] || "",
-      elapsedMs: 0,
-      running: false,
-      startedAt: null,
-    }));
+    return defaultState();
   }
 
   let state = loadState();
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function labelOf(item) {
+    if (item.select === OTHER) {
+      return item.custom.trim() || OTHER;
+    }
+    return item.select;
   }
 
   function currentElapsed(item) {
@@ -46,30 +60,70 @@
   }
 
   const grid = document.getElementById("grid");
-  const template = document.getElementById("cardTemplate");
+  const template = document.getElementById("tileTemplate");
   const totalTimeEl = document.getElementById("totalTime");
   const resetAllBtn = document.getElementById("resetAllBtn");
 
-  const cardEls = [];
+  const tileEls = [];
 
-  function buildCards() {
+  function otherOptionOf(select) {
+    return Array.from(select.options).find((opt) => opt.value === OTHER);
+  }
+
+  function syncOtherOptionLabel(select, item) {
+    otherOptionOf(select).textContent = item.custom.trim() || OTHER;
+  }
+
+  function promptForCustomName(index, select) {
+    const item = state[index];
+    const name = window.prompt("項目名を入力してください", item.custom);
+    if (name !== null) {
+      item.custom = name;
+      syncOtherOptionLabel(select, item);
+      saveState();
+    }
+    render();
+  }
+
+  function buildTiles() {
     state.forEach((item, index) => {
       const node = template.content.firstElementChild.cloneNode(true);
-      const labelInput = node.querySelector(".label-input");
+      const select = node.querySelector(".label-select");
+      const editBtn = node.querySelector(".edit-btn");
+      const circle = node.querySelector(".circle");
       const timeDisplay = node.querySelector(".time-display");
-      const toggleBtn = node.querySelector(".btn-toggle");
-      const resetBtn = node.querySelector(".btn-reset");
+      const resetBtn = node.querySelector(".reset-btn");
 
-      labelInput.value = item.label;
-      labelInput.addEventListener("input", () => {
-        state[index].label = labelInput.value;
+      PRESETS.forEach((preset) => {
+        const opt = document.createElement("option");
+        opt.value = preset;
+        opt.textContent = preset;
+        select.appendChild(opt);
+      });
+      select.value = item.select;
+      syncOtherOptionLabel(select, item);
+      editBtn.hidden = item.select !== OTHER;
+
+      select.addEventListener("change", () => {
+        state[index].select = select.value;
+        editBtn.hidden = select.value !== OTHER;
         saveState();
+        if (select.value === OTHER) {
+          promptForCustomName(index, select);
+        } else {
+          render();
+        }
       });
 
-      toggleBtn.addEventListener("click", () => toggleItem(index));
-      resetBtn.addEventListener("click", () => resetItem(index));
+      editBtn.addEventListener("click", () => promptForCustomName(index, select));
 
-      cardEls.push({ node, labelInput, timeDisplay, toggleBtn });
+      circle.addEventListener("click", () => toggleItem(index));
+      resetBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        resetItem(index);
+      });
+
+      tileEls.push({ node, select, circle, timeDisplay });
       grid.appendChild(node);
     });
   }
@@ -100,8 +154,7 @@
 
   function resetItem(index) {
     const item = state[index];
-    const label = item.label || `項目${index + 1}`;
-    if (!window.confirm(`「${label}」の記録をリセットしますか?`)) {
+    if (!window.confirm(`「${labelOf(item)}」の記録をリセットしますか?`)) {
       return;
     }
     item.elapsedMs = 0;
@@ -129,15 +182,18 @@
     state.forEach((item, index) => {
       const elapsed = currentElapsed(item);
       total += elapsed;
-      const { node, timeDisplay, toggleBtn } = cardEls[index];
+      const { node, timeDisplay, circle } = tileEls[index];
       timeDisplay.textContent = formatTime(elapsed);
-      toggleBtn.textContent = item.running ? "停止" : "開始";
       node.classList.toggle("running", item.running);
+      circle.setAttribute(
+        "aria-label",
+        `${labelOf(item)} ${formatTime(elapsed)} ${item.running ? "停止する" : "開始する"}`
+      );
     });
     totalTimeEl.textContent = formatTime(total);
   }
 
-  buildCards();
+  buildTiles();
   render();
   setInterval(() => {
     render();
