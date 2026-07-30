@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>やることウォッチ</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="app-header">
+  <h1>やることウォッチ</h1>
+  <div class="header-right">
+    <div class="total-time">
+      合計 <span id="totalTime">00:00:00</span>
+    </div>
+    <button id="resetAllBtn" class="btn btn-danger">今日の記録をリセット</button>
+  </div>
+</header>
+
+<main id="grid" class="grid"></main>
+
+<template id="cardTemplate">
+  <section class="card">
+    <input class="label-input" type="text" maxlength="20" placeholder="項目名">
+    <div class="time-display">00:00:00</div>
+    <div class="card-actions">
+      <button class="btn btn-toggle">開始</button>
+      <button class="btn btn-reset" title="この項目をリセット">リセット</button>
+    </div>
+  </section>
+</template>
+
+<script src="script.js"></script>
+</body>
+</html>
