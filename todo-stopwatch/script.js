@@ -1,11 +1,8 @@
 (() => {
-  const STORAGE_KEY = "todoStopwatch:v3";
+  const STORAGE_KEY = "todoStopwatch:v4";
   const HISTORY_KEY = "todoStopwatch:history:v1";
   const MAX_HISTORY = 60;
   const ITEM_COUNT = 12;
-  const PRESETS = ["休憩", "作業", "移動", "食事", "運動", "睡眠", "学習", "家事", "買い物", "趣味", "その他"];
-  const OTHER = "その他";
-  const DEFAULT_PICKS = ["休憩", "作業", "移動", "食事", "運動", "睡眠", "学習", "家事", "買い物", "趣味", OTHER, OTHER];
   const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
   function pad2(n) {
@@ -24,9 +21,8 @@
   }
 
   function defaultItems() {
-    return Array.from({ length: ITEM_COUNT }, (_, i) => ({
-      select: DEFAULT_PICKS[i] || OTHER,
-      custom: "",
+    return Array.from({ length: ITEM_COUNT }, () => ({
+      label: "",
       elapsedMs: 0,
       running: false,
       startedAt: null,
@@ -72,11 +68,8 @@
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
   }
 
-  function labelOf(item) {
-    if (item.select === OTHER) {
-      return item.custom.trim() || OTHER;
-    }
-    return item.select;
+  function labelOf(item, index) {
+    return item.label.trim() || `タスク${index + 1}`;
   }
 
   function currentElapsed(item) {
@@ -98,7 +91,7 @@
 
   function archiveDay(dayStr, items) {
     const snapshot = items
-      .map((it) => ({ label: labelOf(it), elapsedMs: currentElapsed(it) }))
+      .map((it, i) => ({ label: labelOf(it, i), elapsedMs: currentElapsed(it) }))
       .filter((e) => e.elapsedMs > 0)
       .sort((a, b) => b.elapsedMs - a.elapsedMs);
     const totalMs = snapshot.reduce((s, e) => s + e.elapsedMs, 0);
@@ -125,124 +118,36 @@
     saveState();
   }
 
-  // --- timer grid ---
+  // --- timer list ---
 
-  const grid = document.getElementById("grid");
-  const template = document.getElementById("tileTemplate");
+  const list = document.getElementById("list");
+  const template = document.getElementById("rowTemplate");
   const totalTimeEl = document.getElementById("totalTime");
   const resetAllBtn = document.getElementById("resetAllBtn");
   const breakdownEl = document.getElementById("breakdown");
   const historyEl = document.getElementById("history");
 
-  const tileEls = [];
+  const rowEls = [];
 
-  function otherOptionOf(select) {
-    return Array.from(select.options).find((opt) => opt.value === OTHER);
-  }
-
-  function syncOtherOptionLabel(select, item) {
-    otherOptionOf(select).textContent = item.custom.trim() || OTHER;
-  }
-
-  // --- name modal (custom, since window.prompt is blocked in sandboxed views) ---
-
-  const nameModal = document.getElementById("nameModal");
-  const nameModalInput = document.getElementById("nameModalInput");
-  const nameModalOk = document.getElementById("nameModalOk");
-  const nameModalCancel = document.getElementById("nameModalCancel");
-
-  function openNameModal(initial) {
-    return new Promise((resolve) => {
-      nameModalInput.value = initial;
-      nameModal.hidden = false;
-      nameModalInput.focus();
-      nameModalInput.select();
-
-      function cleanup(result) {
-        nameModal.hidden = true;
-        nameModalOk.removeEventListener("click", onOk);
-        nameModalCancel.removeEventListener("click", onCancel);
-        nameModal.removeEventListener("mousedown", onBackdrop);
-        nameModalInput.removeEventListener("keydown", onKeydown);
-        resolve(result);
-      }
-      function onOk() {
-        cleanup(nameModalInput.value);
-      }
-      function onCancel() {
-        cleanup(null);
-      }
-      function onBackdrop(e) {
-        if (e.target === nameModal) cleanup(null);
-      }
-      function onKeydown(e) {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          onOk();
-        } else if (e.key === "Escape") {
-          onCancel();
-        }
-      }
-
-      nameModalOk.addEventListener("click", onOk);
-      nameModalCancel.addEventListener("click", onCancel);
-      nameModal.addEventListener("mousedown", onBackdrop);
-      nameModalInput.addEventListener("keydown", onKeydown);
-    });
-  }
-
-  async function promptForCustomName(index, select) {
-    const item = state.items[index];
-    if (item.running) return;
-    const name = await openNameModal(item.custom);
-    if (name !== null) {
-      item.custom = name;
-      syncOtherOptionLabel(select, item);
-      saveState();
-    }
-    render();
-  }
-
-  function buildTiles() {
+  function buildRows() {
     state.items.forEach((item, index) => {
       const node = template.content.firstElementChild.cloneNode(true);
-      const select = node.querySelector(".label-select");
-      const editBtn = node.querySelector(".edit-btn");
-      const circle = node.querySelector(".circle");
-      const timeDisplay = node.querySelector(".time-display");
-      const resetBtn = node.querySelector(".reset-btn");
+      const input = node.querySelector(".row-input");
+      const timeDisplay = node.querySelector(".row-time");
+      const toggleBtn = node.querySelector(".row-toggle");
+      const resetBtn = node.querySelector(".row-reset");
 
-      PRESETS.forEach((preset) => {
-        const opt = document.createElement("option");
-        opt.value = preset;
-        opt.textContent = preset;
-        select.appendChild(opt);
-      });
-      select.value = item.select;
-      syncOtherOptionLabel(select, item);
-      editBtn.hidden = item.select !== OTHER;
-
-      select.addEventListener("change", () => {
-        state.items[index].select = select.value;
-        editBtn.hidden = select.value !== OTHER;
+      input.value = item.label;
+      input.addEventListener("input", () => {
+        state.items[index].label = input.value;
         saveState();
-        if (select.value === OTHER) {
-          promptForCustomName(index, select);
-        } else {
-          render();
-        }
       });
 
-      editBtn.addEventListener("click", () => promptForCustomName(index, select));
+      toggleBtn.addEventListener("click", () => toggleItem(index));
+      resetBtn.addEventListener("click", () => resetItem(index));
 
-      circle.addEventListener("click", () => toggleItem(index));
-      resetBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        resetItem(index);
-      });
-
-      tileEls.push({ node, select, editBtn, circle, timeDisplay });
-      grid.appendChild(node);
+      rowEls.push({ node, input, timeDisplay, toggleBtn });
+      list.appendChild(node);
     });
   }
 
@@ -272,7 +177,7 @@
 
   function resetItem(index) {
     const item = state.items[index];
-    if (!window.confirm(`「${labelOf(item)}」の記録をリセットしますか?(履歴には保存されません)`)) {
+    if (!window.confirm(`「${labelOf(item, index)}」の記録をリセットしますか?(履歴には保存されません)`)) {
       return;
     }
     item.elapsedMs = 0;
@@ -301,7 +206,7 @@
 
   function renderBreakdown() {
     const rows = state.items
-      .map((item) => ({ label: labelOf(item), elapsed: currentElapsed(item), running: item.running }))
+      .map((item, i) => ({ label: labelOf(item, i), elapsed: currentElapsed(item), running: item.running }))
       .filter((r) => r.elapsed > 0)
       .sort((a, b) => b.elapsed - a.elapsed);
 
@@ -432,24 +337,19 @@
     state.items.forEach((item, index) => {
       const elapsed = currentElapsed(item);
       total += elapsed;
-      const { node, timeDisplay, circle, select, editBtn } = tileEls[index];
+      const { node, timeDisplay, toggleBtn, input } = rowEls[index];
       timeDisplay.textContent = formatTime(elapsed);
       node.classList.toggle("running", item.running);
-      circle.setAttribute(
-        "aria-label",
-        `${labelOf(item)} ${formatTime(elapsed)} ${item.running ? "停止する" : "開始する"}`
-      );
-      select.disabled = item.running;
-      select.title = item.running ? "実行中は変更できません" : "";
-      editBtn.disabled = item.running;
-      editBtn.title = item.running ? "実行中は変更できません" : "名前を編集";
+      toggleBtn.textContent = item.running ? "停止" : "開始";
+      input.disabled = item.running;
+      input.title = item.running ? "実行中は変更できません" : "";
     });
     totalTimeEl.textContent = formatTime(total);
     renderBreakdown();
   }
 
   rolloverIfNeeded();
-  buildTiles();
+  buildRows();
   render();
   renderHistory();
 
