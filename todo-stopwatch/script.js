@@ -1,8 +1,9 @@
 (() => {
-  const STORAGE_KEY = "todoStopwatch:v4";
+  const STORAGE_KEY = "todoStopwatch:v5";
   const HISTORY_KEY = "todoStopwatch:history:v1";
   const MAX_HISTORY = 60;
-  const ITEM_COUNT = 12;
+  const DEFAULT_COUNT = 10;
+  const MAX_COUNT = 40;
   const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
   function pad2(n) {
@@ -20,13 +21,12 @@
     return `${m}/${d}(${WEEKDAYS[dt.getDay()]})`;
   }
 
+  function freshItem(label) {
+    return { label: label || "", elapsedMs: 0, running: false, startedAt: null };
+  }
+
   function defaultItems() {
-    return Array.from({ length: ITEM_COUNT }, () => ({
-      label: "",
-      elapsedMs: 0,
-      running: false,
-      startedAt: null,
-    }));
+    return Array.from({ length: DEFAULT_COUNT }, () => freshItem(""));
   }
 
   function loadState() {
@@ -34,14 +34,26 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed.day === "string" && Array.isArray(parsed.items) && parsed.items.length === ITEM_COUNT) {
+        if (
+          parsed &&
+          typeof parsed.day === "string" &&
+          Array.isArray(parsed.items) &&
+          parsed.items.length >= 1 &&
+          parsed.sidework &&
+          parsed.interrupt
+        ) {
           return parsed;
         }
       }
     } catch (e) {
       // corrupt storage, fall through to defaults
     }
-    return { day: todayStr(), items: defaultItems() };
+    return {
+      day: todayStr(),
+      items: defaultItems(),
+      sidework: freshItem("別件"),
+      interrupt: freshItem("割込対応"),
+    };
   }
 
   function loadHistory() {
@@ -68,8 +80,8 @@
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
   }
 
-  function labelOf(item, index) {
-    return item.label.trim() || `タスク${index + 1}`;
+  function labelOf(item, fallback) {
+    return item.label.trim() || fallback;
   }
 
   function currentElapsed(item) {
@@ -87,11 +99,19 @@
     return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
   }
 
+  function allTrackedEntries() {
+    return [
+      ...state.items.map((it, i) => ({ item: it, fallback: `タスク${i + 1}` })),
+      { item: state.sidework, fallback: "別件" },
+      { item: state.interrupt, fallback: "割込対応" },
+    ];
+  }
+
   // --- history archiving ---
 
-  function archiveDay(dayStr, items) {
-    const snapshot = items
-      .map((it, i) => ({ label: labelOf(it, i), elapsedMs: currentElapsed(it) }))
+  function archiveDay(dayStr) {
+    const snapshot = allTrackedEntries()
+      .map(({ item, fallback }) => ({ label: labelOf(item, fallback), elapsedMs: currentElapsed(item) }))
       .filter((e) => e.elapsedMs > 0)
       .sort((a, b) => b.elapsedMs - a.elapsedMs);
     const totalMs = snapshot.reduce((s, e) => s + e.elapsedMs, 0);
@@ -106,14 +126,31 @@
     saveHistory();
   }
 
+  function resetAllTracking() {
+    state.items.forEach((item) => {
+      item.elapsedMs = 0;
+      item.running = false;
+      item.startedAt = null;
+    });
+    state.sidework.elapsedMs = 0;
+    state.sidework.running = false;
+    state.sidework.startedAt = null;
+    state.interrupt.elapsedMs = 0;
+    state.interrupt.running = false;
+    state.interrupt.startedAt = null;
+  }
+
   function rolloverIfNeeded() {
     const today = todayStr();
     if (state.day === today) return;
-    archiveDay(state.day, state.items);
+    archiveDay(state.day);
     state.items.forEach((it) => {
       if (it.running) it.startedAt = Date.now();
       it.elapsedMs = 0;
     });
+    if (state.sidework.running) state.sidework.startedAt = Date.now();
+    state.sidework.elapsedMs = 0;
+    state.interrupt.elapsedMs = 0;
     state.day = today;
     saveState();
   }
@@ -126,6 +163,7 @@
   const resetAllBtn = document.getElementById("resetAllBtn");
   const breakdownEl = document.getElementById("breakdown");
   const historyEl = document.getElementById("history");
+  const listWrap = document.querySelector(".list-wrap");
 
   let rowEls = [];
 
@@ -153,25 +191,55 @@
       rowEls.push({ node, input, timeDisplay, toggleBtn, item });
       list.appendChild(node);
     });
+
+    const addRow = document.createElement("button");
+    addRow.type = "button";
+    addRow.className = "add-row";
+    addRow.textContent = "＋ ウォッチの追加";
+    addRow.addEventListener("click", addWatch);
+    list.appendChild(addRow);
+  }
+
+  function addWatch() {
+    if (state.items.length >= MAX_COUNT) return;
+    state.items.push(freshItem(""));
+    saveState();
+    buildRows();
+    render();
+    requestAnimationFrame(() => {
+      listWrap.scrollTop = listWrap.scrollHeight;
+    });
+  }
+
+  function stopIfRunning(item) {
+    if (!item.running) return;
+    item.elapsedMs += Date.now() - item.startedAt;
+    item.running = false;
+    item.startedAt = null;
+  }
+
+  function subtractElapsed(item, amount) {
+    if (amount <= 0) return;
+    if (item.running && item.startedAt) {
+      const runningDuration = Date.now() - item.startedAt;
+      const fromRunning = Math.min(amount, runningDuration);
+      item.startedAt += fromRunning;
+      amount -= fromRunning;
+    }
+    if (amount > 0) {
+      item.elapsedMs = Math.max(0, item.elapsedMs - amount);
+    }
   }
 
   function toggleItem(target) {
-    const now = Date.now();
-
     if (target.running) {
-      target.elapsedMs += now - target.startedAt;
-      target.running = false;
-      target.startedAt = null;
+      stopIfRunning(target);
     } else {
       state.items.forEach((item) => {
-        if (item !== target && item.running) {
-          item.elapsedMs += now - item.startedAt;
-          item.running = false;
-          item.startedAt = null;
-        }
+        if (item !== target) stopIfRunning(item);
       });
       target.running = true;
-      target.startedAt = now;
+      target.startedAt = Date.now();
     }
 
     saveState();
@@ -180,7 +248,7 @@
 
   function resetItem(item) {
     const index = state.items.indexOf(item);
-    if (!window.confirm(`「${labelOf(item, index)}」の記録をリセットしますか?(履歴には保存されません)`)) {
+    if (!window.confirm(`「${labelOf(item, `タスク${index + 1}`)}」の記録をリセットしますか?(履歴には保存されません)`)) {
       return;
     }
     item.elapsedMs = 0;
@@ -189,6 +257,56 @@
     saveState();
     render();
   }
+
+  // --- sidework (別件) widget ---
+
+  const sideworkInput = document.getElementById("sideworkInput");
+  const sideworkCircle = document.getElementById("sideworkCircle");
+  const sideworkTime = document.getElementById("sideworkTime");
+  const sideworkWidget = document.getElementById("sideworkWidget");
+  const foldInterruptBtn = document.getElementById("foldInterruptBtn");
+  const deductPrevBtn = document.getElementById("deductPrevBtn");
+
+  sideworkInput.value = state.sidework.label;
+  sideworkInput.addEventListener("input", () => {
+    state.sidework.label = sideworkInput.value;
+    saveState();
+  });
+
+  sideworkCircle.addEventListener("click", () => {
+    // Runs independently: does not stop whichever regular watch is active.
+    if (state.sidework.running) {
+      stopIfRunning(state.sidework);
+    } else {
+      state.sidework.running = true;
+      state.sidework.startedAt = Date.now();
+    }
+    saveState();
+    render();
+  });
+
+  foldInterruptBtn.addEventListener("click", () => {
+    stopIfRunning(state.sidework);
+    const elapsed = state.sidework.elapsedMs;
+    if (elapsed <= 0) return;
+    state.interrupt.elapsedMs += elapsed;
+    state.sidework.elapsedMs = 0;
+    saveState();
+    render();
+  });
+
+  deductPrevBtn.addEventListener("click", () => {
+    stopIfRunning(state.sidework);
+    const elapsed = state.sidework.elapsedMs;
+    if (elapsed <= 0) return;
+    const prev = state.items.find((it) => it.running);
+    if (prev) {
+      subtractElapsed(prev, elapsed);
+    }
+    state.sidework.elapsedMs = 0;
+    saveState();
+    render();
+  });
 
   // --- drag to reorder ---
 
@@ -219,7 +337,7 @@
 
     const rowRect = node.getBoundingClientRect();
     const rowCenter = rowRect.top + rowRect.height / 2;
-    const siblings = Array.from(list.children);
+    const siblings = Array.from(list.children).filter((n) => n.classList.contains("row"));
     const draggedIndex = siblings.indexOf(node);
 
     for (let j = 0; j < siblings.length; j++) {
@@ -249,7 +367,7 @@
     node.style.transition = "transform 0.15s ease";
     node.style.transform = "";
 
-    const domOrder = Array.from(list.children);
+    const domOrder = Array.from(list.children).filter((n) => n.classList.contains("row"));
     rowEls = domOrder.map((n) => rowEls.find((r) => r.node === n));
     state.items = rowEls.map((r) => r.item);
     saveState();
@@ -265,12 +383,8 @@
     if (!window.confirm("今日の記録を履歴に保存してリセットします。よろしいですか?")) {
       return;
     }
-    archiveDay(state.day, state.items);
-    state.items.forEach((item) => {
-      item.elapsedMs = 0;
-      item.running = false;
-      item.startedAt = null;
-    });
+    archiveDay(state.day);
+    resetAllTracking();
     saveState();
     renderHistory();
     render();
@@ -279,8 +393,8 @@
   // --- breakdown page ---
 
   function renderBreakdown() {
-    const rows = state.items
-      .map((item, i) => ({ label: labelOf(item, i), elapsed: currentElapsed(item), running: item.running }))
+    const rows = allTrackedEntries()
+      .map(({ item, fallback }) => ({ label: labelOf(item, fallback), elapsed: currentElapsed(item), running: item.running }))
       .filter((r) => r.elapsed > 0)
       .sort((a, b) => b.elapsed - a.elapsed);
 
@@ -418,6 +532,15 @@
       input.disabled = item.running;
       input.title = item.running ? "実行中は変更できません" : "";
     });
+
+    const sideElapsed = currentElapsed(state.sidework);
+    total += sideElapsed;
+    total += currentElapsed(state.interrupt);
+    sideworkTime.textContent = formatTime(sideElapsed);
+    sideworkWidget.classList.toggle("running", state.sidework.running);
+    sideworkInput.disabled = state.sidework.running;
+    sideworkInput.title = state.sidework.running ? "実行中は変更できません" : "";
+
     totalTimeEl.textContent = formatTime(total);
     renderBreakdown();
   }

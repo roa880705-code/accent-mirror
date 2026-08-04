@@ -27,7 +27,19 @@
 
   <div class="pages" id="pages">
     <section class="page">
-      <main id="list" class="list"></main>
+      <div class="sidework-bar">
+        <button id="foldInterruptBtn" class="side-btn fold" type="button" title="別件の時間を「割込対応」に加算し、別件をリセットします">割込対応</button>
+        <div class="sidework-widget" id="sideworkWidget">
+          <input class="sidework-input" id="sideworkInput" type="text" maxlength="16">
+          <button class="sidework-circle" id="sideworkCircle" type="button">
+            <span class="sidework-time" id="sideworkTime">00:00:00</span>
+          </button>
+        </div>
+        <button id="deductPrevBtn" class="side-btn" type="button" title="別件の時間分を、現在進行中のウォッチの時間から差し引き、別件をリセットします">進行中<br>から差引</button>
+      </div>
+      <div class="list-wrap">
+        <main id="list" class="list"></main>
+      </div>
     </section>
     <section class="page">
       <div id="breakdown" class="breakdown"></div>
