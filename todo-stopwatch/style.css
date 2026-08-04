@@ -201,23 +201,30 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(8px, 2.5vw, 18px);
+  gap: clamp(8px, 2.5vw, 16px);
   padding: clamp(6px, 1.4vh, 12px) 2px clamp(10px, 1.8vh, 16px);
   border-bottom: 1px solid var(--line);
   margin-bottom: clamp(4px, 1vh, 8px);
+}
+
+.side-btn-stack {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(5px, 1vh, 9px);
 }
 
 .side-btn {
   all: unset;
   box-sizing: border-box;
   flex: none;
-  width: clamp(64px, 17vw, 92px);
+  width: clamp(72px, 19vw, 100px);
   text-align: center;
   line-height: 1.25;
-  padding: clamp(7px, 1.4vh, 11px) clamp(4px, 1vw, 8px);
+  padding: clamp(6px, 1.2vh, 9px) clamp(4px, 1vw, 8px);
   border-radius: 10px;
   font-weight: 700;
-  font-size: clamp(0.62rem, 1.5vw, 0.76rem);
+  font-size: clamp(0.6rem, 1.4vw, 0.74rem);
   background: var(--panel);
   color: var(--ink);
   border: 1px solid var(--panel-line);

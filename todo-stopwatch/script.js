@@ -1,5 +1,5 @@
 (() => {
-  const STORAGE_KEY = "todoStopwatch:v5";
+  const STORAGE_KEY = "todoStopwatch:v6";
   const HISTORY_KEY = "todoStopwatch:history:v1";
   const MAX_HISTORY = 60;
   const DEFAULT_COUNT = 10;
@@ -40,7 +40,8 @@
           Array.isArray(parsed.items) &&
           parsed.items.length >= 1 &&
           parsed.sidework &&
-          parsed.interrupt
+          parsed.interrupt &&
+          parsed.chore
         ) {
           return parsed;
         }
@@ -53,6 +54,7 @@
       items: defaultItems(),
       sidework: freshItem("別件"),
       interrupt: freshItem("割込対応"),
+      chore: freshItem("雑務"),
     };
   }
 
@@ -104,6 +106,7 @@
       ...state.items.map((it, i) => ({ item: it, fallback: `タスク${i + 1}` })),
       { item: state.sidework, fallback: "別件" },
       { item: state.interrupt, fallback: "割込対応" },
+      { item: state.chore, fallback: "雑務" },
     ];
   }
 
@@ -138,6 +141,9 @@
     state.interrupt.elapsedMs = 0;
     state.interrupt.running = false;
     state.interrupt.startedAt = null;
+    state.chore.elapsedMs = 0;
+    state.chore.running = false;
+    state.chore.startedAt = null;
   }
 
   function rolloverIfNeeded() {
@@ -150,6 +156,8 @@
     });
     if (state.sidework.running) state.sidework.startedAt = Date.now();
     state.sidework.elapsedMs = 0;
+    if (state.chore.running) state.chore.startedAt = Date.now();
+    state.chore.elapsedMs = 0;
     state.interrupt.elapsedMs = 0;
     state.day = today;
     saveState();
@@ -184,7 +192,7 @@
         saveState();
       });
 
-      toggleBtn.addEventListener("click", () => toggleItem(item));
+      toggleBtn.addEventListener("click", () => toggleExclusive(item));
       resetBtn.addEventListener("click", () => resetItem(item));
       handle.addEventListener("pointerdown", (e) => startDrag(e, node));
 
@@ -231,11 +239,15 @@
     }
   }
 
-  function toggleItem(target) {
+  function exclusiveGroup() {
+    return [...state.items, state.chore];
+  }
+
+  function toggleExclusive(target) {
     if (target.running) {
       stopIfRunning(target);
     } else {
-      state.items.forEach((item) => {
+      exclusiveGroup().forEach((item) => {
         if (item !== target) stopIfRunning(item);
       });
       target.running = true;
@@ -289,6 +301,10 @@
     stopIfRunning(state.sidework);
     const elapsed = state.sidework.elapsedMs;
     if (elapsed <= 0) return;
+    const prev = exclusiveGroup().find((it) => it.running);
+    if (prev) {
+      subtractElapsed(prev, elapsed);
+    }
     state.interrupt.elapsedMs += elapsed;
     state.sidework.elapsedMs = 0;
     saveState();
@@ -299,7 +315,7 @@
     stopIfRunning(state.sidework);
     const elapsed = state.sidework.elapsedMs;
     if (elapsed <= 0) return;
-    const prev = state.items.find((it) => it.running);
+    const prev = exclusiveGroup().find((it) => it.running);
     if (prev) {
       subtractElapsed(prev, elapsed);
     }
@@ -307,6 +323,21 @@
     saveState();
     render();
   });
+
+  // --- chore (雑務) widget: joins the exclusive group, unlike sidework ---
+
+  const choreInput = document.getElementById("choreInput");
+  const choreCircle = document.getElementById("choreCircle");
+  const choreTime = document.getElementById("choreTime");
+  const choreWidget = document.getElementById("choreWidget");
+
+  choreInput.value = state.chore.label;
+  choreInput.addEventListener("input", () => {
+    state.chore.label = choreInput.value;
+    saveState();
+  });
+
+  choreCircle.addEventListener("click", () => toggleExclusive(state.chore));
 
   // --- drag to reorder ---
 
@@ -540,6 +571,13 @@
     sideworkWidget.classList.toggle("running", state.sidework.running);
     sideworkInput.disabled = state.sidework.running;
     sideworkInput.title = state.sidework.running ? "実行中は変更できません" : "";
+
+    const choreElapsed = currentElapsed(state.chore);
+    total += choreElapsed;
+    choreTime.textContent = formatTime(choreElapsed);
+    choreWidget.classList.toggle("running", state.chore.running);
+    choreInput.disabled = state.chore.running;
+    choreInput.title = state.chore.running ? "実行中は変更できません" : "";
 
     totalTimeEl.textContent = formatTime(total);
     renderBreakdown();
