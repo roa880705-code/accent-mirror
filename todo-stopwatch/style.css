@@ -197,6 +197,7 @@ body {
 /* --- timer list --- */
 
 .list {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -206,16 +207,23 @@ body {
 }
 
 .row {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   align-items: center;
   gap: clamp(6px, 1.6vw, 12px);
-  padding: 0 clamp(8px, 2vw, 14px);
+  padding: 0 clamp(6px, 1.6vw, 12px) 0 clamp(8px, 2vw, 14px);
   background: var(--card-bg);
   border: 1.5px solid var(--line);
   border-radius: clamp(8px, 1.4vh, 14px);
   transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.row.dragging {
+  z-index: 30;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.2);
+  cursor: grabbing;
 }
 
 .row.running {
@@ -318,6 +326,43 @@ body {
 }
 
 .row-reset:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.row-handle {
+  all: unset;
+  box-sizing: border-box;
+  flex: none;
+  width: clamp(22px, 3.4vw, 30px);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.row-handle:active {
+  cursor: grabbing;
+}
+
+.row-handle .bars {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.row-handle .bars span {
+  display: block;
+  width: clamp(14px, 2.6vw, 18px);
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.row-handle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }

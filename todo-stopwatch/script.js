@@ -127,41 +127,44 @@
   const breakdownEl = document.getElementById("breakdown");
   const historyEl = document.getElementById("history");
 
-  const rowEls = [];
+  let rowEls = [];
 
   function buildRows() {
-    state.items.forEach((item, index) => {
+    list.innerHTML = "";
+    rowEls = [];
+    state.items.forEach((item) => {
       const node = template.content.firstElementChild.cloneNode(true);
       const input = node.querySelector(".row-input");
       const timeDisplay = node.querySelector(".row-time");
       const toggleBtn = node.querySelector(".row-toggle");
       const resetBtn = node.querySelector(".row-reset");
+      const handle = node.querySelector(".row-handle");
 
       input.value = item.label;
       input.addEventListener("input", () => {
-        state.items[index].label = input.value;
+        item.label = input.value;
         saveState();
       });
 
-      toggleBtn.addEventListener("click", () => toggleItem(index));
-      resetBtn.addEventListener("click", () => resetItem(index));
+      toggleBtn.addEventListener("click", () => toggleItem(item));
+      resetBtn.addEventListener("click", () => resetItem(item));
+      handle.addEventListener("pointerdown", (e) => startDrag(e, node));
 
-      rowEls.push({ node, input, timeDisplay, toggleBtn });
+      rowEls.push({ node, input, timeDisplay, toggleBtn, item });
       list.appendChild(node);
     });
   }
 
-  function toggleItem(index) {
+  function toggleItem(target) {
     const now = Date.now();
-    const target = state.items[index];
 
     if (target.running) {
       target.elapsedMs += now - target.startedAt;
       target.running = false;
       target.startedAt = null;
     } else {
-      state.items.forEach((item, i) => {
-        if (i !== index && item.running) {
+      state.items.forEach((item) => {
+        if (item !== target && item.running) {
           item.elapsedMs += now - item.startedAt;
           item.running = false;
           item.startedAt = null;
@@ -175,8 +178,8 @@
     render();
   }
 
-  function resetItem(index) {
-    const item = state.items[index];
+  function resetItem(item) {
+    const index = state.items.indexOf(item);
     if (!window.confirm(`「${labelOf(item, index)}」の記録をリセットしますか?(履歴には保存されません)`)) {
       return;
     }
@@ -185,6 +188,77 @@
     item.startedAt = null;
     saveState();
     render();
+  }
+
+  // --- drag to reorder ---
+
+  let dragCtx = null;
+
+  function startDrag(e, node) {
+    if (e.button !== undefined && e.button !== 0) return;
+    dragCtx = {
+      node,
+      startClientY: e.clientY,
+      startTop: node.offsetTop,
+    };
+    node.classList.add("dragging");
+    node.style.transition = "none";
+    document.addEventListener("pointermove", onDragMove);
+    document.addEventListener("pointerup", onDragEnd);
+    document.addEventListener("pointercancel", onDragEnd);
+    e.preventDefault();
+  }
+
+  function onDragMove(e) {
+    if (!dragCtx) return;
+    e.preventDefault();
+    const { node, startClientY, startTop } = dragCtx;
+    const desiredTop = startTop + (e.clientY - startClientY);
+    const currentTop = node.offsetTop;
+    node.style.transform = `translateY(${desiredTop - currentTop}px)`;
+
+    const rowRect = node.getBoundingClientRect();
+    const rowCenter = rowRect.top + rowRect.height / 2;
+    const siblings = Array.from(list.children);
+    const draggedIndex = siblings.indexOf(node);
+
+    for (let j = 0; j < siblings.length; j++) {
+      const sib = siblings[j];
+      if (sib === node) continue;
+      const sibRect = sib.getBoundingClientRect();
+      if (rowCenter > sibRect.top && rowCenter < sibRect.bottom) {
+        if (j < draggedIndex) {
+          list.insertBefore(node, sib);
+        } else {
+          list.insertBefore(node, sib.nextSibling);
+        }
+        break;
+      }
+    }
+  }
+
+  function onDragEnd() {
+    if (!dragCtx) return;
+    const { node } = dragCtx;
+
+    document.removeEventListener("pointermove", onDragMove);
+    document.removeEventListener("pointerup", onDragEnd);
+    document.removeEventListener("pointercancel", onDragEnd);
+
+    node.classList.remove("dragging");
+    node.style.transition = "transform 0.15s ease";
+    node.style.transform = "";
+
+    const domOrder = Array.from(list.children);
+    rowEls = domOrder.map((n) => rowEls.find((r) => r.node === n));
+    state.items = rowEls.map((r) => r.item);
+    saveState();
+    render();
+
+    setTimeout(() => {
+      node.style.transition = "";
+    }, 160);
+    dragCtx = null;
   }
 
   resetAllBtn.addEventListener("click", () => {
