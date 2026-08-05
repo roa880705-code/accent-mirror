@@ -1,6 +1,7 @@
 (() => {
   const STORAGE_KEY = "todoStopwatch:v6";
   const HISTORY_KEY = "todoStopwatch:history:v1";
+  const DRAFTS_KEY = "todoStopwatch:drafts:v1";
   const MAX_HISTORY = 60;
   const DEFAULT_COUNT = 10;
   const MAX_COUNT = 40;
@@ -71,8 +72,22 @@
     return [];
   }
 
+  function loadDrafts() {
+    try {
+      const raw = localStorage.getItem(DRAFTS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      // corrupt storage, fall through to empty
+    }
+    return {};
+  }
+
   let state = loadState();
   let history = loadHistory();
+  let drafts = loadDrafts();
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -80,6 +95,33 @@
 
   function saveHistory() {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  }
+
+  function saveDrafts() {
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts));
+  }
+
+  // viewingDate is the date currently shown in the タイマー list. It usually
+  // tracks state.day, but the day picker can point it at a future date to
+  // edit a draft task list without touching today's live tracking.
+  let viewingDate = state.day;
+  let draftItems = [];
+
+  function isLive() {
+    return viewingDate === state.day;
+  }
+
+  function currentItemsArray() {
+    return isLive() ? state.items : draftItems;
+  }
+
+  function persistItemsChange() {
+    if (isLive()) {
+      saveState();
+    } else {
+      drafts[viewingDate] = draftItems.map((it) => it.label);
+      saveDrafts();
+    }
   }
 
   function labelOf(item, fallback) {
@@ -148,12 +190,22 @@
 
   function rolloverIfNeeded() {
     const today = todayStr();
-    if (state.day === today) return;
+    if (state.day === today) return false;
+
+    const wasFollowingToday = viewingDate === state.day;
     archiveDay(state.day);
-    state.items.forEach((it) => {
-      if (it.running) it.startedAt = Date.now();
-      it.elapsedMs = 0;
-    });
+
+    const draftForToday = drafts[today];
+    if (draftForToday && draftForToday.length) {
+      state.items = draftForToday.map((label) => freshItem(label));
+      delete drafts[today];
+      saveDrafts();
+    } else {
+      state.items.forEach((it) => {
+        if (it.running) it.startedAt = Date.now();
+        it.elapsedMs = 0;
+      });
+    }
     if (state.sidework.running) state.sidework.startedAt = Date.now();
     state.sidework.elapsedMs = 0;
     if (state.chore.running) state.chore.startedAt = Date.now();
@@ -161,6 +213,9 @@
     state.interrupt.elapsedMs = 0;
     state.day = today;
     saveState();
+
+    if (wasFollowingToday) viewingDate = today;
+    return true;
   }
 
   // --- timer list ---
@@ -178,7 +233,8 @@
   function buildRows() {
     list.innerHTML = "";
     rowEls = [];
-    state.items.forEach((item) => {
+    const live = isLive();
+    currentItemsArray().forEach((item) => {
       const node = template.content.firstElementChild.cloneNode(true);
       const input = node.querySelector(".row-input");
       const timeDisplay = node.querySelector(".row-time");
@@ -189,11 +245,17 @@
       input.value = item.label;
       input.addEventListener("input", () => {
         item.label = input.value;
-        saveState();
+        persistItemsChange();
       });
 
-      toggleBtn.addEventListener("click", () => toggleExclusive(item));
-      resetBtn.addEventListener("click", () => resetItem(item));
+      if (live) {
+        toggleBtn.addEventListener("click", () => toggleExclusive(item));
+        resetBtn.addEventListener("click", () => resetItem(item));
+      } else {
+        toggleBtn.disabled = true;
+        resetBtn.disabled = true;
+        timeDisplay.textContent = "--:--:--";
+      }
       handle.addEventListener("pointerdown", (e) => startDrag(e, node));
 
       rowEls.push({ node, input, timeDisplay, toggleBtn, item });
@@ -209,9 +271,10 @@
   }
 
   function addWatch() {
-    if (state.items.length >= MAX_COUNT) return;
-    state.items.push(freshItem(""));
-    saveState();
+    const items = currentItemsArray();
+    if (items.length >= MAX_COUNT) return;
+    items.push(freshItem(""));
+    persistItemsChange();
     buildRows();
     render();
     requestAnimationFrame(() => {
@@ -471,8 +534,13 @@
 
     const domOrder = Array.from(list.children).filter((n) => n.classList.contains("row"));
     rowEls = domOrder.map((n) => rowEls.find((r) => r.node === n));
-    state.items = rowEls.map((r) => r.item);
-    saveState();
+    const newOrder = rowEls.map((r) => r.item);
+    if (isLive()) {
+      state.items = newOrder;
+    } else {
+      draftItems = newOrder;
+    }
+    persistItemsChange();
     render();
 
     setTimeout(() => {
@@ -620,20 +688,55 @@
     pages.scrollTo({ left: activePage * pages.clientWidth });
   });
 
+  // --- day picker / draft mode ---
+
+  const dayPicker = document.getElementById("dayPicker");
+  const draftBadge = document.getElementById("draftBadge");
+  const liveOnlyControls = [sideworkCircle, choreCircle, foldInterruptBtn, deductPrevBtn, newTaskBtn, resetAllBtn];
+
+  function applyModeUI() {
+    const live = isLive();
+    draftBadge.hidden = live;
+    dayPicker.classList.toggle("is-draft", !live);
+    liveOnlyControls.forEach((btn) => {
+      btn.disabled = !live;
+    });
+  }
+
+  dayPicker.addEventListener("change", () => {
+    const val = dayPicker.value;
+    if (!val) {
+      dayPicker.value = viewingDate;
+      return;
+    }
+    viewingDate = val;
+    if (!isLive()) {
+      const stored = drafts[viewingDate];
+      draftItems = stored && stored.length ? stored.map((label) => freshItem(label)) : defaultItems();
+    }
+    applyModeUI();
+    buildRows();
+    render();
+  });
+
   // --- main render loop ---
 
   function render() {
     let total = 0;
-    state.items.forEach((item, index) => {
-      const elapsed = currentElapsed(item);
-      total += elapsed;
-      const { node, timeDisplay, toggleBtn, input } = rowEls[index];
-      timeDisplay.textContent = formatTime(elapsed);
-      node.classList.toggle("running", item.running);
-      toggleBtn.textContent = item.running ? "停止" : "開始";
-      input.disabled = item.running;
-      input.title = item.running ? "実行中は変更できません" : "";
+    state.items.forEach((item) => {
+      total += currentElapsed(item);
     });
+
+    if (isLive()) {
+      state.items.forEach((item, index) => {
+        const { node, timeDisplay, toggleBtn, input } = rowEls[index];
+        timeDisplay.textContent = formatTime(currentElapsed(item));
+        node.classList.toggle("running", item.running);
+        toggleBtn.textContent = item.running ? "停止" : "開始";
+        input.disabled = item.running;
+        input.title = item.running ? "実行中は変更できません" : "";
+      });
+    }
 
     const sideElapsed = currentElapsed(state.sidework);
     total += sideElapsed;
@@ -655,12 +758,20 @@
   }
 
   rolloverIfNeeded();
+  dayPicker.value = viewingDate;
+  applyModeUI();
   buildRows();
   render();
   renderHistory();
 
   setInterval(() => {
-    rolloverIfNeeded();
+    const rolled = rolloverIfNeeded();
+    if (rolled) {
+      dayPicker.value = viewingDate;
+      applyModeUI();
+      buildRows();
+      renderHistory();
+    }
     render();
     saveState();
   }, 1000);

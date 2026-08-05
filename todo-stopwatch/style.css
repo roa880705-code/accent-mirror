@@ -89,6 +89,51 @@ body {
   white-space: nowrap;
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 1.6vw, 12px);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.day-picker {
+  flex: none;
+  font-family: inherit;
+  font-size: clamp(0.65rem, 1.5vw, 0.78rem);
+  font-weight: 600;
+  padding: clamp(3px, 0.8vh, 6px) clamp(5px, 1.2vw, 8px);
+  border-radius: 7px;
+  border: 1px solid var(--panel-line);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.day-picker:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.day-picker.is-draft {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.draft-badge {
+  flex: none;
+  font-size: clamp(0.6rem, 1.4vw, 0.72rem);
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.draft-badge[hidden] {
+  display: none;
+}
+
 .header-right {
   display: flex;
   align-items: center;
@@ -138,6 +183,11 @@ body {
 .btn-reset-all {
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .tabs {
@@ -244,6 +294,12 @@ body {
   background: var(--accent-soft);
   color: var(--accent);
   border-color: transparent;
+}
+
+.side-btn:disabled,
+.sidework-circle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .sidework-widget {
@@ -418,6 +474,12 @@ body {
 .row-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+.row-toggle:disabled,
+.row-reset:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .row-reset {
