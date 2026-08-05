@@ -37,6 +37,7 @@
         <div class="side-btn-stack">
           <button id="foldInterruptBtn" class="side-btn fold" type="button" title="別件の時間を、進行中のウォッチから差し引いたうえで「割込対応」として保存します">割込対応</button>
           <button id="deductPrevBtn" class="side-btn" type="button" title="別件の時間分を、進行中のウォッチから差し引きます(どこにも保存しません)">進行中<br>から差引</button>
+          <button id="newTaskBtn" class="side-btn" type="button" title="別件の時間を、進行中のウォッチから差し引いたうえで、名前をつけて新しいタスクとしてリストの先頭に追加します">新規タスク<br>として追加</button>
         </div>
         <div class="sidework-widget" id="choreWidget">
           <input class="sidework-input" id="choreInput" type="text" maxlength="16">
@@ -55,6 +56,17 @@
     <section class="page">
       <div id="history" class="history"></div>
     </section>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="nameModal" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="nameModalTitle">
+    <h2 id="nameModalTitle">タスク名を入力</h2>
+    <input id="nameModalInput" type="text" maxlength="24">
+    <div class="modal-actions">
+      <button class="btn btn-modal-cancel" id="nameModalCancel" type="button">キャンセル</button>
+      <button class="btn btn-modal-ok" id="nameModalOk" type="button">OK</button>
+    </div>
   </div>
 </div>
 

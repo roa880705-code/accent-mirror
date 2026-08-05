@@ -324,6 +324,77 @@
     render();
   });
 
+  // --- name modal (custom, since window.prompt is blocked in sandboxed views) ---
+
+  const nameModal = document.getElementById("nameModal");
+  const nameModalInput = document.getElementById("nameModalInput");
+  const nameModalOk = document.getElementById("nameModalOk");
+  const nameModalCancel = document.getElementById("nameModalCancel");
+
+  function openNameModal(initial) {
+    return new Promise((resolve) => {
+      nameModalInput.value = initial;
+      nameModal.hidden = false;
+      nameModalInput.focus();
+      nameModalInput.select();
+
+      function cleanup(result) {
+        nameModal.hidden = true;
+        nameModalOk.removeEventListener("click", onOk);
+        nameModalCancel.removeEventListener("click", onCancel);
+        nameModal.removeEventListener("mousedown", onBackdrop);
+        nameModalInput.removeEventListener("keydown", onKeydown);
+        resolve(result);
+      }
+      function onOk() {
+        cleanup(nameModalInput.value);
+      }
+      function onCancel() {
+        cleanup(null);
+      }
+      function onBackdrop(e) {
+        if (e.target === nameModal) cleanup(null);
+      }
+      function onKeydown(e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onOk();
+        } else if (e.key === "Escape") {
+          onCancel();
+        }
+      }
+
+      nameModalOk.addEventListener("click", onOk);
+      nameModalCancel.addEventListener("click", onCancel);
+      nameModal.addEventListener("mousedown", onBackdrop);
+      nameModalInput.addEventListener("keydown", onKeydown);
+    });
+  }
+
+  const newTaskBtn = document.getElementById("newTaskBtn");
+
+  newTaskBtn.addEventListener("click", async () => {
+    stopIfRunning(state.sidework);
+    const elapsed = state.sidework.elapsedMs;
+    if (elapsed <= 0) return;
+
+    const name = await openNameModal("");
+    if (name === null) return;
+
+    const prev = exclusiveGroup().find((it) => it.running);
+    if (prev) {
+      subtractElapsed(prev, elapsed);
+    }
+
+    const newTask = freshItem(name);
+    newTask.elapsedMs = elapsed;
+    state.items.unshift(newTask);
+    state.sidework.elapsedMs = 0;
+    saveState();
+    buildRows();
+    render();
+  });
+
   // --- chore (雑務) widget: joins the exclusive group, unlike sidework ---
 
   const choreInput = document.getElementById("choreInput");
