@@ -321,11 +321,10 @@
     render();
   }
 
-  function resetItem(item) {
+  async function resetItem(item) {
     const index = state.items.indexOf(item);
-    if (!window.confirm(`「${labelOf(item, `タスク${index + 1}`)}」の記録をリセットしますか?(履歴には保存されません)`)) {
-      return;
-    }
+    const ok = await openConfirmModal(`「${labelOf(item, `タスク${index + 1}`)}」の記録をリセットしますか?(履歴には保存されません)`);
+    if (!ok) return;
     item.elapsedMs = 0;
     item.running = false;
     item.startedAt = null;
@@ -387,36 +386,44 @@
     render();
   });
 
-  // --- name modal (custom, since window.prompt is blocked in sandboxed views) ---
+  // --- modal (custom, since window.prompt/confirm are blocked in sandboxed views) ---
 
   const nameModal = document.getElementById("nameModal");
+  const nameModalTitle = document.getElementById("nameModalTitle");
   const nameModalInput = document.getElementById("nameModalInput");
   const nameModalOk = document.getElementById("nameModalOk");
   const nameModalCancel = document.getElementById("nameModalCancel");
 
-  function openNameModal(initial) {
+  function openModal({ title, showInput, initialValue }) {
     return new Promise((resolve) => {
-      nameModalInput.value = initial;
+      nameModalTitle.textContent = title;
+      nameModalInput.hidden = !showInput;
+      if (showInput) nameModalInput.value = initialValue || "";
       nameModal.hidden = false;
-      nameModalInput.focus();
-      nameModalInput.select();
+      if (showInput) {
+        nameModalInput.focus();
+        nameModalInput.select();
+      } else {
+        nameModalOk.focus();
+      }
 
       function cleanup(result) {
         nameModal.hidden = true;
+        nameModalInput.hidden = false;
         nameModalOk.removeEventListener("click", onOk);
         nameModalCancel.removeEventListener("click", onCancel);
         nameModal.removeEventListener("mousedown", onBackdrop);
-        nameModalInput.removeEventListener("keydown", onKeydown);
+        document.removeEventListener("keydown", onKeydown);
         resolve(result);
       }
       function onOk() {
-        cleanup(nameModalInput.value);
+        cleanup(showInput ? nameModalInput.value : true);
       }
       function onCancel() {
-        cleanup(null);
+        cleanup(showInput ? null : false);
       }
       function onBackdrop(e) {
-        if (e.target === nameModal) cleanup(null);
+        if (e.target === nameModal) onCancel();
       }
       function onKeydown(e) {
         if (e.key === "Enter") {
@@ -430,8 +437,16 @@
       nameModalOk.addEventListener("click", onOk);
       nameModalCancel.addEventListener("click", onCancel);
       nameModal.addEventListener("mousedown", onBackdrop);
-      nameModalInput.addEventListener("keydown", onKeydown);
+      document.addEventListener("keydown", onKeydown);
     });
+  }
+
+  function openNameModal(initial) {
+    return openModal({ title: "タスク名を入力", showInput: true, initialValue: initial });
+  }
+
+  function openConfirmModal(message) {
+    return openModal({ title: message, showInput: false });
   }
 
   const newTaskBtn = document.getElementById("newTaskBtn");
@@ -549,10 +564,9 @@
     dragCtx = null;
   }
 
-  resetAllBtn.addEventListener("click", () => {
-    if (!window.confirm("今日の記録を履歴に保存してリセットします。よろしいですか?")) {
-      return;
-    }
+  resetAllBtn.addEventListener("click", async () => {
+    const ok = await openConfirmModal("今日の記録を履歴に保存してリセットします。よろしいですか?");
+    if (!ok) return;
     archiveDay(state.day);
     resetAllTracking();
     saveState();

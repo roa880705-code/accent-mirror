@@ -100,7 +100,7 @@ body {
 .day-picker {
   flex: none;
   font-family: inherit;
-  font-size: clamp(0.65rem, 1.5vw, 0.78rem);
+  font-size: 16px;
   font-weight: 600;
   padding: clamp(3px, 0.8vh, 6px) clamp(5px, 1.2vw, 8px);
   border-radius: 7px;
@@ -317,7 +317,7 @@ body {
   color: var(--ink);
   font-family: inherit;
   font-weight: 700;
-  font-size: clamp(0.66rem, 1.6vw, 0.8rem);
+  font-size: 16px;
   text-align: center;
 }
 
@@ -423,7 +423,7 @@ body {
   color: var(--ink);
   font-family: inherit;
   font-weight: 700;
-  font-size: clamp(0.72rem, 1.9vw, 0.98rem);
+  font-size: clamp(1rem, 1.9vw, 1.05rem);
 }
 
 .row-input::placeholder {
@@ -757,7 +757,7 @@ body {
 .modal-box input {
   width: 100%;
   font-family: inherit;
-  font-size: 0.95rem;
+  font-size: 16px;
   color: var(--ink);
   background: var(--paper);
   border: 1px solid var(--line);
