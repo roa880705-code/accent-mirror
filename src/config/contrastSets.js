@@ -16,127 +16,88 @@ const neutralStatementIntonation = {
   flatRange: [-0.8, 0.8]
 };
 
-const neutralFragmentIntonation = {
-  sentenceType: "fragment",
-  expectedFinalContour: "neutral",
-  naturalRiseRange: [-1.5, 2.5],
-  overRiseAbove: 4.5,
-  fallingBelow: -2.5,
-  flatRange: [-0.8, 0.8]
-};
-
+// 練習セット(発音ドリル)は、以前は単語単体の練習(Could/Help)や個別の紛らわしい
+// 単語ペア(consider/con cider, she/see/sea, live/leave)がフラットに並んでいたが、
+// 実機フィードバックで内容を精査した結果、以下の方針で全面的に再設計した:
+// - 単語単体の練習(A. Could / D. Help)は不要と判断し廃止
+// - 学習者(ユーザー自身)が指定した6項目(簡単な平叙文/linking/疑問文の抑揚/
+//   thサウンド/f・vサウンド/l・rの区別)に、日本語話者の発音でよく指摘される
+//   6項目(語末の子音+母音付加・脱落/文強勢・リズム/語のアクセント位置/
+//   母音の長短・二重母音/語末の有声・無声子音/短縮形・自然な省略)を加えた
+//   計12カテゴリを、学習者のモチベーション低下を避けるため10文以内に収める
+//   よう、1文に複数カテゴリを自然に組み合わせて9文に集約した。
 const contrastSets = [
   {
-    id: "could-only",
-    label: "A. Could only",
-    text: "Could",
-    critical: ["could"],
-    intonationTarget: neutralFragmentIntonation,
-    focus: "Could 単体の母音と語尾 d を確認する"
+    id: "drill-th-declarative",
+    label: "A. 平叙文＋thサウンド",
+    text: "I think this is a great idea.",
+    critical: ["think", "this"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "think の無声th(θ)と this の有声th(ð)の違いを確認する"
   },
   {
-    id: "could-you",
-    label: "B. Could you",
-    text: "Could you",
-    critical: ["could"],
+    id: "drill-linking-liaison",
+    label: "B. 依頼文＋linking(子音+母音の連結)",
+    text: "Could you pick it up on your way home?",
+    critical: ["pick", "up"],
     intonationTarget: politeRequestQuestionIntonation,
-    focus: "Could と you の連結・区切りを確認する"
+    focus: "pick it up の子音+母音の連結(linking)を確認する"
   },
   {
-    id: "could-help-me",
-    label: "C. Could you help me?",
-    text: "Could you help me?",
-    critical: ["could", "help"],
+    id: "drill-wh-question-lr",
+    label: "C. Wh疑問文＋l/rの区別",
+    text: "Where did you learn to run so fast?",
+    critical: ["learn", "run"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "learn の l と run の r を区別できているか確認する"
+  },
+  {
+    id: "drill-fv-voicing",
+    label: "D. f/vサウンド＋語末の有声・無声子音",
+    text: "I found a very old photograph.",
+    critical: ["found", "very", "photograph"],
+    intonationTarget: neutralStatementIntonation,
+    focus: "found/photograph の f音、very の v音、found(有声語尾)と photograph(無声語尾)の違いを確認する"
+  },
+  {
+    id: "drill-linking-assimilation",
+    label: "E. 疑問文＋linking(同化)",
+    text: "Did you check the schedule?",
+    critical: ["did", "check"],
     intonationTarget: politeRequestQuestionIntonation,
-    focus: "依頼文全体で could/help と文尾上昇を確認する"
+    focus: "did you の同化(d+y→dʒ)と、check の語末子音(母音付加・脱落)を確認する"
   },
   {
-    id: "help-only",
-    label: "D. Help only",
-    text: "Help",
-    critical: ["help"],
-    intonationTarget: neutralFragmentIntonation,
-    focus: "help 単体の h/l/p を確認する"
-  },
-  {
-    id: "teach-me",
-    label: "E. Can you teach me?",
-    text: "Can you teach me?",
-    critical: ["can", "teach", "me"],
-    intonationTarget: politeRequestQuestionIntonation,
-    focus: "Can you の連結と teach の ch を確認する"
-  },
-  {
-    id: "pass-salt",
-    label: "F. Could you pass me the salt?",
-    text: "Could you pass me the salt?",
-    critical: ["could", "pass", "salt"],
-    intonationTarget: politeRequestQuestionIntonation,
-    focus: "pass/salt の s と語尾 t、文全体の速度を確認する"
-  },
-  {
-    id: "phone-number",
-    label: "G. Can I have your phone number?",
-    text: "Can I have your phone number?",
-    critical: ["can", "have", "phone", "number"],
-    intonationTarget: politeRequestQuestionIntonation,
-    focus: "phone number の連結、v/f/n の輪郭を確認する"
-  },
-  {
-    id: "have-pen",
-    label: "H. I have a pen.",
-    text: "I have a pen.",
-    critical: ["have", "pen"],
+    id: "drill-rhythm",
+    label: "F. 文強勢・英語のリズム",
+    text: "I'm going to the store to get some bread.",
+    critical: ["going", "store", "bread"],
     intonationTarget: neutralStatementIntonation,
-    focus: "肯定文の文尾を上げすぎないか確認する"
+    focus: "内容語(going/store/bread)を強く、機能語(to/the/some)を弱く読む英語のリズムを確認する"
   },
   {
-    id: "see-you",
-    label: "I. I will see you tomorrow.",
-    text: "I will see you tomorrow.",
-    critical: ["will", "see", "tomorrow"],
+    id: "drill-contractions",
+    label: "G. 短縮形・自然な省略",
+    text: "I don't think it's necessary.",
+    critical: ["dont", "its"],
     intonationTarget: neutralStatementIntonation,
-    focus: "will の弱化、see you の連結、肯定文のピッチを確認する"
+    focus: "don't と it's の短縮形を自然に発音できているか確認する"
   },
   {
-    id: "work-today",
-    label: "J. I have to work today.",
-    text: "I have to work today.",
-    critical: ["have", "work", "today"],
+    id: "drill-vowel-diphthong",
+    label: "H. 母音の長短・二重母音",
+    text: "I'll take the train to the coast today.",
+    critical: ["train", "coast"],
     intonationTarget: neutralStatementIntonation,
-    focus: "have to の連結、work の r/k、文末の下がり方を確認する"
+    focus: "train/coast/today の二重母音(diphthong)がカタカナ的に潰れていないか確認する"
   },
   {
-    id: "consider-it",
-    label: "K. I will consider it.",
-    text: "I will consider it.",
-    critical: ["consider"],
+    id: "drill-word-stress",
+    label: "I. 語のアクセント位置",
+    text: "I want to understand this lesson better.",
+    critical: ["understand"],
     intonationTarget: neutralStatementIntonation,
-    focus: "consider vs con cider"
-  },
-  {
-    id: "she-is-here",
-    label: "L. She is here.",
-    text: "She is here.",
-    critical: ["she"],
-    intonationTarget: neutralStatementIntonation,
-    focus: "she vs see / sea"
-  },
-  {
-    id: "live-here",
-    label: "M. I live here.",
-    text: "I live here.",
-    critical: ["live"],
-    intonationTarget: neutralStatementIntonation,
-    focus: "live vs leave"
-  },
-  {
-    id: "leave-here",
-    label: "N. I leave here.",
-    text: "I leave here.",
-    critical: ["leave"],
-    intonationTarget: neutralStatementIntonation,
-    focus: "leave vs live"
+    focus: "understand の強勢(アクセント)位置(un-der-STAND)を確認する"
   },
 
   // ここから下は「ストーリーモード」用。stage(1〜10)は友達数のしきい値で解放され、

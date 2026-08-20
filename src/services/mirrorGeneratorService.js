@@ -104,6 +104,78 @@ const FREE_RECOGNITION_KANA = {
 };
 
 const MEANING_MIRRORS = {
+  "i think this is a great idea.": {
+    japanese: "それはいい考えだと思います。",
+    listenerBase: "「それはいい考えだと思います。」と言いたいことは推測できます。"
+  },
+  "i think this is a great idea": {
+    japanese: "それはいい考えだと思います。",
+    listenerBase: "「それはいい考えだと思います。」と言いたいことは推測できます。"
+  },
+  "could you pick it up on your way home?": {
+    japanese: "帰りにそれを取ってきてもらえますか？",
+    listenerBase: "「帰りにそれを取ってきてもらえますか？」と言いたいことは推測できます。"
+  },
+  "could you pick it up on your way home": {
+    japanese: "帰りにそれを取ってきてもらえますか？",
+    listenerBase: "「帰りにそれを取ってきてもらえますか？」と言いたいことは推測できます。"
+  },
+  "where did you learn to run so fast?": {
+    japanese: "どこでそんなに速く走れるようになったのですか？",
+    listenerBase: "「どこでそんなに速く走れるようになったのですか？」と言いたいことは推測できます。"
+  },
+  "where did you learn to run so fast": {
+    japanese: "どこでそんなに速く走れるようになったのですか？",
+    listenerBase: "「どこでそんなに速く走れるようになったのですか？」と言いたいことは推測できます。"
+  },
+  "i found a very old photograph.": {
+    japanese: "とても古い写真を見つけました。",
+    listenerBase: "「とても古い写真を見つけました。」と言いたいことは推測できます。"
+  },
+  "i found a very old photograph": {
+    japanese: "とても古い写真を見つけました。",
+    listenerBase: "「とても古い写真を見つけました。」と言いたいことは推測できます。"
+  },
+  "did you check the schedule?": {
+    japanese: "スケジュールを確認しましたか？",
+    listenerBase: "「スケジュールを確認しましたか？」と言いたいことは推測できます。"
+  },
+  "did you check the schedule": {
+    japanese: "スケジュールを確認しましたか？",
+    listenerBase: "「スケジュールを確認しましたか？」と言いたいことは推測できます。"
+  },
+  "i'm going to the store to get some bread.": {
+    japanese: "パンを買いにお店に行きます。",
+    listenerBase: "「パンを買いにお店に行きます。」と言いたいことは推測できます。"
+  },
+  "im going to the store to get some bread": {
+    japanese: "パンを買いにお店に行きます。",
+    listenerBase: "「パンを買いにお店に行きます。」と言いたいことは推測できます。"
+  },
+  "i don't think it's necessary.": {
+    japanese: "それは必要ないと思います。",
+    listenerBase: "「それは必要ないと思います。」と言いたいことは推測できます。"
+  },
+  "i dont think its necessary": {
+    japanese: "それは必要ないと思います。",
+    listenerBase: "「それは必要ないと思います。」と言いたいことは推測できます。"
+  },
+  "i'll take the train to the coast today.": {
+    japanese: "今日は電車で海岸に行きます。",
+    listenerBase: "「今日は電車で海岸に行きます。」と言いたいことは推測できます。"
+  },
+  "ill take the train to the coast today": {
+    japanese: "今日は電車で海岸に行きます。",
+    listenerBase: "「今日は電車で海岸に行きます。」と言いたいことは推測できます。"
+  },
+  "i want to understand this lesson better.": {
+    japanese: "このレッスンをもっと理解したいです。",
+    listenerBase: "「このレッスンをもっと理解したいです。」と言いたいことは推測できます。"
+  },
+  "i want to understand this lesson better": {
+    japanese: "このレッスンをもっと理解したいです。",
+    listenerBase: "「このレッスンをもっと理解したいです。」と言いたいことは推測できます。"
+  },
   "could you help me?": {
     japanese: "手伝ってもらえますか？",
     listenerBase: "「手伝ってもらえますか？」と言いたいことは推測できます。"
