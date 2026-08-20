@@ -193,6 +193,18 @@ function showPracticeScreen() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function showHomeScreen() {
+  $("practiceScreen")?.classList.add("hidden");
+  $("homeScreen")?.classList.remove("hidden");
+  // 練習中に友達の人数(friendCount)が増えている可能性があるので、ホーム画面の
+  // 表示(カウンター・すごろく・群衆)を戻る時に最新の状態に更新する。
+  renderHomeStage();
+  renderSugorokuBoard();
+  renderFriendCount();
+  renderHomeCrowd();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 function showAnalyzingOverlay(gain) {
   const overlay = $("analyzingOverlay");
   const holder = $("fallingFriends");
@@ -1836,6 +1848,7 @@ $("startDrillSetButton").onclick = () => {
 $("practiceModeTabs")?.querySelectorAll(".practice-mode-tab").forEach((tab) => {
   tab.onclick = () => setPracticeViewMode(tab.dataset.mode);
 });
+$("backToHomeButton").onclick = showHomeScreen;
 $("recordLocalButton").onclick = localRecord;
 $("modelVoiceButton").onclick = playModelVoice;
 $("azureButton").onclick = azureDiagnose;
