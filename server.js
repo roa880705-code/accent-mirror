@@ -155,11 +155,6 @@ app.post("/api/assess", async (req, res) => {
 
     const recordingDurationMs = Number(req.query.durationMs || 0) || null;
     const rhythmHints = parseJsonQuery(req.query.rhythmHints) || {};
-    const profile = {
-      gender: req.query.gender === "male" ? "male" : req.query.gender === "female" ? "female" : undefined,
-      age: ["teens", "20s", "30s"].includes(req.query.age) ? req.query.age : undefined,
-      scene: req.query.scene || undefined
-    };
     const [azureResult, freeRecognition, modelReference] = await Promise.all([
       assessPronunciationFromWav(req.body, referenceText),
       recognizeEnglishFromWav(req.body).catch((error) => ({ text: "", raw: {}, error: String(error.message || error) })),
@@ -196,8 +191,7 @@ app.post("/api/assess", async (req, res) => {
       intonationFeatures,
       expressiveness,
       freeRecognizedText: freeRecognition.text || "",
-      freeRecognitionError: freeRecognition.error || "",
-      profile
+      freeRecognitionError: freeRecognition.error || ""
     });
 
     res.json({
@@ -244,9 +238,9 @@ app.post("/api/contrast-session", (req, res) => {
   }
 });
 
-// 模範日本語ミラーの訳文は、録音・診断結果(wordDiagnostics等)に依存せず、参照英文と
-// プロフィールだけで決まる(findMeaningは発音スコアを一切見ない)。そのため、録音前
-// でもModel English/模範ミラーを単独で聞けるように、訳文だけを返す軽量エンドポイントを
+// 模範日本語ミラーの訳文は、録音・診断結果(wordDiagnostics等)に依存せず、参照英文
+// だけで決まる(findMeaningは発音スコアを一切見ない)。そのため、録音前でも
+// Model English/模範ミラーを単独で聞けるように、訳文だけを返す軽量エンドポイントを
 // 用意する(実機フィードバック: "録音をしなくても、模範ミラー音声を聞けるようにして
 // ほしい")。
 app.post("/api/model-mirror-text", (req, res) => {
@@ -255,12 +249,7 @@ app.post("/api/model-mirror-text", (req, res) => {
     const referenceText = String(req.body?.referenceText || contrastSet.text || "").trim();
     if (!referenceText) return res.status(400).json({ error: "referenceText is required" });
 
-    const profile = {
-      gender: req.body?.profile?.gender === "male" ? "male" : "female",
-      age: ["teens", "20s", "30s"].includes(req.body?.profile?.age) ? req.body.profile.age : undefined,
-      scene: req.body?.profile?.scene || undefined
-    };
-    const meaning = findMeaning(referenceText, profile);
+    const meaning = findMeaning(referenceText);
     if (!meaning?.japanese) return res.status(404).json({ error: "No Japanese meaning found for this text" });
 
     res.json({ meaningJapanese: meaning.japanese });

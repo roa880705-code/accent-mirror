@@ -445,8 +445,7 @@ function renderContrastButtons() {
   container.innerHTML = "";
 
   const storySets = contrastSets.filter((set) => set.stage);
-  const reactionSets = contrastSets.filter((set) => set.category === "reaction");
-  const drillSets = contrastSets.filter((set) => !set.stage && set.category !== "reaction");
+  const drillSets = contrastSets.filter((set) => !set.stage);
 
   if (storySets.length) {
     const heading = document.createElement("h3");
@@ -469,14 +468,6 @@ function renderContrastButtons() {
         .filter((set) => set.stage === stageNumber)
         .forEach((set) => appendContrastButton(container, set, contrastSets.indexOf(set)));
     });
-  }
-
-  if (reactionSets.length) {
-    const heading = document.createElement("h3");
-    heading.className = "contrast-group-heading";
-    heading.textContent = "相槌・感嘆詞";
-    container.appendChild(heading);
-    reactionSets.forEach((set) => appendContrastButton(container, set, contrastSets.indexOf(set)));
   }
 
   if (drillSets.length) {

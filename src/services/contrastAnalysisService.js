@@ -202,7 +202,6 @@ function analyzeAzureRaw(raw, contrastSet, options = {}) {
     intonationFeatures: options.intonationFeatures,
     freeRecognizedText,
     utteranceCheck,
-    profile: options.profile,
     expressiveness: options.expressiveness
   });
 

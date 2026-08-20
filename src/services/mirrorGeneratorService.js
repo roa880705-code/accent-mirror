@@ -103,101 +103,7 @@ const FREE_RECOGNITION_KANA = {
   tomorrow: "トゥモロー"
 };
 
-// カジュアルな相槌・感嘆詞・呼びかけは、日本語でも話し手の年代・性別で言い方が
-// 変わりやすい(例: 「うん」寄りか「わかりました」寄りか、「マジで？」寄りか
-// 「本当ですか？」寄りか)。variants に該当する候補があればそれを使い、無ければ
-// entry.japanese(最も無難な既定形)にフォールバックする。全ての相槌が性別で
-// 変わるわけではない(uh huh/got itなどは年代差の方が大きい)ため、性別条件を
-// 付けない variant も許容する。
-const CASUAL_EXPRESSION_MIRRORS = {
-  // uh huh は「うん(=yes)」という単語ではなく、相槌としての鼻音の唸り(hum)なので、
-  // 実際の単語のように聞こえる「うん」「ええ」ではなく、唸り声に近い「んっ」
-  // 「んー」で和訳する(実機フィードバック: "和訳は「うん」ではない。相槌なので、
-  // 「んっ」")。
-  "uh huh": {
-    japanese: "んっ。",
-    variants: [{ ageGroups: ["30s"], japanese: "んー。" }]
-  },
-  yeah: {
-    japanese: "そうですね。",
-    variants: [
-      { gender: "male", ageGroups: ["teens", "20s"], japanese: "うん、そう。" },
-      { gender: "female", ageGroups: ["teens", "20s"], japanese: "そうそう。" }
-    ]
-  },
-  really: {
-    japanese: "本当ですか？",
-    variants: [
-      { gender: "male", ageGroups: ["teens", "20s"], japanese: "マジで？" },
-      { gender: "female", ageGroups: ["teens", "20s"], japanese: "え、マジで？" }
-    ]
-  },
-  "got it": {
-    japanese: "わかりました。",
-    variants: [{ ageGroups: ["teens", "20s"], japanese: "了解。" }]
-  },
-  "no way": {
-    japanese: "まさか！",
-    variants: [
-      { gender: "male", ageGroups: ["teens", "20s"], japanese: "マジかよ！" },
-      { gender: "female", ageGroups: ["teens", "20s"], japanese: "うそ！" }
-    ]
-  },
-  hey: {
-    japanese: "ちょっと！",
-    variants: [
-      { gender: "male", ageGroups: ["teens", "20s"], japanese: "よう！" },
-      { gender: "female", ageGroups: ["teens", "20s"], japanese: "ねえ！" }
-    ]
-  },
-  "hey guys": {
-    japanese: "皆さん！",
-    variants: [{ ageGroups: ["teens", "20s"], japanese: "ねえ、みんな！" }]
-  },
-  "thanks guys": {
-    japanese: "皆さん、ありがとうございます。",
-    variants: [{ ageGroups: ["teens", "20s"], japanese: "みんな、ありがとう。" }]
-  }
-};
-
-function resolveCasualExpressionMeaning(meaningKey, profile) {
-  const entry = CASUAL_EXPRESSION_MIRRORS[meaningKey];
-  if (!entry) return null;
-  const gender = profile?.gender === "male" || profile?.gender === "female" ? profile.gender : null;
-  const age = ["teens", "20s", "30s"].includes(profile?.age) ? profile.age : null;
-  const variant = (entry.variants || []).find((candidate) => {
-    const genderOk = !candidate.gender || candidate.gender === gender;
-    const ageOk = !candidate.ageGroups || (age && candidate.ageGroups.includes(age));
-    return genderOk && ageOk;
-  });
-  const japanese = variant?.japanese || entry.japanese;
-  return {
-    japanese,
-    listenerBase: `「${japanese}」と言いたいことは推測できます。`
-  };
-}
-
 const MEANING_MIRRORS = {
-  "i see": {
-    japanese: "なるほど。",
-    listenerBase: "「なるほど。」と言いたいことは推測できます。"
-  },
-  "sounds good": {
-    japanese: "いいですね。",
-    listenerBase: "「いいですね。」と言いたいことは推測できます。"
-  },
-  "thats great": {
-    japanese: "それはいいですね！",
-    listenerBase: "「それはいいですね！」と言いたいことは推測できます。"
-  },
-  "oh i understand": {
-    japanese: "ああ、わかりました。",
-    listenerBase: "「ああ、わかりました。」と言いたいことは推測できます。"
-  },
-  "im sorry to hear that": {
-    japanese: "それは残念ですね。",
-    listenerBase: "「それは残念ですね。」と言いたいことは推測できます。"
-  },
   "could you help me?": {
     japanese: "手伝ってもらえますか？",
     listenerBase: "「手伝ってもらえますか？」と言いたいことは推測できます。"
@@ -1026,11 +932,10 @@ function inferMeaningFromFreeRecognition(text) {
   return null;
 }
 
-function findMeaning(text, profile) {
+function findMeaning(text) {
   const key = normalizeText(text);
   const meaningKey = sentenceMeaningKey(text);
-  return resolveCasualExpressionMeaning(meaningKey, profile)
-    || MEANING_MIRRORS[key]
+  return MEANING_MIRRORS[key]
     || MEANING_MIRRORS[meaningKey]
     || inferMeaningFromFreeRecognition(text);
 }
@@ -1188,8 +1093,8 @@ function minimalPairCriticalWordIsClean(contrastSet, words) {
 }
 
 function getMeaning(contrastSet, freeRecognizedText, utteranceCheck, options = {}) {
-  const referenceMeaning = findMeaning(contrastSet.text, options.profile);
-  const freeMeaning = findMeaning(freeRecognizedText, options.profile);
+  const referenceMeaning = findMeaning(contrastSet.text);
+  const freeMeaning = findMeaning(freeRecognizedText);
   const mismatch = utteranceCheck?.status === "possible_mismatch";
   // utteranceCheck は自由認識テキストと参照文の単純な文字列一致だけで判定しており、
   // 発音の質は一切見ていない。leave/live, she/sea のような紛らわしい単語ペアでは、
@@ -3186,39 +3091,8 @@ function voicePitchFromTimeline(mirrorTimeline, fallbackPitch) {
   return fallbackPitch || "+0%";
 }
 
-// 文頭の感嘆詞("わあ、dinner smells great!"の"わあ、"部分)を、独立したセグメント
-// (role: "interjection")として切り出す。感嘆詞だけAI音声(OpenAI)にできないか
-// という要望に対し、声質が変わってしまう懸念(エンジンを跨ぐ音声の継ぎ目)を
-// 避けつつ、Azureのまま感嘆詞部分だけ音程・速度を変えて弾んだ聞こえ方に
-// 近づける代替案として導入した(実機フィードバック: "感嘆詞だけAIにすることは
-// 難しい？...Azureのまま、感嘆詞の部分だけ抑揚を強くする")。ここで切り出した
-// セグメントは timelineToVoiceScript 側で role==="interjection" として検出し、
-// 通常の癖反映とは別に、山なりのピッチカーブ・やや速い速度・大きめの音量を
-// 与える。
-const INTERJECTION_OPENERS = ["ねえ", "わあ", "うわ", "おお", "そうですね", "うん", "あ"];
-
-function splitLeadingInterjection(text) {
-  for (const opener of INTERJECTION_OPENERS) {
-    if (text.startsWith(`${opener}、`)) {
-      return { interjection: `${opener}、`, rest: text.slice(opener.length + 1) };
-    }
-  }
-  return null;
-}
-
 function splitMeaningForVoice(meaningJapanese) {
   const text = String(meaningJapanese || "");
-  const leadingInterjection = splitLeadingInterjection(text);
-  if (leadingInterjection) {
-    return [
-      { text: leadingInterjection.interjection, role: "interjection" },
-      ...splitMeaningForVoiceRest(leadingInterjection.rest)
-    ];
-  }
-  return splitMeaningForVoiceRest(text);
-}
-
-function splitMeaningForVoiceRest(text) {
   if (text.includes("塩を取ってもらえ")) {
     return [
       { text: "塩を", role: "request-object" },
@@ -4433,28 +4307,6 @@ function moraPitchCurveForSegment({ text, segmentIndex, segmentCount, transferPl
   });
 }
 
-const INTERJECTION_RATE = "+8%";
-const INTERJECTION_PITCH = "+30%";
-const INTERJECTION_VOLUME = "loud";
-// PITCH_SEGMENT_PERCENT_CAP(±30%)の範囲内で、確実にクランプされない値にしておく。
-const INTERJECTION_PITCH_START_PERCENT = 30;
-const INTERJECTION_PITCH_END_PERCENT = 10;
-const INTERJECTION_MIN_BREAK_MS = 160;
-
-// 感嘆詞セグメント専用のピッチカーブ。録音の実測ピッチ差(moraPitchCurveForSegment)は
-// 使わず、常に「立ち上がりが高く、語尾にかけて落ち着く」山なりの形を与えることで、
-// AI音声が持つような弾んだ・驚いた聞こえ方に近づける。学習者の癖の反映とは無関係の、
-// 一定の演出として全プロフィール共通で使う。
-function interjectionPitchCurve(text) {
-  const tokens = splitIntoMorae(toReadableKana(text));
-  if (!tokens.length) return null;
-  return tokens.map((token, index) => {
-    const t = tokens.length > 1 ? index / (tokens.length - 1) : 0;
-    const percent = Math.round(INTERJECTION_PITCH_START_PERCENT - t * (INTERJECTION_PITCH_START_PERCENT - INTERJECTION_PITCH_END_PERCENT));
-    return { text: token.text, pitch: formatSignedPercent(percent) };
-  });
-}
-
 function applyIntonationPunctuation(text, index, parts, transferPlan) {
   const value = String(text || "");
   const isFinal = index === parts.length - 1;
@@ -4528,36 +4380,28 @@ function timelineToVoiceScript({ meaning, mirrorTimeline, voicePlan, speechFeatu
       const segmentKatakanaDelivery = hasKatakanaDeliveryForRole(transferPlan, part.role);
       const isFinalSegment = index === parts.length - 1;
       const finalText = applyIntonationPunctuation(accentText, index, parts, transferPlan);
-      const isInterjection = part.role === "interjection";
-      const baseBreakAfterMs = index < parts.length - 1
-        ? fastDelivery
-          ? Math.min(340, Math.max(transferPlan.hasSegmentedDelivery ? 240 : 0, transferPlan.hasPause ? Math.round(transferPause * 0.8) : 0))
-          : Math.max(segmentKatakanaDelivery ? 90 : 0, transferPlan.hasPause ? transferPause : 0, index === 0 ? pauseAfterFirst : 0, weakBreak, slowSegmentPause)
-        : 0;
       return {
         text: finalText,
         sourceText: part.text,
         role: part.role,
-        // 感嘆詞セグメントは、癖の反映(weakRate/compressedRate)ではなく、常に一定の
-        // 弾んだ速度・音程・音量にする(学習者の発音の癖とは無関係の演出のため)。
-        rate: isInterjection ? INTERJECTION_RATE : index === 0 && useWeakTiming ? weakRate : useWeakTiming ? weakRate : compressedRate,
-        pitch: isInterjection ? INTERJECTION_PITCH : pitchForVoiceSegment({ index, parts, basePitch, weakPitch, transferPlan }),
-        pitchCurve: isInterjection
-          ? interjectionPitchCurve(finalText)
-          : moraPitchCurveForSegment({
-              text: finalText,
-              segmentIndex: index,
-              segmentCount: parts.length,
-              transferPlan,
-              basePitch,
-              weakPitch,
-              isFinal: isFinalSegment
-            }),
-        volume: isInterjection ? INTERJECTION_VOLUME : segmentVolumeForArticulation(baseVolume, segmentArticulation),
+        rate: index === 0 && useWeakTiming ? weakRate : useWeakTiming ? weakRate : compressedRate,
+        pitch: pitchForVoiceSegment({ index, parts, basePitch, weakPitch, transferPlan }),
+        pitchCurve: moraPitchCurveForSegment({
+          text: finalText,
+          segmentIndex: index,
+          segmentCount: parts.length,
+          transferPlan,
+          basePitch,
+          weakPitch,
+          isFinal: isFinalSegment
+        }),
+        volume: segmentVolumeForArticulation(baseVolume, segmentArticulation),
         articulation: segmentArticulation,
-        breakAfterMs: isInterjection && index < parts.length - 1
-          ? Math.max(INTERJECTION_MIN_BREAK_MS, baseBreakAfterMs)
-          : baseBreakAfterMs
+        breakAfterMs: index < parts.length - 1
+          ? fastDelivery
+            ? Math.min(340, Math.max(transferPlan.hasSegmentedDelivery ? 240 : 0, transferPlan.hasPause ? Math.round(transferPause * 0.8) : 0))
+            : Math.max(segmentKatakanaDelivery ? 90 : 0, transferPlan.hasPause ? transferPause : 0, index === 0 ? pauseAfterFirst : 0, weakBreak, slowSegmentPause)
+          : 0
       };
     })
   };
@@ -4852,7 +4696,7 @@ function neutralMirrorTimelineForFreeMeaning(mirrorTimeline, speechFeatures) {
   };
 }
 
-function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonantAvg, consonantMin, muffled, couldBlindSpot, recordingDurationMs, rhythmHints, intonationFeatures, freeRecognizedText, utteranceCheck, profile, expressiveness }) {
+function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonantAvg, consonantMin, muffled, couldBlindSpot, recordingDurationMs, rhythmHints, intonationFeatures, freeRecognizedText, utteranceCheck, expressiveness }) {
   const expressivenessInfo = classifyExpressiveness(expressiveness);
   const words = wordDiagnostics.length
     ? wordDiagnostics
@@ -4931,7 +4775,7 @@ function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonan
   );
   const pronunciationAlternateMeaning = alternateWordMeaningFromPronunciation({ contrastSet, words, mirroredWords, freeRecognizedText });
   const preferReference = !pronunciationAlternateMeaning && minimalPairCriticalWordIsClean(contrastSet, words);
-  const meaning = pronunciationAlternateMeaning || getMeaning(contrastSet, freeRecognizedText, utteranceCheck, { allowReferenceFallback, preferReference, profile });
+  const meaning = pronunciationAlternateMeaning || getMeaning(contrastSet, freeRecognizedText, utteranceCheck, { allowReferenceFallback, preferReference });
   const useFreeMeaningNaturalMirror = utteranceMismatch && meaning.source === "freeRecognition";
   const voiceSpeechFeatures = useFreeMeaningNaturalMirror ? neutralizeReferenceAssessmentForFreeMeaning(speechFeatures) : speechFeatures;
   const voiceSoundSignature = useFreeMeaningNaturalMirror ? neutralSoundSignature() : soundSignature;

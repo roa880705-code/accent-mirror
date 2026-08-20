@@ -25,21 +25,6 @@ const neutralFragmentIntonation = {
   flatRange: [-0.8, 0.8]
 };
 
-// 相槌・感嘆詞(uh huh, yeah, got itなど、疑問文ではないもの)は、一語文の
-// neutralFragmentIntonation よりもさらに自然な音程の振れ幅が大きい(正しく
-// 発音していても、モデル音声基準で数半音のズレが出やすい)。実機フィードバックで、
-// 正しく発音した"Uh huh."がモデル比較+5.7半音の差で「疑問形寄り」(うん。→うん？)
-// に誤反映された事例があったため、over_rising/falling_questionの許容幅を広げた
-// 専用のintonationTargetを用意する。
-const backchannelIntonation = {
-  sentenceType: "backchannel",
-  expectedFinalContour: "neutral",
-  naturalRiseRange: [-2.5, 4.0],
-  overRiseAbove: 7.5,
-  fallingBelow: -4.0,
-  flatRange: [-1.2, 1.5]
-};
-
 const contrastSets = [
   {
     id: "could-only",
@@ -184,24 +169,6 @@ const contrastSets = [
     stage: 1
   },
   {
-    id: "greet-hi-hey",
-    label: "呼びかけ付きの挨拶",
-    text: "Hey, nice to meet you!",
-    critical: ["hey", "nice", "meet"],
-    intonationTarget: neutralStatementIntonation,
-    focus: "hey の二重母音と nice/meet の子音連結を確認する",
-    stage: 1
-  },
-  {
-    id: "greet-thanks-oh",
-    label: "驚き付きのお礼",
-    text: "Oh, thank you so much!",
-    critical: ["thank"],
-    intonationTarget: neutralStatementIntonation,
-    focus: "oh の母音と thank you の th 連結を確認する",
-    stage: 1
-  },
-  {
     id: "school-start-time",
     label: "登校中の会話",
     text: "What time does school start?",
@@ -220,30 +187,12 @@ const contrastSets = [
     stage: 2
   },
   {
-    id: "walk-together-yeah",
-    label: "同意しながらの提案",
-    text: "Yeah, let's walk together.",
-    critical: ["walk", "together"],
-    intonationTarget: neutralStatementIntonation,
-    focus: "yeah の二重母音と walk together の連結を確認する",
-    stage: 2
-  },
-  {
     id: "borrow-pen",
     label: "文房具を借りる",
     text: "Can I borrow your pen?",
     critical: ["borrow", "pen"],
     intonationTarget: politeRequestQuestionIntonation,
     focus: "borrow の r と pen の語尾鼻音を確認する",
-    stage: 2
-  },
-  {
-    id: "borrow-pen-hey",
-    label: "呼びかけ付きのお願い",
-    text: "Hey, can I borrow your pen?",
-    critical: ["hey", "borrow", "pen"],
-    intonationTarget: politeRequestQuestionIntonation,
-    focus: "hey の呼びかけと borrow の r を確認する",
     stage: 2
   },
   {
@@ -274,15 +223,6 @@ const contrastSets = [
     stage: 3
   },
   {
-    id: "ask-price-oh",
-    label: "気づきながらの質問",
-    text: "Oh, how much is this?",
-    critical: ["much"],
-    intonationTarget: neutralStatementIntonation,
-    focus: "oh の母音と how much の連結を確認する",
-    stage: 3
-  },
-  {
     id: "homestay-bathroom",
     label: "ホームステイの朝",
     text: "Can I use the bathroom first?",
@@ -298,15 +238,6 @@ const contrastSets = [
     critical: ["dinner", "smells"],
     intonationTarget: neutralStatementIntonation,
     focus: "dinner の n と smells の sm 連結を確認する",
-    stage: 4
-  },
-  {
-    id: "homestay-dinner-oh",
-    label: "驚き付きの夕食の時間",
-    text: "Oh, dinner smells great!",
-    critical: ["dinner", "smells"],
-    intonationTarget: neutralStatementIntonation,
-    focus: "oh の母音と smells の語尾 z を確認する",
     stage: 4
   },
   {
@@ -445,15 +376,6 @@ const contrastSets = [
     stage: 9
   },
   {
-    id: "biz-align-yeah",
-    label: "同意しながらの次ステップ確認",
-    text: "Yeah, let's align on next steps.",
-    critical: ["align"],
-    intonationTarget: neutralStatementIntonation,
-    focus: "yeah の二重母音と align の l を確認する",
-    stage: 9
-  },
-  {
     id: "biz-lookforward",
     label: "協働への期待",
     text: "I look forward to working with you.",
@@ -488,127 +410,6 @@ const contrastSets = [
     intonationTarget: neutralStatementIntonation,
     focus: "everything の th と語尾 ng を確認する",
     stage: 10
-  },
-
-  // ここから下は相槌・感嘆詞・呼びかけ表現。ステージに関係なく常時解放し、
-  // 日本語ミラー訳は年代・性別のプロフィール(mirrorProfile)によって変わる
-  // ものがある(CASUAL_EXPRESSION_MIRRORS参照)。
-  {
-    id: "react-uhhuh",
-    label: "軽い相槌",
-    text: "Uh huh.",
-    critical: ["uh", "huh"],
-    intonationTarget: backchannelIntonation,
-    focus: "uh/huh の弱い母音と鼻にかかる音を確認する",
-    category: "reaction"
-  },
-  {
-    id: "react-yeah",
-    label: "カジュアルな相槌",
-    text: "Yeah.",
-    critical: ["yeah"],
-    intonationTarget: backchannelIntonation,
-    focus: "yeah の二重母音と語尾の抜き方を確認する",
-    category: "reaction"
-  },
-  {
-    id: "react-isee",
-    label: "納得の相槌",
-    text: "I see.",
-    critical: ["see"],
-    intonationTarget: backchannelIntonation,
-    focus: "see の長母音と文末の下がり方を確認する",
-    category: "reaction"
-  },
-  {
-    id: "react-really",
-    label: "驚きの聞き返し",
-    text: "Really?",
-    critical: ["really"],
-    intonationTarget: politeRequestQuestionIntonation,
-    focus: "really の r と文末の上がり方を確認する",
-    category: "reaction"
-  },
-  {
-    id: "react-gotit",
-    label: "理解の相槌",
-    text: "Got it.",
-    critical: ["got"],
-    intonationTarget: backchannelIntonation,
-    focus: "got it の連結と語尾の t を確認する",
-    category: "reaction"
-  },
-  {
-    id: "react-soundsgood",
-    label: "同意の相槌",
-    text: "Sounds good.",
-    critical: ["sounds"],
-    intonationTarget: backchannelIntonation,
-    focus: "sounds の語尾の z と連結を確認する",
-    category: "reaction"
-  },
-  {
-    id: "react-noway",
-    label: "驚きの感嘆詞",
-    text: "No way!",
-    critical: ["way"],
-    intonationTarget: backchannelIntonation,
-    focus: "way の二重母音と感嘆の強さを確認する",
-    category: "reaction"
-  },
-  {
-    id: "react-thatsgreat",
-    label: "喜びの感嘆詞",
-    text: "That's great!",
-    critical: ["great"],
-    intonationTarget: backchannelIntonation,
-    focus: "great の gr 連結と語尾の t を確認する",
-    category: "reaction"
-  },
-  {
-    id: "react-ohiunderstand",
-    label: "納得の感嘆詞",
-    text: "Oh, I understand.",
-    critical: ["understand"],
-    intonationTarget: backchannelIntonation,
-    focus: "understand の連結と語尾の d を確認する",
-    category: "reaction"
-  },
-  {
-    id: "react-sorrytohear",
-    label: "共感の相槌",
-    text: "I'm sorry to hear that.",
-    critical: ["sorry"],
-    intonationTarget: backchannelIntonation,
-    focus: "sorry の r と文末の下がり方を確認する",
-    category: "reaction"
-  },
-  {
-    id: "react-hey",
-    label: "呼びかけ",
-    text: "Hey!",
-    critical: ["hey"],
-    intonationTarget: backchannelIntonation,
-    focus: "hey の二重母音と呼びかけの強さを確認する",
-    category: "reaction"
-  },
-  {
-    id: "react-heyguys",
-    label: "グループへの呼びかけ",
-    text: "Hey, guys!",
-    critical: ["guys"],
-    intonationTarget: backchannelIntonation,
-    focus: "guys の二重母音と語尾の z を確認する",
-    category: "reaction"
-  },
-  {
-    id: "react-thanksguys",
-    label: "みんなへのお礼",
-    text: "Thanks, guys.",
-    critical: ["thanks", "guys"],
-    intonationTarget: backchannelIntonation,
-    focus: "thanks の子音連結と guys の語尾 z を確認する",
-    category: "reaction"
   }
 ];
 
