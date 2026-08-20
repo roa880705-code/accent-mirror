@@ -441,6 +441,8 @@ body {
 }
 
 .row-time {
+  all: unset;
+  box-sizing: border-box;
   flex: none;
   min-width: clamp(58px, 11vw, 88px);
   text-align: right;
@@ -448,6 +450,26 @@ body {
   font-variant-numeric: tabular-nums;
   font-size: clamp(0.7rem, 1.8vw, 0.95rem);
   font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 2px 3px;
+  border-radius: 6px;
+}
+
+.row-time:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.row-time:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.row-time:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: transparent;
   color: var(--ink);
 }
 
@@ -766,6 +788,41 @@ body {
 }
 
 .modal-box input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.modal-duration {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-duration[hidden] {
+  display: none;
+}
+
+.duration-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.duration-field input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+
+.duration-field input:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }

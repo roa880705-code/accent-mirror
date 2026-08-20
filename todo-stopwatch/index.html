@@ -67,6 +67,16 @@
   <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="nameModalTitle">
     <h2 id="nameModalTitle">タスク名を入力</h2>
     <input id="nameModalInput" type="text" maxlength="24">
+    <div class="modal-duration" id="nameModalDuration" hidden>
+      <label class="duration-field">
+        <span>時間</span>
+        <input id="durationHoursInput" type="number" inputmode="numeric" min="0" max="23" step="1">
+      </label>
+      <label class="duration-field">
+        <span>分</span>
+        <input id="durationMinutesInput" type="number" inputmode="numeric" min="0" max="59" step="1">
+      </label>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-modal-cancel" id="nameModalCancel" type="button">キャンセル</button>
       <button class="btn btn-modal-ok" id="nameModalOk" type="button">OK</button>
@@ -77,7 +87,7 @@
 <template id="rowTemplate">
   <section class="row">
     <input class="row-input" type="text" maxlength="24" placeholder="タスク名">
-    <span class="row-time">00:00:00</span>
+    <button class="row-time" type="button" title="タップして時間を手動追加">00:00:00</button>
     <button class="row-toggle" type="button">開始</button>
     <button class="row-reset" type="button" title="リセット">&#8635;</button>
     <button class="row-handle" type="button" title="ドラッグして並び替え" aria-label="並び替え">

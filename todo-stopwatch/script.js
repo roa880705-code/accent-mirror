@@ -251,9 +251,11 @@
       if (live) {
         toggleBtn.addEventListener("click", () => toggleExclusive(item));
         resetBtn.addEventListener("click", () => resetItem(item));
+        timeDisplay.addEventListener("click", () => addManualTime(item));
       } else {
         toggleBtn.disabled = true;
         resetBtn.disabled = true;
+        timeDisplay.disabled = true;
         timeDisplay.textContent = "--:--:--";
       }
       handle.addEventListener("pointerdown", (e) => startDrag(e, node));
@@ -332,6 +334,17 @@
     render();
   }
 
+  async function addManualTime(item) {
+    const index = state.items.indexOf(item);
+    const result = await openDurationModal(`「${labelOf(item, `タスク${index + 1}`)}」に時間を追加`);
+    if (!result) return;
+    const ms = (result.hours * 60 + result.minutes) * 60000;
+    if (ms <= 0) return;
+    item.elapsedMs += ms;
+    saveState();
+    render();
+  }
+
   // --- sidework (別件) widget ---
 
   const sideworkInput = document.getElementById("sideworkInput");
@@ -391,18 +404,29 @@
   const nameModal = document.getElementById("nameModal");
   const nameModalTitle = document.getElementById("nameModalTitle");
   const nameModalInput = document.getElementById("nameModalInput");
+  const nameModalDuration = document.getElementById("nameModalDuration");
+  const durationHoursInput = document.getElementById("durationHoursInput");
+  const durationMinutesInput = document.getElementById("durationMinutesInput");
   const nameModalOk = document.getElementById("nameModalOk");
   const nameModalCancel = document.getElementById("nameModalCancel");
 
-  function openModal({ title, showInput, initialValue }) {
+  function openModal({ title, showInput, showDuration, initialValue }) {
     return new Promise((resolve) => {
       nameModalTitle.textContent = title;
       nameModalInput.hidden = !showInput;
+      nameModalDuration.hidden = !showDuration;
       if (showInput) nameModalInput.value = initialValue || "";
+      if (showDuration) {
+        durationHoursInput.value = "0";
+        durationMinutesInput.value = "0";
+      }
       nameModal.hidden = false;
       if (showInput) {
         nameModalInput.focus();
         nameModalInput.select();
+      } else if (showDuration) {
+        durationHoursInput.focus();
+        durationHoursInput.select();
       } else {
         nameModalOk.focus();
       }
@@ -410,6 +434,7 @@
       function cleanup(result) {
         nameModal.hidden = true;
         nameModalInput.hidden = false;
+        nameModalDuration.hidden = true;
         nameModalOk.removeEventListener("click", onOk);
         nameModalCancel.removeEventListener("click", onCancel);
         nameModal.removeEventListener("mousedown", onBackdrop);
@@ -417,10 +442,18 @@
         resolve(result);
       }
       function onOk() {
-        cleanup(showInput ? nameModalInput.value : true);
+        if (showInput) {
+          cleanup(nameModalInput.value);
+        } else if (showDuration) {
+          const hours = Math.max(0, parseInt(durationHoursInput.value, 10) || 0);
+          const minutes = Math.max(0, parseInt(durationMinutesInput.value, 10) || 0);
+          cleanup({ hours, minutes });
+        } else {
+          cleanup(true);
+        }
       }
       function onCancel() {
-        cleanup(showInput ? null : false);
+        cleanup(showInput || showDuration ? null : false);
       }
       function onBackdrop(e) {
         if (e.target === nameModal) onCancel();
@@ -447,6 +480,10 @@
 
   function openConfirmModal(message) {
     return openModal({ title: message, showInput: false });
+  }
+
+  function openDurationModal(title) {
+    return openModal({ title, showDuration: true });
   }
 
   const newTaskBtn = document.getElementById("newTaskBtn");
