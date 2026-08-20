@@ -10,6 +10,11 @@ let activeRecorder = null;
 let pendingValidationVerdict = "match";
 let validationItemFeedback = {};
 let friendCount = 248;
+// ホーム画面で「ストーリーモード」「練習セット」の入り口を分けたので、練習画面側の
+// 一覧もどちらから入ったかで絞り込む(実機フィードバック: "練習セットと、
+// ストーリーモードへの入り口をホーム画面の時点で分離させて")。練習画面内の
+// タブでいつでも切り替えられる。
+let practiceViewMode = "story";
 let mirrorProfile = {
   gender: "female",
   age: "20s",
@@ -111,6 +116,7 @@ function renderSugorokuBoard() {
 function goToStagePractice(stageNumber) {
   const target = contrastSets.find((set) => set.stage === stageNumber);
   if (!target) return;
+  setPracticeViewMode("story");
   selectContrastSet(contrastSets.indexOf(target));
   showPracticeScreen();
   requestAnimationFrame(() => {
@@ -440,19 +446,25 @@ function appendContrastButton(container, set, index) {
   container.appendChild(button);
 }
 
+function renderPracticeModeTabs() {
+  $("practiceModeTabs")?.querySelectorAll(".practice-mode-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.mode === practiceViewMode);
+  });
+}
+
+function setPracticeViewMode(mode) {
+  practiceViewMode = mode === "drill" ? "drill" : "story";
+  renderPracticeModeTabs();
+  renderContrastButtons();
+}
+
 function renderContrastButtons() {
   const container = $("contrastButtons");
   container.innerHTML = "";
+  renderPracticeModeTabs();
 
-  const storySets = contrastSets.filter((set) => set.stage);
-  const drillSets = contrastSets.filter((set) => !set.stage);
-
-  if (storySets.length) {
-    const heading = document.createElement("h3");
-    heading.className = "contrast-group-heading";
-    heading.textContent = "ストーリーモード";
-    container.appendChild(heading);
-
+  if (practiceViewMode === "story") {
+    const storySets = contrastSets.filter((set) => set.stage);
     const stageNumbers = [...new Set(storySets.map((set) => set.stage))].sort((a, b) => a - b);
     stageNumbers.forEach((stageNumber) => {
       const info = storyStages.find((stage) => stage.stage === stageNumber);
@@ -468,13 +480,8 @@ function renderContrastButtons() {
         .filter((set) => set.stage === stageNumber)
         .forEach((set) => appendContrastButton(container, set, contrastSets.indexOf(set)));
     });
-  }
-
-  if (drillSets.length) {
-    const heading = document.createElement("h3");
-    heading.className = "contrast-group-heading";
-    heading.textContent = "発音ドリル";
-    container.appendChild(heading);
+  } else {
+    const drillSets = contrastSets.filter((set) => !set.stage);
     drillSets.forEach((set) => appendContrastButton(container, set, contrastSets.indexOf(set)));
   }
 }
@@ -1818,7 +1825,17 @@ async function azureDiagnose() {
   }
 }
 
-$("startPracticeButton").onclick = showPracticeScreen;
+$("startStoryModeButton").onclick = () => {
+  setPracticeViewMode("story");
+  showPracticeScreen();
+};
+$("startDrillSetButton").onclick = () => {
+  setPracticeViewMode("drill");
+  showPracticeScreen();
+};
+$("practiceModeTabs")?.querySelectorAll(".practice-mode-tab").forEach((tab) => {
+  tab.onclick = () => setPracticeViewMode(tab.dataset.mode);
+});
 $("recordLocalButton").onclick = localRecord;
 $("modelVoiceButton").onclick = playModelVoice;
 $("azureButton").onclick = azureDiagnose;

@@ -51,7 +51,10 @@
 <div class="avatar-badge">日本</div>
 </div>
 <div class="home-ground"></div>
-<button id="startPracticeButton" class="start-practice-button">Start Practice</button>
+<div class="home-start-buttons">
+<button id="startStoryModeButton" class="start-practice-button">ストーリーモードで始める</button>
+<button id="startDrillSetButton" class="start-drillset-button">練習セットを見る</button>
+</div>
 </div>
 </section>
 
@@ -76,6 +79,10 @@
 
 <section class="card">
 <h2>1. 練習セット</h2>
+<div id="practiceModeTabs" class="practice-mode-tabs" role="tablist" aria-label="練習モード">
+<button type="button" class="practice-mode-tab active" data-mode="story">ストーリーモード</button>
+<button type="button" class="practice-mode-tab" data-mode="drill">練習セット</button>
+</div>
 <div id="contrastButtons"></div>
 <div class="profile-grid">
 <label>学習者の声
