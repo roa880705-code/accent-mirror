@@ -1329,7 +1329,14 @@ function combineVoiceSpeed({ overallSpeed, articulationSpeed, segmentedDelivery 
 
   if (articulationRank > overallRank + 1) {
     const level = speedFromRank(overallRank + 1);
-    return { ...articulationSpeed, level, label: classifySpeed({ very_slow: 80, slow: 110, natural: 160, fast: 250, very_fast: 320 }[level]).label };
+    // 代表WPM値は、classifySpeedの実際の閾値(<95/<125/<=255/<=320/それ以上)で
+    // 該当levelのバケットに正しく入る値でなければならない。以前は fast:250(<=255
+    // のため実際は"natural"扱いになる)、very_fast:320(<=320のため実際は"fast"
+    // 扱いになる)という境界値ぴったりの値を使っており、level="fast"なのに
+    // label="自然域"になる矛盾が起きていた(実機フィードバック: "articulation
+    // WPMが自然域の上限を大きく超えるため、「自然域」と判定しています"という
+    // 矛盾した分析文)。各バケットの内側に確実に収まる値に修正する。
+    return { ...articulationSpeed, level, label: classifySpeed({ very_slow: 80, slow: 110, natural: 190, fast: 280, very_fast: 350 }[level]).label };
   }
 
   return articulationSpeed;
