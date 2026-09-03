@@ -870,8 +870,21 @@
     calendarDetail.appendChild(line);
   }
 
+  function vibrate(ms) {
+    if (navigator.vibrate) {
+      try {
+        navigator.vibrate(ms);
+      } catch (err) {
+        // vibration not permitted/supported here; ignore
+      }
+    }
+  }
+
   function onPlanBlockClick(e, dateStr, plan) {
-    if (e) e.stopPropagation();
+    if (e) {
+      e.stopPropagation();
+      vibrate(10);
+    }
     calendarDetail.hidden = false;
     calendarDetail.innerHTML = "";
     const line = document.createElement("div");
@@ -978,6 +991,7 @@
   }
 
   async function createPlanAtPosition(dayCol, dateStr, clientY) {
+    vibrate(20);
     const rect = dayCol.getBoundingClientRect();
     const relY = clientY - rect.top;
     const rawMin = (relY / rect.height) * 1440;
@@ -1010,6 +1024,7 @@
       moved: false,
       hoverDate: dateStr,
       previewStartMin: plan.startMin,
+      lastVibrateMin: plan.startMin,
     };
     document.addEventListener("pointermove", onPlanDragMove);
     document.addEventListener("pointerup", onPlanDragEnd);
@@ -1026,6 +1041,7 @@
       if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
       planDragCtx.moved = true;
       planDragCtx.block.classList.add("dragging");
+      vibrate(15);
     }
 
     const cols = Array.from(calendarWeekGrid.children);
@@ -1047,6 +1063,10 @@
 
     planDragCtx.hoverDate = targetCol.dataset.date;
     planDragCtx.previewStartMin = startMin;
+    if (startMin !== planDragCtx.lastVibrateMin) {
+      vibrate(8);
+      planDragCtx.lastVibrateMin = startMin;
+    }
 
     if (planDragCtx.block.parentElement !== targetCol) targetCol.appendChild(planDragCtx.block);
     planDragCtx.block.style.top = `${(startMin / 1440) * 100}%`;
@@ -1074,6 +1094,7 @@
       return;
     }
 
+    vibrate(20);
     removePlan(dateStr, plan.id);
     addPlan(hoverDate, { ...plan, startMin: previewStartMin, endMin: previewStartMin + duration });
     renderCalendar();
