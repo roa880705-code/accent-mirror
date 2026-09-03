@@ -896,19 +896,18 @@
   const PLAN_LONGPRESS_MS = 500;
   const PLAN_MOVE_TOLERANCE = 8;
 
-  let longPressTimer = null;
-  let longPressCtx = null;
+  // .calendar-day-col uses touch-action: none (see style.css) so this handler
+  // gets full control of the gesture instead of the browser racing it against
+  // native scroll — on touch, letting the browser's own pan-detection compete
+  // tends to cancel the long-press on the tiniest finger tremor. Because native
+  // scrolling is disabled there, a drag that turns out not to be a long-press
+  // is scrolled manually (calendarWeekBody.scrollTop) to keep the same feel.
+  let activeDayPress = null; // { cleanup } for the in-progress gesture, if any
 
   function clearLongPress() {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
-    }
-    if (longPressCtx) {
-      document.removeEventListener("pointermove", longPressCtx.onMove);
-      document.removeEventListener("pointerup", longPressCtx.onUp);
-      document.removeEventListener("pointercancel", longPressCtx.onUp);
-      longPressCtx = null;
+    if (activeDayPress) {
+      activeDayPress.cleanup();
+      activeDayPress = null;
     }
   }
 
@@ -919,22 +918,42 @@
 
     const startX = e.clientX;
     const startY = e.clientY;
-    const onMove = (ev) => {
-      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > PLAN_MOVE_TOLERANCE) clearLongPress();
-    };
-    const onUp = () => clearLongPress();
+    const startScrollTop = calendarWeekBody.scrollTop;
+    let scrolling = false;
+    let timer = null;
 
-    longPressCtx = { onMove, onUp };
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
-    document.addEventListener("pointercancel", onUp);
-
-    longPressTimer = setTimeout(() => {
-      longPressTimer = null;
-      longPressCtx = null;
+    function cleanup() {
+      if (timer) clearTimeout(timer);
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
       document.removeEventListener("pointercancel", onUp);
+    }
+    function onMove(ev) {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!scrolling && Math.hypot(dx, dy) > PLAN_MOVE_TOLERANCE) {
+        scrolling = true;
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      }
+      if (scrolling) calendarWeekBody.scrollTop = startScrollTop - dy;
+    }
+    function onUp() {
+      cleanup();
+      activeDayPress = null;
+    }
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+    activeDayPress = { cleanup };
+
+    timer = setTimeout(() => {
+      timer = null;
+      cleanup();
+      activeDayPress = null;
       createPlanAtPosition(dayCol, dateStr, startY);
     }, PLAN_LONGPRESS_MS);
   }
@@ -1128,6 +1147,7 @@
   }
 
   function renderCalendar() {
+    clearLongPress(); // the grid is about to be torn down and rebuilt
     const start = startOfWeek(weekAnchor);
     const end = new Date(start);
     end.setDate(end.getDate() + 6);
@@ -1278,7 +1298,6 @@
 
   calendarPrevBtn.addEventListener("click", () => shiftCalendarWeek(-1));
   calendarNextBtn.addEventListener("click", () => shiftCalendarWeek(1));
-  calendarWeekBody.addEventListener("scroll", () => clearLongPress(), { passive: true });
 
   initCalendarHours();
 

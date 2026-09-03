@@ -907,7 +907,9 @@ body {
   min-width: 0;
   position: relative;
   border-left: 1px solid var(--line);
-  touch-action: pan-y;
+  /* JS owns this gesture (long-press to create vs. drag to scroll) so native
+     touch panning is off here; script.js scrolls calendarWeekBody itself. */
+  touch-action: none;
   -webkit-touch-callout: none;
   user-select: none;
 }
