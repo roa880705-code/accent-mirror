@@ -64,15 +64,16 @@
     <section class="page">
       <div class="calendar">
         <div class="calendar-header">
-          <button id="calendarPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の月">&#8249;</button>
-          <span id="calendarMonthLabel" class="calendar-month-label"></span>
-          <button id="calendarNextBtn" class="calendar-nav-btn" type="button" aria-label="次の月">&#8250;</button>
+          <button id="calendarPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の週">&#8249;</button>
+          <span id="calendarWeekLabel" class="calendar-month-label"></span>
+          <button id="calendarNextBtn" class="calendar-nav-btn" type="button" aria-label="次の週">&#8250;</button>
         </div>
-        <div class="calendar-weekdays">
-          <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+        <div class="calendar-week-header" id="calendarWeekHeader"></div>
+        <div class="calendar-week-body" id="calendarWeekBody">
+          <div class="calendar-hours" id="calendarHours"></div>
+          <div class="calendar-week-grid" id="calendarWeekGrid"></div>
         </div>
-        <div id="calendarGrid" class="calendar-grid"></div>
-        <div id="calendarDetail" class="calendar-detail"></div>
+        <div id="calendarDetail" class="calendar-detail" hidden></div>
       </div>
     </section>
   </div>

@@ -741,14 +741,16 @@ body {
   white-space: nowrap;
 }
 
-/* --- calendar page --- */
+/* --- calendar page (weekly, vertical) --- */
 
 .calendar {
+  --cal-gutter: 30px;
+  --hour-h: 40px;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: clamp(4px, 1vh, 8px);
+  gap: clamp(3px, 0.8vh, 6px);
   padding: 2px 2px 4px;
   overflow: hidden;
 }
@@ -762,7 +764,7 @@ body {
 
 .calendar-month-label {
   font-weight: 700;
-  font-size: clamp(0.8rem, 1.8vw, 0.95rem);
+  font-size: clamp(0.78rem, 1.7vw, 0.92rem);
 }
 
 .calendar-nav-btn {
@@ -789,97 +791,177 @@ body {
   outline-offset: 1px;
 }
 
-.calendar-weekdays {
+.calendar-week-header {
   flex: none;
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  text-align: center;
-  font-size: clamp(0.6rem, 1.3vw, 0.7rem);
-  color: var(--muted);
-  font-weight: 600;
+  display: flex;
 }
 
-.calendar-grid {
-  flex: 1 1 56%;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  grid-template-rows: repeat(6, 1fr);
-  gap: clamp(2px, 0.6vw, 4px);
+.cal-gutter-spacer {
+  flex: none;
+  width: var(--cal-gutter);
 }
 
-.calendar-cell {
+.calendar-day-header {
   all: unset;
   box-sizing: border-box;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 2px;
-  position: relative;
-  border-radius: clamp(6px, 1vh, 10px);
-  border: 1px solid var(--line);
-  background: var(--card-bg);
+  padding: 2px 0 4px;
+  border-radius: 8px;
   cursor: pointer;
+  position: relative;
 }
 
-.calendar-cell:hover {
-  border-color: var(--accent);
+.calendar-day-header:hover {
+  background: var(--panel);
 }
 
-.calendar-cell:focus-visible {
+.calendar-day-header:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
-.calendar-cell.other-month {
-  opacity: 0.35;
-}
-
-.calendar-cell.has-data {
-  background: var(--live-soft);
-}
-
-.calendar-cell.today {
-  border-color: var(--accent);
-  border-width: 2px;
-}
-
-.calendar-cell.selected {
+.calendar-day-header.selected {
   background: var(--accent-soft);
-  border-color: var(--accent);
 }
 
-.calendar-cell .cc-date {
-  font-size: clamp(0.62rem, 1.4vw, 0.78rem);
-  font-weight: 700;
-}
-
-.calendar-cell .cc-time {
-  font-size: clamp(0.5rem, 1.1vw, 0.6rem);
+.calendar-day-header .cdh-weekday {
+  font-size: clamp(0.55rem, 1.2vw, 0.65rem);
   color: var(--muted);
-  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", "Courier New", monospace;
+  font-weight: 600;
 }
 
-.calendar-cell .cc-dot {
+.calendar-day-header .cdh-date {
+  font-size: clamp(0.68rem, 1.5vw, 0.82rem);
+  font-weight: 700;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendar-day-header.today .cdh-date {
+  color: #fff;
+  background: var(--accent);
+}
+
+.calendar-day-header .cdh-dot {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 1px;
+  right: 22%;
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: var(--accent);
 }
 
-.calendar-detail {
-  flex: 1 1 40%;
+.calendar-week-body {
+  flex: 1;
   min-height: 0;
+  display: flex;
   overflow-y: auto;
   border-top: 1px solid var(--line);
-  padding-top: 6px;
+}
+
+.calendar-hours {
+  flex: none;
+  width: var(--cal-gutter);
+  height: calc(var(--hour-h) * 24);
+  position: relative;
+}
+
+.cal-hour-label {
+  position: absolute;
+  left: 0;
+  right: 4px;
+  text-align: right;
+  font-size: 0.55rem;
+  color: var(--muted);
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+
+.calendar-week-grid {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  height: calc(var(--hour-h) * 24);
+  position: relative;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--line) 0,
+    var(--line) 1px,
+    transparent 1px,
+    transparent var(--hour-h)
+  );
+}
+
+.calendar-day-col {
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  border-left: 1px solid var(--line);
+}
+
+.cal-block {
+  position: absolute;
+  border-radius: 4px;
+  padding: 1px 3px;
+  font-size: 0.55rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #fff;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.cal-now-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 2px solid var(--danger);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.cal-now-line::before {
+  content: "";
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.calendar-detail {
+  flex: none;
+  max-height: 28%;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 5px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
+}
+
+.calendar-detail[hidden] {
+  display: none;
+}
+
+.cal-block-detail {
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .calendar-legend {

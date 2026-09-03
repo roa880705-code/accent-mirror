@@ -44,6 +44,7 @@
           parsed.interrupt &&
           parsed.chore
         ) {
+          if (!Array.isArray(parsed.segments)) parsed.segments = [];
           return parsed;
         }
       }
@@ -56,6 +57,7 @@
       sidework: freshItem("別件"),
       interrupt: freshItem("割込対応"),
       chore: freshItem("雑務"),
+      segments: [],
     };
   }
 
@@ -162,7 +164,7 @@
     const totalMs = snapshot.reduce((s, e) => s + e.elapsedMs, 0);
     if (totalMs <= 0) return;
 
-    const record = { date: dayStr, totalMs, items: snapshot };
+    const record = { date: dayStr, totalMs, items: snapshot, segments: state.segments.slice() };
     const idx = history.findIndex((h) => h.date === dayStr);
     if (idx >= 0) history[idx] = record;
     else history.unshift(record);
@@ -193,6 +195,8 @@
     if (state.day === today) return false;
 
     const wasFollowingToday = viewingDate === state.day;
+    const now = Date.now();
+    closeRunningSegments(now);
     archiveDay(state.day);
 
     const draftForToday = drafts[today];
@@ -202,15 +206,16 @@
       saveDrafts();
     } else {
       state.items.forEach((it) => {
-        if (it.running) it.startedAt = Date.now();
+        if (it.running) it.startedAt = now;
         it.elapsedMs = 0;
       });
     }
-    if (state.sidework.running) state.sidework.startedAt = Date.now();
+    if (state.sidework.running) state.sidework.startedAt = now;
     state.sidework.elapsedMs = 0;
-    if (state.chore.running) state.chore.startedAt = Date.now();
+    if (state.chore.running) state.chore.startedAt = now;
     state.chore.elapsedMs = 0;
     state.interrupt.elapsedMs = 0;
+    state.segments = [];
     state.day = today;
     saveState();
 
@@ -227,8 +232,11 @@
   const breakdownEl = document.getElementById("breakdown");
   const historyEl = document.getElementById("history");
   const listWrap = document.querySelector(".list-wrap");
-  const calendarGrid = document.getElementById("calendarGrid");
-  const calendarMonthLabel = document.getElementById("calendarMonthLabel");
+  const calendarWeekLabel = document.getElementById("calendarWeekLabel");
+  const calendarWeekHeader = document.getElementById("calendarWeekHeader");
+  const calendarWeekBody = document.getElementById("calendarWeekBody");
+  const calendarHours = document.getElementById("calendarHours");
+  const calendarWeekGrid = document.getElementById("calendarWeekGrid");
   const calendarDetail = document.getElementById("calendarDetail");
   const calendarPrevBtn = document.getElementById("calendarPrevBtn");
   const calendarNextBtn = document.getElementById("calendarNextBtn");
@@ -289,9 +297,19 @@
     });
   }
 
+  function fallbackLabelFor(item) {
+    if (item === state.sidework) return "別件";
+    if (item === state.chore) return "雑務";
+    if (item === state.interrupt) return "割込対応";
+    const idx = state.items.indexOf(item);
+    return idx >= 0 ? `タスク${idx + 1}` : "無題";
+  }
+
   function stopIfRunning(item) {
     if (!item.running) return;
-    item.elapsedMs += Date.now() - item.startedAt;
+    const endMs = Date.now();
+    state.segments.push({ label: labelOf(item, fallbackLabelFor(item)), startMs: item.startedAt, endMs });
+    item.elapsedMs += endMs - item.startedAt;
     item.running = false;
     item.startedAt = null;
   }
@@ -609,8 +627,10 @@
   resetAllBtn.addEventListener("click", async () => {
     const ok = await openConfirmModal("今日の記録を履歴に保存してリセットします。よろしいですか?");
     if (!ok) return;
+    closeRunningSegments();
     archiveDay(state.day);
     resetAllTracking();
+    state.segments = [];
     saveState();
     renderHistory();
     render();
@@ -713,44 +733,35 @@
     });
   }
 
-  // --- calendar page ---
+  // --- calendar page (weekly, vertical) ---
 
-  let calendarYear;
-  let calendarMonth;
-  let selectedPastDate = null;
+  const CAL_HOUR_H = 40; // px per hour row; keep in sync with --hour-h in style.css
+  const CAL_PALETTE = ["#b8672a", "#3e8c4e", "#5b7596", "#a3651f", "#7a6ba8", "#3f7a75", "#ab3d3d", "#62744c"];
 
-  function initCalendarView() {
-    const [y, m] = state.day.split("-").map(Number);
-    calendarYear = y;
-    calendarMonth = m - 1;
+  let weekAnchor = state.day; // any date string within the displayed week
+  let selectedDayDetail = null; // date string whose textual summary is shown below the grid
+  let calendarAutoScrollPending = true;
+  // live-updating pieces, refreshed every second without a full rebuild
+  let calendarLiveBlocks = []; // { el, startMs, dayStart }
+  let calendarNowLineEl = null;
+
+  function closeRunningSegments(now = Date.now()) {
+    allTrackedEntries().forEach(({ item, fallback }) => {
+      if (item.running && item.startedAt) {
+        state.segments.push({ label: labelOf(item, fallback), startMs: item.startedAt, endMs: now });
+      }
+    });
   }
 
-  function shiftCalendarMonth(delta) {
-    calendarMonth += delta;
-    if (calendarMonth < 0) {
-      calendarMonth = 11;
-      calendarYear -= 1;
-    } else if (calendarMonth > 11) {
-      calendarMonth = 0;
-      calendarYear += 1;
-    }
-    renderCalendar();
+  function colorForLabel(label) {
+    let hash = 0;
+    for (let i = 0; i < label.length; i++) hash = (hash * 31 + label.charCodeAt(i)) >>> 0;
+    return CAL_PALETTE[hash % CAL_PALETTE.length];
   }
 
-  function totalsForDate(dateStr) {
-    if (dateStr === state.day) {
-      let total = 0;
-      allTrackedEntries().forEach(({ item }) => {
-        total += currentElapsed(item);
-      });
-      return { totalMs: total, hasDraft: false };
-    }
-    if (dateStr < state.day) {
-      const rec = history.find((h) => h.date === dateStr);
-      return { totalMs: rec ? rec.totalMs : 0, hasDraft: false };
-    }
-    const draft = drafts[dateStr];
-    return { totalMs: 0, hasDraft: !!(draft && draft.length) };
+  function formatHM(ms) {
+    const d = new Date(ms);
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   }
 
   function formatShort(ms) {
@@ -761,6 +772,27 @@
     if (h > 0 && m > 0) return `${h}h${m}m`;
     if (h > 0) return `${h}h`;
     return `${m}m`;
+  }
+
+  function startOfWeek(dateStr) {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() - dt.getDay());
+    return dt;
+  }
+
+  function shiftCalendarWeek(delta) {
+    const start = startOfWeek(weekAnchor);
+    start.setDate(start.getDate() + delta * 7);
+    weekAnchor = `${start.getFullYear()}-${pad2(start.getMonth() + 1)}-${pad2(start.getDate())}`;
+    calendarAutoScrollPending = true;
+    renderCalendar();
+  }
+
+  function closedSegmentsForDate(dateStr) {
+    if (dateStr === state.day) return state.segments;
+    const rec = history.find((h) => h.date === dateStr);
+    return rec && Array.isArray(rec.segments) ? rec.segments : [];
   }
 
   function goToDate(dateStr) {
@@ -775,80 +807,82 @@
     render();
   }
 
-  function onCalendarCellClick(dateStr) {
+  function onCalendarHeaderClick(dateStr) {
     if (dateStr >= state.day) {
       goToDate(dateStr);
       goToPage(0);
       return;
     }
-    selectedPastDate = selectedPastDate === dateStr ? null : dateStr;
-    renderCalendar();
-  }
-
-  function renderCalendar() {
-    calendarMonthLabel.textContent = `${calendarYear}年${calendarMonth + 1}月`;
-    calendarGrid.innerHTML = "";
-
-    const gridStart = new Date(calendarYear, calendarMonth, 1);
-    gridStart.setDate(gridStart.getDate() - gridStart.getDay());
-
-    for (let i = 0; i < 42; i++) {
-      const d = new Date(gridStart);
-      d.setDate(gridStart.getDate() + i);
-      const dateStr = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-
-      const cell = document.createElement("button");
-      cell.type = "button";
-      cell.className = "calendar-cell";
-      if (d.getMonth() !== calendarMonth) cell.classList.add("other-month");
-      if (dateStr === state.day) cell.classList.add("today");
-      if (dateStr === selectedPastDate) cell.classList.add("selected");
-
-      const { totalMs, hasDraft } = totalsForDate(dateStr);
-      if (totalMs > 0) cell.classList.add("has-data");
-
-      const dateEl = document.createElement("span");
-      dateEl.className = "cc-date";
-      dateEl.textContent = String(d.getDate());
-
-      const timeEl = document.createElement("span");
-      timeEl.className = "cc-time";
-      timeEl.textContent = formatShort(totalMs);
-
-      cell.append(dateEl, timeEl);
-
-      if (hasDraft) {
-        const dot = document.createElement("span");
-        dot.className = "cc-dot";
-        cell.appendChild(dot);
-      }
-
-      cell.addEventListener("click", () => onCalendarCellClick(dateStr));
-      calendarGrid.appendChild(cell);
-    }
-
+    selectedDayDetail = selectedDayDetail === dateStr ? null : dateStr;
     renderCalendarDetail();
   }
 
-  function renderCalendarDetail() {
+  function onCalendarBlockClick(seg, e) {
+    e.stopPropagation();
+    const endMs = seg.live ? Date.now() : seg.endMs;
+    calendarDetail.hidden = false;
     calendarDetail.innerHTML = "";
+    const line = document.createElement("div");
+    line.className = "cal-block-detail";
+    line.textContent = `${seg.label}: ${formatHM(seg.startMs)}〜${formatHM(endMs)} (${formatShort(endMs - seg.startMs) || "1分未満"})`;
+    calendarDetail.appendChild(line);
+  }
 
-    if (!selectedPastDate) {
-      const hint = document.createElement("div");
-      hint.className = "history-empty";
-      hint.textContent = "過去の日付をタップすると、その日の記録を確認できます。";
-      calendarDetail.appendChild(hint);
+  // Lays same-day overlapping segments (e.g. a task plus a concurrent 別件
+  // run) out side by side instead of stacking them on top of one another,
+  // the way Google Calendar handles overlapping events.
+  function layoutSegments(segments) {
+    const sorted = segments.slice().sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+    const laidOut = [];
+    let columns = [];
+    let clusterMembers = [];
+    let clusterEnd = -Infinity;
+
+    function flushCluster() {
+      if (!clusterMembers.length) return;
+      const colCount = Math.max(...clusterMembers.map((m) => m.col)) + 1;
+      clusterMembers.forEach((m) => laidOut.push({ seg: m.seg, col: m.col, colCount }));
+      clusterMembers = [];
+    }
+
+    sorted.forEach((seg) => {
+      if (seg.startMs >= clusterEnd) {
+        flushCluster();
+        columns = [];
+        clusterEnd = -Infinity;
+      }
+      let col = columns.findIndex((endMs) => endMs <= seg.startMs);
+      if (col === -1) {
+        col = columns.length;
+        columns.push(seg.endMs);
+      } else {
+        columns[col] = seg.endMs;
+      }
+      clusterMembers.push({ seg, col });
+      clusterEnd = Math.max(clusterEnd, seg.endMs);
+    });
+    flushCluster();
+
+    return laidOut;
+  }
+
+  function renderCalendarDetail() {
+    if (!selectedDayDetail) {
+      calendarDetail.hidden = true;
+      calendarDetail.innerHTML = "";
       return;
     }
+    calendarDetail.hidden = false;
+    calendarDetail.innerHTML = "";
 
     const top = document.createElement("div");
     top.className = "h-top";
     const dateLabel = document.createElement("span");
     dateLabel.className = "h-date";
-    dateLabel.textContent = formatDateLabel(selectedPastDate);
+    dateLabel.textContent = formatDateLabel(selectedDayDetail);
     top.appendChild(dateLabel);
 
-    const rec = history.find((h) => h.date === selectedPastDate);
+    const rec = history.find((h) => h.date === selectedDayDetail);
     const totalEl = document.createElement("span");
     totalEl.className = "h-total";
     totalEl.textContent = formatTime(rec ? rec.totalMs : 0);
@@ -880,10 +914,136 @@
     calendarDetail.append(stack, legend);
   }
 
-  calendarPrevBtn.addEventListener("click", () => shiftCalendarMonth(-1));
-  calendarNextBtn.addEventListener("click", () => shiftCalendarMonth(1));
+  function renderCalendar() {
+    const start = startOfWeek(weekAnchor);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    calendarWeekLabel.textContent = `${start.getMonth() + 1}/${start.getDate()} 〜 ${end.getMonth() + 1}/${end.getDate()}`;
 
-  initCalendarView();
+    calendarWeekHeader.innerHTML = "";
+    const spacer = document.createElement("div");
+    spacer.className = "cal-gutter-spacer";
+    calendarWeekHeader.appendChild(spacer);
+
+    calendarWeekGrid.innerHTML = "";
+    calendarLiveBlocks = [];
+    calendarNowLineEl = null;
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const dateStr = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+      const header = document.createElement("button");
+      header.type = "button";
+      header.className = "calendar-day-header";
+      if (dateStr === state.day) header.classList.add("today");
+      if (dateStr === selectedDayDetail) header.classList.add("selected");
+
+      const weekdayEl = document.createElement("span");
+      weekdayEl.className = "cdh-weekday";
+      weekdayEl.textContent = WEEKDAYS[d.getDay()];
+      const dateEl = document.createElement("span");
+      dateEl.className = "cdh-date";
+      dateEl.textContent = String(d.getDate());
+      header.append(weekdayEl, dateEl);
+
+      const draft = drafts[dateStr];
+      if (dateStr > state.day && draft && draft.length) {
+        const dot = document.createElement("span");
+        dot.className = "cdh-dot";
+        header.appendChild(dot);
+      }
+
+      header.addEventListener("click", () => onCalendarHeaderClick(dateStr));
+      calendarWeekHeader.appendChild(header);
+
+      const dayCol = document.createElement("div");
+      dayCol.className = "calendar-day-col";
+      const dayStart = new Date(`${dateStr}T00:00:00`).getTime();
+
+      let segs = closedSegmentsForDate(dateStr).map((seg) => ({ ...seg, live: false }));
+      if (dateStr === state.day) {
+        allTrackedEntries().forEach(({ item, fallback }) => {
+          if (item.running && item.startedAt) {
+            segs.push({ label: labelOf(item, fallback), startMs: item.startedAt, endMs: Date.now(), live: true });
+          }
+        });
+      }
+
+      layoutSegments(segs).forEach(({ seg, col, colCount }) => {
+        const startMinOfDay = Math.max(0, (seg.startMs - dayStart) / 60000);
+        const durMin = Math.max(1, (seg.endMs - seg.startMs) / 60000);
+        const block = document.createElement("div");
+        block.className = "cal-block";
+        block.style.top = `${(startMinOfDay / 1440) * 100}%`;
+        block.style.height = `${(durMin / 1440) * 100}%`;
+        block.style.left = `calc(${(col / colCount) * 100}% + 1px)`;
+        block.style.width = `calc(${(1 / colCount) * 100}% - 2px)`;
+        block.style.background = colorForLabel(seg.label);
+        block.textContent = seg.label;
+        block.addEventListener("click", (e) => onCalendarBlockClick(seg, e));
+        dayCol.appendChild(block);
+        if (seg.live) calendarLiveBlocks.push({ el: block, startMs: seg.startMs, dayStart });
+      });
+
+      if (dateStr === state.day) {
+        const now = new Date();
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+        const line = document.createElement("div");
+        line.className = "cal-now-line";
+        line.style.top = `${(nowMin / 1440) * 100}%`;
+        dayCol.appendChild(line);
+        calendarNowLineEl = line;
+      }
+
+      calendarWeekGrid.appendChild(dayCol);
+    }
+
+    tickCalendarLive();
+
+    renderCalendarDetail();
+
+    if (calendarAutoScrollPending) {
+      calendarAutoScrollPending = false;
+      requestAnimationFrame(() => {
+        const now = new Date();
+        const nowHour = now.getHours() + now.getMinutes() / 60;
+        calendarWeekBody.scrollTop = Math.max(0, (nowHour - 1.5) * CAL_HOUR_H);
+      });
+    }
+  }
+
+  function tickCalendarLive() {
+    if (calendarNowLineEl) {
+      const now = new Date();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      calendarNowLineEl.style.top = `${(nowMin / 1440) * 100}%`;
+    }
+    const now = Date.now();
+    calendarLiveBlocks.forEach(({ el, startMs, dayStart }) => {
+      const startMinOfDay = Math.max(0, (startMs - dayStart) / 60000);
+      const durMin = Math.max(1, (now - startMs) / 60000);
+      el.style.top = `${(startMinOfDay / 1440) * 100}%`;
+      el.style.height = `${(durMin / 1440) * 100}%`;
+    });
+  }
+
+  function initCalendarHours() {
+    calendarHours.innerHTML = "";
+    for (let h = 0; h < 24; h++) {
+      const label = document.createElement("div");
+      label.className = "cal-hour-label";
+      label.style.top = `${h * CAL_HOUR_H}px`;
+      label.textContent = `${h}:00`;
+      calendarHours.appendChild(label);
+    }
+  }
+
+  calendarPrevBtn.addEventListener("click", () => shiftCalendarWeek(-1));
+  calendarNextBtn.addEventListener("click", () => shiftCalendarWeek(1));
+
+  initCalendarHours();
 
   // --- tabs / paging ---
 
@@ -942,7 +1102,8 @@
 
   // --- main render loop ---
 
-  function render() {
+  function render(opts) {
+    const tickOnly = !!(opts && opts.tickOnly);
     let total = 0;
     state.items.forEach((item) => {
       total += currentElapsed(item);
@@ -976,7 +1137,11 @@
 
     totalTimeEl.textContent = formatTime(total);
     renderBreakdown();
-    renderCalendar();
+    if (tickOnly) {
+      tickCalendarLive();
+    } else {
+      renderCalendar();
+    }
   }
 
   rolloverIfNeeded();
@@ -993,8 +1158,10 @@
       applyModeUI();
       buildRows();
       renderHistory();
+      render();
+    } else {
+      render({ tickOnly: true });
     }
-    render();
     saveState();
   }, 1000);
 
