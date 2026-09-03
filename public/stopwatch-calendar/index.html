@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>マルチストップウォッチ × ウィークリーカレンダー</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="app-header">
+    <h1>マルチストップウォッチ × ウィークリーカレンダー</h1>
+    <p class="app-sub">計測を止めると、その時間帯がそのまま週間カレンダーに記録されます。</p>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <section class="panel">
+        <h2>ストップウォッチ</h2>
+        <form id="add-stopwatch-form" class="add-form">
+          <input type="text" id="new-stopwatch-name" placeholder="例: 読書、勉強、作業A" maxlength="40" required>
+          <button type="submit">＋ 追加</button>
+        </form>
+        <ul id="stopwatch-list" class="stopwatch-list"></ul>
+        <p id="stopwatch-empty" class="empty-hint">ストップウォッチを追加してください。</p>
+      </section>
+    </aside>
+
+    <main class="calendar-area">
+      <section class="panel session-detail" id="session-detail" hidden>
+        <div class="session-detail-body">
+          <span class="session-detail-swatch" id="session-detail-swatch"></span>
+          <div class="session-detail-text">
+            <strong id="session-detail-name"></strong>
+            <span id="session-detail-range"></span>
+          </div>
+        </div>
+        <button type="button" id="session-detail-delete" class="danger-btn">削除</button>
+        <button type="button" id="session-detail-close" class="icon-btn" aria-label="閉じる">×</button>
+      </section>
+
+      <div class="calendar-toolbar">
+        <div class="calendar-nav">
+          <button type="button" id="prev-week" class="icon-btn" aria-label="前週">‹</button>
+          <button type="button" id="today-btn">今日</button>
+          <button type="button" id="next-week" class="icon-btn" aria-label="次週">›</button>
+        </div>
+        <div class="calendar-range" id="calendar-range"></div>
+      </div>
+
+      <div class="calendar-scroll" id="calendar-scroll">
+        <div class="calendar-grid" id="calendar-grid">
+          <div class="time-gutter" id="time-gutter"></div>
+          <div class="day-columns" id="day-columns"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
