@@ -755,6 +755,7 @@
   // --- calendar page (weekly, vertical) ---
 
   const CAL_HOUR_H = 40; // px per hour row; keep in sync with --hour-h in style.css
+  const CAL_DAYS = 3; // days shown at once; narrower than a full week so columns stay usable on a phone
   const CAL_PALETTE = ["#b8672a", "#3e8c4e", "#5b7596", "#a3651f", "#7a6ba8", "#3f7a75", "#ab3d3d", "#62744c"];
 
   let weekAnchor = state.day; // any date string within the displayed week
@@ -816,16 +817,14 @@
     return `${m}m`;
   }
 
-  function startOfWeek(dateStr) {
+  function parseDateStr(dateStr) {
     const [y, m, d] = dateStr.split("-").map(Number);
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() - dt.getDay());
-    return dt;
+    return new Date(y, m - 1, d);
   }
 
   function shiftCalendarWeek(delta) {
-    const start = startOfWeek(weekAnchor);
-    start.setDate(start.getDate() + delta * 7);
+    const start = parseDateStr(weekAnchor);
+    start.setDate(start.getDate() + delta * CAL_DAYS);
     weekAnchor = `${start.getFullYear()}-${pad2(start.getMonth() + 1)}-${pad2(start.getDate())}`;
     calendarAutoScrollPending = true;
     renderCalendar();
@@ -1188,9 +1187,9 @@
 
   function renderCalendar() {
     clearLongPress(); // the grid is about to be torn down and rebuilt
-    const start = startOfWeek(weekAnchor);
+    const start = parseDateStr(weekAnchor);
     const end = new Date(start);
-    end.setDate(end.getDate() + 6);
+    end.setDate(end.getDate() + CAL_DAYS - 1);
     calendarWeekLabel.textContent = `${start.getMonth() + 1}/${start.getDate()} 〜 ${end.getMonth() + 1}/${end.getDate()}`;
 
     calendarWeekHeader.innerHTML = "";
@@ -1202,7 +1201,7 @@
     calendarLiveBlocks = [];
     calendarNowLineEl = null;
 
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < CAL_DAYS; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
       const dateStr = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
