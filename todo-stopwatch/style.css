@@ -913,6 +913,11 @@ body {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
+  transition: background 0.15s ease;
+}
+
+.calendar-day-col.drop-target {
+  background: var(--accent-soft);
 }
 
 .cal-block {

@@ -1222,7 +1222,10 @@
       e.clientY <= boxRect.bottom;
     calendarUnplannedBox.classList.toggle("drop-target", overBox);
     planDragCtx.overUnplannedBox = overBox;
-    if (overBox) return;
+    if (overBox) {
+      planDragCtx.overDayUnscheduled = false;
+      return;
+    }
 
     const cols = Array.from(calendarWeekGrid.children);
     let targetCol = null;
@@ -1233,10 +1236,22 @@
         break;
       }
     }
-    if (!targetCol) return;
+    if (!targetCol) {
+      cols.forEach((c) => c.classList.remove("drop-target"));
+      planDragCtx.overDayUnscheduled = false;
+      return;
+    }
 
     const rect = targetCol.getBoundingClientRect();
     const relY = e.clientY - rect.top;
+
+    // dropping below the plan's own day's 24-hour line sends it back to that
+    // day's own "time undetermined" list instead of moving it to a new time
+    const overDayUnscheduled = targetCol.dataset.date === planDragCtx.dateStr && relY > 24 * CAL_HOUR_H;
+    cols.forEach((c) => c.classList.toggle("drop-target", overDayUnscheduled && c === targetCol));
+    planDragCtx.overDayUnscheduled = overDayUnscheduled;
+    if (overDayUnscheduled) return;
+
     const rawMin = pxToMin(relY);
     let startMin = Math.round(rawMin / 15) * 15;
     startMin = Math.max(0, Math.min(1440 - planDragCtx.duration, startMin));
@@ -1257,16 +1272,34 @@
 
   function onPlanDragEnd(e) {
     if (!planDragCtx) return;
-    const { block, dateStr, plan, duration, moved, hoverDate, previewStartMin, overUnplannedBox } = planDragCtx;
+    const { block, dateStr, plan, duration, moved, hoverDate, previewStartMin, overUnplannedBox, overDayUnscheduled } = planDragCtx;
     document.removeEventListener("pointermove", onPlanDragMove);
     document.removeEventListener("pointerup", onPlanDragEnd);
     document.removeEventListener("pointercancel", onPlanDragEnd);
     block.classList.remove("dragging");
     calendarUnplannedBox.classList.remove("drop-target");
+    Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
     planDragCtx = null;
 
     if (!moved) {
       onPlanBlockClick(e, dateStr, plan);
+      return;
+    }
+
+    if (overDayUnscheduled) {
+      // send it back to this same day's own "time undetermined" list — the
+      // item stays right where it is, just loses its scheduled time
+      vibrate(20);
+      removePlan(dateStr, plan.id);
+      const items = itemsArrayForDate(dateStr);
+      const idx = items.findIndex((it) => it.planId === plan.id);
+      if (idx >= 0) {
+        items[idx].planId = null;
+        sortItemsByPlan(dateStr);
+        persistItemsForDate(dateStr);
+        refreshTimerIfShowing(dateStr);
+      }
+      renderCalendar();
       return;
     }
 
