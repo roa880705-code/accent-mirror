@@ -1002,6 +1002,68 @@ body {
   background: var(--danger);
 }
 
+.calendar-unplanned {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  border-top: 1px solid var(--line);
+  transition: background 0.15s ease;
+}
+
+.calendar-unplanned.drop-target {
+  background: var(--accent-soft);
+}
+
+.calendar-unplanned-title {
+  flex: none;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.calendar-unplanned-list {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0;
+}
+
+.calendar-unplanned-empty {
+  flex: none;
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.cal-unplanned-chip {
+  all: unset;
+  box-sizing: border-box;
+  flex: none;
+  max-width: 120px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: grab;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+  border: 1.5px solid var(--line);
+  background: var(--card-bg);
+  color: var(--ink);
+}
+
+.cal-unplanned-chip.dragging {
+  opacity: 0.5;
+}
+
 .calendar-detail {
   flex: none;
   max-height: 28%;

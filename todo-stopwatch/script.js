@@ -263,6 +263,8 @@
   const calendarHours = document.getElementById("calendarHours");
   const calendarWeekGrid = document.getElementById("calendarWeekGrid");
   const calendarDetail = document.getElementById("calendarDetail");
+  const calendarUnplannedBox = document.getElementById("calendarUnplannedBox");
+  const calendarUnplannedList = document.getElementById("calendarUnplannedList");
   const calendarPrevBtn = document.getElementById("calendarPrevBtn");
   const calendarNextBtn = document.getElementById("calendarNextBtn");
 
@@ -1151,6 +1153,18 @@
       vibrate(15);
     }
 
+    // dragging a today-plan into the 時間未定 tray unschedules it instead of moving it
+    const boxRect = calendarUnplannedBox.getBoundingClientRect();
+    const overBox =
+      planDragCtx.dateStr === state.day &&
+      e.clientX >= boxRect.left &&
+      e.clientX <= boxRect.right &&
+      e.clientY >= boxRect.top &&
+      e.clientY <= boxRect.bottom;
+    calendarUnplannedBox.classList.toggle("drop-target", overBox);
+    planDragCtx.overUnplannedBox = overBox;
+    if (overBox) return;
+
     const cols = Array.from(calendarWeekGrid.children);
     let targetCol = null;
     for (const col of cols) {
@@ -1184,15 +1198,31 @@
 
   function onPlanDragEnd(e) {
     if (!planDragCtx) return;
-    const { block, dateStr, plan, duration, moved, hoverDate, previewStartMin } = planDragCtx;
+    const { block, dateStr, plan, duration, moved, hoverDate, previewStartMin, overUnplannedBox } = planDragCtx;
     document.removeEventListener("pointermove", onPlanDragMove);
     document.removeEventListener("pointerup", onPlanDragEnd);
     document.removeEventListener("pointercancel", onPlanDragEnd);
     block.classList.remove("dragging");
+    calendarUnplannedBox.classList.remove("drop-target");
     planDragCtx = null;
 
     if (!moved) {
       onPlanBlockClick(e, dateStr, plan);
+      return;
+    }
+
+    if (overUnplannedBox) {
+      removePlan(dateStr, plan.id);
+      const item = state.items.find((it) => it.planId === plan.id);
+      if (item) {
+        item.planId = null;
+        sortItemsByPlan();
+        saveState();
+        buildRows();
+        render();
+      }
+      vibrate(20);
+      renderCalendar();
       return;
     }
 
@@ -1298,6 +1328,102 @@
       savePlans();
     }
     onPlanBlockClick(null, dateStr, plan);
+  }
+
+  // --- 時間未定 tray: unplanned today items, draggable onto the grid to schedule them ---
+
+  function renderUnplannedList() {
+    calendarUnplannedList.innerHTML = "";
+    const unplanned = state.items.filter((it) => !it.planId);
+    if (!unplanned.length) {
+      const empty = document.createElement("span");
+      empty.className = "calendar-unplanned-empty";
+      empty.textContent = "なし";
+      calendarUnplannedList.appendChild(empty);
+      return;
+    }
+    unplanned.forEach((item, idx) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "cal-unplanned-chip";
+      chip.textContent = labelOf(item, `タスク${idx + 1}`);
+      chip.addEventListener("pointerdown", (e) => startUnplannedChipDrag(e, chip, item));
+      calendarUnplannedList.appendChild(chip);
+    });
+  }
+
+  let unplannedDragCtx = null;
+
+  function startUnplannedChipDrag(e, chip, item) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    unplannedDragCtx = { chip, item, moved: false, startClientX: e.clientX, startClientY: e.clientY, targetCol: null, clientY: e.clientY };
+    document.addEventListener("pointermove", onUnplannedChipDragMove);
+    document.addEventListener("pointerup", onUnplannedChipDragEnd);
+    document.addEventListener("pointercancel", onUnplannedChipDragEnd);
+  }
+
+  function onUnplannedChipDragMove(e) {
+    if (!unplannedDragCtx) return;
+    e.preventDefault();
+    const dx = e.clientX - unplannedDragCtx.startClientX;
+    const dy = e.clientY - unplannedDragCtx.startClientY;
+    if (!unplannedDragCtx.moved) {
+      if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
+      unplannedDragCtx.moved = true;
+      unplannedDragCtx.chip.classList.add("dragging");
+      vibrate(15);
+    }
+
+    const cols = Array.from(calendarWeekGrid.children);
+    let targetCol = null;
+    for (const col of cols) {
+      const rect = col.getBoundingClientRect();
+      if (
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom &&
+        col.dataset.date === state.day
+      ) {
+        targetCol = col;
+        break;
+      }
+    }
+    cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
+    unplannedDragCtx.targetCol = targetCol;
+    unplannedDragCtx.clientY = e.clientY;
+  }
+
+  function onUnplannedChipDragEnd() {
+    if (!unplannedDragCtx) return;
+    const { chip, item, moved, targetCol, clientY } = unplannedDragCtx;
+    document.removeEventListener("pointermove", onUnplannedChipDragMove);
+    document.removeEventListener("pointerup", onUnplannedChipDragEnd);
+    document.removeEventListener("pointercancel", onUnplannedChipDragEnd);
+    chip.classList.remove("dragging");
+    Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+    unplannedDragCtx = null;
+
+    if (!moved || !targetCol) return;
+
+    const rect = targetCol.getBoundingClientRect();
+    const relY = clientY - rect.top;
+    const rawMin = (relY / rect.height) * 1440;
+    let startMin = Math.round(rawMin / 15) * 15;
+    startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+    const endMin = startMin + PLAN_DEFAULT_MIN;
+    const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+    addPlan(state.day, { id, label: labelOf(item, "予定"), startMin, endMin });
+    item.planId = id;
+    vibrate(20);
+    sortItemsByPlan();
+    saveState();
+    buildRows();
+    render();
+    renderCalendar();
   }
 
   // Lays same-day overlapping segments (e.g. a task plus a concurrent 別件
@@ -1513,6 +1639,7 @@
 
     tickCalendarLive();
 
+    renderUnplannedList();
     renderCalendarDetail();
 
     if (calendarAutoScrollPending) {
