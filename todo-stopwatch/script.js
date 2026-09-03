@@ -3,6 +3,7 @@
   const HISTORY_KEY = "todoStopwatch:history:v1";
   const DRAFTS_KEY = "todoStopwatch:drafts:v1";
   const PLANS_KEY = "todoStopwatch:plans:v1";
+  const SOMEDAY_KEY = "todoStopwatch:someday:v1";
   const MAX_HISTORY = 60;
   const DEFAULT_COUNT = 10;
   const MAX_COUNT = 40;
@@ -107,10 +108,24 @@
     return {};
   }
 
+  function loadSomeday() {
+    try {
+      const raw = localStorage.getItem(SOMEDAY_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      // corrupt storage, fall through to empty
+    }
+    return [];
+  }
+
   let state = loadState();
   let history = loadHistory();
   let drafts = loadDrafts();
   let plans = loadPlans();
+  let someday = loadSomeday(); // tasks with no day or time assigned yet ("いつか")
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -126,6 +141,10 @@
 
   function savePlans() {
     localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+  }
+
+  function saveSomeday() {
+    localStorage.setItem(SOMEDAY_KEY, JSON.stringify(someday));
   }
 
   // viewingDate is the date currently shown in the タイマー list. It usually
@@ -265,6 +284,7 @@
   const calendarDetail = document.getElementById("calendarDetail");
   const calendarUnplannedBox = document.getElementById("calendarUnplannedBox");
   const calendarUnplannedList = document.getElementById("calendarUnplannedList");
+  const calendarSomedayAddBtn = document.getElementById("calendarSomedayAddBtn");
   const calendarPrevBtn = document.getElementById("calendarPrevBtn");
   const calendarNextBtn = document.getElementById("calendarNextBtn");
 
@@ -775,6 +795,19 @@
   const CAL_HOUR_H = 40; // px per hour row; keep in sync with --hour-h in style.css
   const CAL_DAYS = 3; // days shown at once; narrower than a full week so columns stay usable on a phone
   const CAL_PALETTE = ["#b8672a", "#3e8c4e", "#5b7596", "#a3651f", "#7a6ba8", "#3f7a75", "#ab3d3d", "#62744c"];
+  const CAL_UNSCHEDULED_ROW_H = 34; // px per row in today's "unscheduled but today" list
+  const CAL_UNSCHEDULED_GAP = 4;
+
+  // Grid block positions are pixel-based (not %) because the grid's total
+  // height isn't always exactly 24h anymore — it grows to fit today's
+  // unscheduled-item list below the 24:00 line, and % would rescale the
+  // whole 0-24h timeline to match that taller box instead of staying put.
+  function minToPx(min) {
+    return (min / 60) * CAL_HOUR_H;
+  }
+  function pxToMin(px) {
+    return (px / CAL_HOUR_H) * 60;
+  }
 
   let weekAnchor = state.day; // any date string within the displayed week
   let selectedDayDetail = null; // date string whose textual summary is shown below the grid
@@ -1091,7 +1124,7 @@
     vibrate(20);
     const rect = dayCol.getBoundingClientRect();
     const relY = clientY - rect.top;
-    const rawMin = (relY / rect.height) * 1440;
+    const rawMin = pxToMin(relY);
     let startMin = Math.round(rawMin / 15) * 15;
     startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
     const endMin = startMin + PLAN_DEFAULT_MIN;
@@ -1153,10 +1186,9 @@
       vibrate(15);
     }
 
-    // dragging a today-plan into the 時間未定 tray unschedules it instead of moving it
+    // dragging a plan into the いつか tray sends it back to the backlog instead of moving it
     const boxRect = calendarUnplannedBox.getBoundingClientRect();
     const overBox =
-      planDragCtx.dateStr === state.day &&
       e.clientX >= boxRect.left &&
       e.clientX <= boxRect.right &&
       e.clientY >= boxRect.top &&
@@ -1178,7 +1210,7 @@
 
     const rect = targetCol.getBoundingClientRect();
     const relY = e.clientY - rect.top;
-    const rawMin = (relY / rect.height) * 1440;
+    const rawMin = pxToMin(relY);
     let startMin = Math.round(rawMin / 15) * 15;
     startMin = Math.max(0, Math.min(1440 - planDragCtx.duration, startMin));
 
@@ -1190,8 +1222,8 @@
     }
 
     if (planDragCtx.block.parentElement !== targetCol) targetCol.appendChild(planDragCtx.block);
-    planDragCtx.block.style.top = `${(startMin / 1440) * 100}%`;
-    planDragCtx.block.style.height = `${(planDragCtx.duration / 1440) * 100}%`;
+    planDragCtx.block.style.top = `${minToPx(startMin)}px`;
+    planDragCtx.block.style.height = `${minToPx(planDragCtx.duration)}px`;
     planDragCtx.block.style.left = "1px";
     planDragCtx.block.style.width = "calc(100% - 2px)";
   }
@@ -1213,13 +1245,25 @@
 
     if (overUnplannedBox) {
       removePlan(dateStr, plan.id);
-      const item = state.items.find((it) => it.planId === plan.id);
-      if (item) {
-        item.planId = null;
-        sortItemsByPlan();
+      const idx = state.items.findIndex((it) => it.planId === plan.id);
+      if (idx >= 0) {
+        if (state.items[idx].elapsedMs > 0 || state.items[idx].running) {
+          // real recorded time exists: keep the item, just unlink it from the removed plan
+          state.items[idx].planId = null;
+          sortItemsByPlan();
+        } else {
+          // nothing was ever tracked: drop the item and send it back to the いつか backlog
+          state.items.splice(idx, 1);
+          someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: plan.label });
+          saveSomeday();
+        }
         saveState();
         buildRows();
         render();
+      } else {
+        // a plan with no linked item (e.g. a future day's plan) goes straight to いつか
+        someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: plan.label });
+        saveSomeday();
       }
       vibrate(20);
       renderCalendar();
@@ -1300,9 +1344,8 @@
   function onPlanResizeMove(e) {
     if (!planResizeCtx) return;
     e.preventDefault();
-    const { dayCol, plan, startClientY } = planResizeCtx;
-    const rect = dayCol.getBoundingClientRect();
-    const deltaMin = ((e.clientY - startClientY) / rect.height) * 1440;
+    const { plan, startClientY } = planResizeCtx;
+    const deltaMin = pxToMin(e.clientY - startClientY);
     let endMin = Math.round((plan.endMin + deltaMin) / 15) * 15;
     endMin = Math.max(plan.startMin + 15, Math.min(1440, endMin));
     planResizeCtx.previewEndMin = endMin;
@@ -1310,8 +1353,8 @@
       vibrate(8);
       planResizeCtx.lastVibrateMin = endMin;
     }
-    planResizeCtx.block.style.height = `${((endMin - plan.startMin) / 1440) * 100}%`;
-    planResizeCtx.handle.style.top = `${(endMin / 1440) * 100}%`;
+    planResizeCtx.block.style.height = `${minToPx(endMin - plan.startMin)}px`;
+    planResizeCtx.handle.style.top = `${minToPx(endMin)}px`;
   }
 
   function onPlanResizeEnd() {
@@ -1330,49 +1373,32 @@
     onPlanBlockClick(null, dateStr, plan);
   }
 
-  // --- 時間未定 tray: unplanned today items, draggable onto the grid to schedule them ---
+  // --- today's own "unscheduled but today" list, drawn below the 24:00 line ---
+  // (items already in state.items with no plan — dragging one up onto today's
+  // column schedules it; only today is a valid drop target since these items
+  // only exist in today's list.)
 
-  function renderUnplannedList() {
-    calendarUnplannedList.innerHTML = "";
-    const unplanned = state.items.filter((it) => !it.planId);
-    if (!unplanned.length) {
-      const empty = document.createElement("span");
-      empty.className = "calendar-unplanned-empty";
-      empty.textContent = "なし";
-      calendarUnplannedList.appendChild(empty);
-      return;
-    }
-    unplanned.forEach((item, idx) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "cal-unplanned-chip";
-      chip.textContent = labelOf(item, `タスク${idx + 1}`);
-      chip.addEventListener("pointerdown", (e) => startUnplannedChipDrag(e, chip, item));
-      calendarUnplannedList.appendChild(chip);
-    });
-  }
+  let todayUnschedDragCtx = null;
 
-  let unplannedDragCtx = null;
-
-  function startUnplannedChipDrag(e, chip, item) {
+  function startTodayUnscheduledDrag(e, row, item) {
     if (e.button !== undefined && e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
-    unplannedDragCtx = { chip, item, moved: false, startClientX: e.clientX, startClientY: e.clientY, targetCol: null, clientY: e.clientY };
-    document.addEventListener("pointermove", onUnplannedChipDragMove);
-    document.addEventListener("pointerup", onUnplannedChipDragEnd);
-    document.addEventListener("pointercancel", onUnplannedChipDragEnd);
+    todayUnschedDragCtx = { row, item, moved: false, startClientX: e.clientX, startClientY: e.clientY, targetCol: null, clientY: e.clientY };
+    document.addEventListener("pointermove", onTodayUnscheduledDragMove);
+    document.addEventListener("pointerup", onTodayUnscheduledDragEnd);
+    document.addEventListener("pointercancel", onTodayUnscheduledDragEnd);
   }
 
-  function onUnplannedChipDragMove(e) {
-    if (!unplannedDragCtx) return;
+  function onTodayUnscheduledDragMove(e) {
+    if (!todayUnschedDragCtx) return;
     e.preventDefault();
-    const dx = e.clientX - unplannedDragCtx.startClientX;
-    const dy = e.clientY - unplannedDragCtx.startClientY;
-    if (!unplannedDragCtx.moved) {
+    const dx = e.clientX - todayUnschedDragCtx.startClientX;
+    const dy = e.clientY - todayUnschedDragCtx.startClientY;
+    if (!todayUnschedDragCtx.moved) {
       if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
-      unplannedDragCtx.moved = true;
-      unplannedDragCtx.chip.classList.add("dragging");
+      todayUnschedDragCtx.moved = true;
+      todayUnschedDragCtx.row.classList.add("dragging");
       vibrate(15);
     }
 
@@ -1384,7 +1410,7 @@
         e.clientX >= rect.left &&
         e.clientX <= rect.right &&
         e.clientY >= rect.top &&
-        e.clientY <= rect.bottom &&
+        e.clientY <= rect.top + 24 * CAL_HOUR_H &&
         col.dataset.date === state.day
       ) {
         targetCol = col;
@@ -1392,25 +1418,25 @@
       }
     }
     cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
-    unplannedDragCtx.targetCol = targetCol;
-    unplannedDragCtx.clientY = e.clientY;
+    todayUnschedDragCtx.targetCol = targetCol;
+    todayUnschedDragCtx.clientY = e.clientY;
   }
 
-  function onUnplannedChipDragEnd() {
-    if (!unplannedDragCtx) return;
-    const { chip, item, moved, targetCol, clientY } = unplannedDragCtx;
-    document.removeEventListener("pointermove", onUnplannedChipDragMove);
-    document.removeEventListener("pointerup", onUnplannedChipDragEnd);
-    document.removeEventListener("pointercancel", onUnplannedChipDragEnd);
-    chip.classList.remove("dragging");
+  function onTodayUnscheduledDragEnd() {
+    if (!todayUnschedDragCtx) return;
+    const { row, item, moved, targetCol, clientY } = todayUnschedDragCtx;
+    document.removeEventListener("pointermove", onTodayUnscheduledDragMove);
+    document.removeEventListener("pointerup", onTodayUnscheduledDragEnd);
+    document.removeEventListener("pointercancel", onTodayUnscheduledDragEnd);
+    row.classList.remove("dragging");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
-    unplannedDragCtx = null;
+    todayUnschedDragCtx = null;
 
     if (!moved || !targetCol) return;
 
     const rect = targetCol.getBoundingClientRect();
     const relY = clientY - rect.top;
-    const rawMin = (relY / rect.height) * 1440;
+    const rawMin = pxToMin(relY);
     let startMin = Math.round(rawMin / 15) * 15;
     startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
     const endMin = startMin + PLAN_DEFAULT_MIN;
@@ -1423,6 +1449,108 @@
     saveState();
     buildRows();
     render();
+    renderCalendar();
+  }
+
+  // --- いつか tray: tasks with no day or time yet, draggable onto any visible
+  // day's grid to schedule them (or add new ones directly here) ---
+
+  function renderSomedayList() {
+    calendarUnplannedList.innerHTML = "";
+    if (!someday.length) {
+      const empty = document.createElement("span");
+      empty.className = "calendar-unplanned-empty";
+      empty.textContent = "なし";
+      calendarUnplannedList.appendChild(empty);
+      return;
+    }
+    someday.forEach((task) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "cal-unplanned-chip";
+      chip.textContent = task.label;
+      chip.addEventListener("pointerdown", (e) => startSomedayChipDrag(e, chip, task));
+      calendarUnplannedList.appendChild(chip);
+    });
+  }
+
+  let somedayDragCtx = null;
+
+  function startSomedayChipDrag(e, chip, task) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    somedayDragCtx = { chip, task, moved: false, startClientX: e.clientX, startClientY: e.clientY, targetCol: null, clientY: e.clientY };
+    document.addEventListener("pointermove", onSomedayChipDragMove);
+    document.addEventListener("pointerup", onSomedayChipDragEnd);
+    document.addEventListener("pointercancel", onSomedayChipDragEnd);
+  }
+
+  function onSomedayChipDragMove(e) {
+    if (!somedayDragCtx) return;
+    e.preventDefault();
+    const dx = e.clientX - somedayDragCtx.startClientX;
+    const dy = e.clientY - somedayDragCtx.startClientY;
+    if (!somedayDragCtx.moved) {
+      if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
+      somedayDragCtx.moved = true;
+      somedayDragCtx.chip.classList.add("dragging");
+      vibrate(15);
+    }
+
+    const cols = Array.from(calendarWeekGrid.children);
+    let targetCol = null;
+    for (const col of cols) {
+      const rect = col.getBoundingClientRect();
+      if (
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.top + 24 * CAL_HOUR_H
+      ) {
+        targetCol = col;
+        break;
+      }
+    }
+    cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
+    somedayDragCtx.targetCol = targetCol;
+    somedayDragCtx.clientY = e.clientY;
+  }
+
+  function onSomedayChipDragEnd() {
+    if (!somedayDragCtx) return;
+    const { chip, task, moved, targetCol, clientY } = somedayDragCtx;
+    document.removeEventListener("pointermove", onSomedayChipDragMove);
+    document.removeEventListener("pointerup", onSomedayChipDragEnd);
+    document.removeEventListener("pointercancel", onSomedayChipDragEnd);
+    chip.classList.remove("dragging");
+    Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+    somedayDragCtx = null;
+
+    if (!moved || !targetCol) return;
+
+    const dateStr = targetCol.dataset.date;
+    const rect = targetCol.getBoundingClientRect();
+    const relY = clientY - rect.top;
+    const rawMin = pxToMin(relY);
+    let startMin = Math.round(rawMin / 15) * 15;
+    startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+    const endMin = startMin + PLAN_DEFAULT_MIN;
+    const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+    addPlan(dateStr, { id, label: task.label, startMin, endMin });
+    if (dateStr === state.day) {
+      const item = freshItem(task.label);
+      item.planId = id;
+      state.items.push(item);
+      sortItemsByPlan();
+      saveState();
+      buildRows();
+      render();
+    }
+    someday = someday.filter((t) => t.id !== task.id);
+    saveSomeday();
+    vibrate(20);
     renderCalendar();
   }
 
@@ -1528,6 +1656,12 @@
     calendarLiveBlocks = [];
     calendarNowLineEl = null;
 
+    const todaysUnscheduled = state.items.filter((it) => !it.planId);
+    const unschedExtraH = todaysUnscheduled.length
+      ? todaysUnscheduled.length * CAL_UNSCHEDULED_ROW_H + (todaysUnscheduled.length - 1) * CAL_UNSCHEDULED_GAP + 16
+      : 0;
+    calendarWeekGrid.style.height = `${24 * CAL_HOUR_H + unschedExtraH}px`;
+
     for (let i = 0; i < CAL_DAYS; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
@@ -1576,8 +1710,8 @@
         const durMin = Math.max(1, (seg.endMs - seg.startMs) / 60000);
         const block = document.createElement("div");
         block.className = "cal-block";
-        block.style.top = `${(startMinOfDay / 1440) * 100}%`;
-        block.style.height = `${(durMin / 1440) * 100}%`;
+        block.style.top = `${minToPx(startMinOfDay)}px`;
+        block.style.height = `${minToPx(durMin)}px`;
         block.style.left = `calc(${(col / colCount) * 100}% + 1px)`;
         block.style.width = `calc(${(1 / colCount) * 100}% - 2px)`;
         block.style.background = colorForLabel(seg.label);
@@ -1592,7 +1726,7 @@
         const nowMin = now.getHours() * 60 + now.getMinutes();
         const line = document.createElement("div");
         line.className = "cal-now-line";
-        line.style.top = `${(nowMin / 1440) * 100}%`;
+        line.style.top = `${minToPx(nowMin)}px`;
         dayCol.appendChild(line);
         calendarNowLineEl = line;
       }
@@ -1603,8 +1737,8 @@
             const p = seg.ref;
             const block = document.createElement("div");
             block.className = "cal-plan-block";
-            block.style.top = `${(p.startMin / 1440) * 100}%`;
-            block.style.height = `${Math.max(1, p.endMin - p.startMin) / 1440 * 100}%`;
+            block.style.top = `${minToPx(p.startMin)}px`;
+            block.style.height = `${minToPx(Math.max(1, p.endMin - p.startMin))}px`;
             block.style.left = `calc(${(col / colCount) * 100}% + 1px)`;
             block.style.width = `calc(${(1 / colCount) * 100}% - 2px)`;
             const color = colorForLabel(p.label);
@@ -1622,7 +1756,7 @@
               // past its bottom edge and make it untappable.
               const handle = document.createElement("div");
               handle.className = "cal-plan-resize-handle";
-              handle.style.top = `${(p.endMin / 1440) * 100}%`;
+              handle.style.top = `${minToPx(p.endMin)}px`;
               handle.style.left = `calc(${(col / colCount) * 100}% + ${(1 / colCount) * 50}%)`;
               handle.style.background = color;
               handle.addEventListener("pointerdown", (e) => startPlanResize(e, block, handle, dayCol, dateStr, p));
@@ -1634,12 +1768,26 @@
         dayCol.addEventListener("pointerdown", (e) => onDayColPointerDown(e, dayCol, dateStr));
       }
 
+      if (dateStr === state.day && todaysUnscheduled.length) {
+        const zone = document.createElement("div");
+        zone.className = "cal-unscheduled-today";
+        zone.style.top = `${24 * CAL_HOUR_H}px`;
+        todaysUnscheduled.forEach((item, idx) => {
+          const row = document.createElement("div");
+          row.className = "cal-unscheduled-row";
+          row.textContent = labelOf(item, `タスク${idx + 1}`);
+          row.addEventListener("pointerdown", (e) => startTodayUnscheduledDrag(e, row, item));
+          zone.appendChild(row);
+        });
+        dayCol.appendChild(zone);
+      }
+
       calendarWeekGrid.appendChild(dayCol);
     }
 
     tickCalendarLive();
 
-    renderUnplannedList();
+    renderSomedayList();
     renderCalendarDetail();
 
     if (calendarAutoScrollPending) {
@@ -1656,14 +1804,14 @@
     if (calendarNowLineEl) {
       const now = new Date();
       const nowMin = now.getHours() * 60 + now.getMinutes();
-      calendarNowLineEl.style.top = `${(nowMin / 1440) * 100}%`;
+      calendarNowLineEl.style.top = `${minToPx(nowMin)}px`;
     }
     const now = Date.now();
     calendarLiveBlocks.forEach(({ el, startMs, dayStart }) => {
       const startMinOfDay = Math.max(0, (startMs - dayStart) / 60000);
       const durMin = Math.max(1, (now - startMs) / 60000);
-      el.style.top = `${(startMinOfDay / 1440) * 100}%`;
-      el.style.height = `${(durMin / 1440) * 100}%`;
+      el.style.top = `${minToPx(startMinOfDay)}px`;
+      el.style.height = `${minToPx(durMin)}px`;
     });
   }
 
@@ -1680,6 +1828,15 @@
 
   calendarPrevBtn.addEventListener("click", () => shiftCalendarWeek(-1));
   calendarNextBtn.addEventListener("click", () => shiftCalendarWeek(1));
+  calendarSomedayAddBtn.addEventListener("click", async () => {
+    const name = await openNameModal("");
+    if (name === null) return;
+    const label = name.trim();
+    if (!label) return;
+    someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
+    saveSomeday();
+    renderSomedayList();
+  });
 
   initCalendarHours();
 

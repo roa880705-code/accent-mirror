@@ -1064,6 +1064,69 @@ body {
   opacity: 0.5;
 }
 
+.calendar-someday-add {
+  all: unset;
+  box-sizing: border-box;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.calendar-someday-add:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.calendar-someday-add:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.cal-unscheduled-today {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 2px solid var(--line);
+  padding: 8px 3px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cal-unscheduled-row {
+  box-sizing: border-box;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px dashed var(--line);
+  background: var(--card-bg);
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: grab;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.cal-unscheduled-row.dragging {
+  opacity: 0.5;
+}
+
 .calendar-detail {
   flex: none;
   max-height: 28%;
