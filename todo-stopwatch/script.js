@@ -1425,6 +1425,34 @@
     onPlanBlockClick(null, dateStr, plan);
   }
 
+  // --- a "ghost" preview block shown while dragging a いつか chip or a
+  // day's own unscheduled row over the grid, so the task's name visibly
+  // tracks the time slot it would land on instead of the drag being
+  // invisible until drop (mirrors the real .cal-plan-block styling) ---
+
+  let dragPreviewEl = null;
+
+  function showDragPreview(dayCol, label, startMin, duration) {
+    if (!dragPreviewEl) {
+      dragPreviewEl = document.createElement("div");
+      dragPreviewEl.className = "cal-plan-block cal-plan-preview";
+      dragPreviewEl.style.pointerEvents = "none";
+    }
+    if (dragPreviewEl.parentElement !== dayCol) dayCol.appendChild(dragPreviewEl);
+    const color = colorForLabel(label);
+    dragPreviewEl.style.top = `${minToPx(startMin)}px`;
+    dragPreviewEl.style.height = `${minToPx(Math.max(1, duration))}px`;
+    dragPreviewEl.style.left = "1px";
+    dragPreviewEl.style.width = "calc(100% - 2px)";
+    dragPreviewEl.style.borderColor = color;
+    dragPreviewEl.style.color = color;
+    dragPreviewEl.textContent = label;
+  }
+
+  function clearDragPreview() {
+    if (dragPreviewEl && dragPreviewEl.parentElement) dragPreviewEl.parentElement.removeChild(dragPreviewEl);
+  }
+
   // --- a day's own "unscheduled but on that day" list, drawn below the
   // 24:00 line (items already in that date's item list with no plan —
   // dragging one up onto its own column schedules it; only that same day
@@ -1472,6 +1500,17 @@
     cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
     dayUnschedDragCtx.targetCol = targetCol;
     dayUnschedDragCtx.clientY = e.clientY;
+
+    if (targetCol) {
+      const colRect = targetCol.getBoundingClientRect();
+      const relY = e.clientY - colRect.top;
+      const rawMin = pxToMin(relY);
+      let startMin = Math.round(rawMin / 15) * 15;
+      startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+      showDragPreview(targetCol, labelOf(dayUnschedDragCtx.item, "予定"), startMin, PLAN_DEFAULT_MIN);
+    } else {
+      clearDragPreview();
+    }
   }
 
   function onDayUnscheduledDragEnd() {
@@ -1482,6 +1521,7 @@
     document.removeEventListener("pointercancel", onDayUnscheduledDragEnd);
     row.classList.remove("dragging");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+    clearDragPreview();
     dayUnschedDragCtx = null;
 
     if (!moved || !targetCol) return;
@@ -1530,7 +1570,6 @@
   function startSomedayChipDrag(e, chip, task) {
     if (e.button !== undefined && e.button !== 0) return;
     e.stopPropagation();
-    e.preventDefault();
     somedayDragCtx = { chip, task, moved: false, startClientX: e.clientX, startClientY: e.clientY, targetCol: null, clientY: e.clientY };
     document.addEventListener("pointermove", onSomedayChipDragMove);
     document.addEventListener("pointerup", onSomedayChipDragEnd);
@@ -1539,15 +1578,21 @@
 
   function onSomedayChipDragMove(e) {
     if (!somedayDragCtx) return;
-    e.preventDefault();
     const dx = e.clientX - somedayDragCtx.startClientX;
     const dy = e.clientY - somedayDragCtx.startClientY;
     if (!somedayDragCtx.moved) {
       if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        // a mostly-horizontal gesture is a swipe to scroll the tray, not a
+        // drag — bail out and let the browser's own touch-panning take over
+        onSomedayChipDragEnd();
+        return;
+      }
       somedayDragCtx.moved = true;
       somedayDragCtx.chip.classList.add("dragging");
       vibrate(15);
     }
+    e.preventDefault();
 
     const cols = Array.from(calendarWeekGrid.children);
     let targetCol = null;
@@ -1566,6 +1611,17 @@
     cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
     somedayDragCtx.targetCol = targetCol;
     somedayDragCtx.clientY = e.clientY;
+
+    if (targetCol) {
+      const colRect = targetCol.getBoundingClientRect();
+      const relY = e.clientY - colRect.top;
+      const rawMin = pxToMin(relY);
+      let startMin = Math.round(rawMin / 15) * 15;
+      startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+      showDragPreview(targetCol, somedayDragCtx.task.label, startMin, PLAN_DEFAULT_MIN);
+    } else {
+      clearDragPreview();
+    }
   }
 
   function onSomedayChipDragEnd() {
@@ -1576,6 +1632,7 @@
     document.removeEventListener("pointercancel", onSomedayChipDragEnd);
     chip.classList.remove("dragging");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+    clearDragPreview();
     somedayDragCtx = null;
 
     if (!moved || !targetCol) return;

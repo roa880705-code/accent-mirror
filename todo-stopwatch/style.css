@@ -1057,7 +1057,10 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: grab;
-  touch-action: none;
+  /* Horizontal swipes on a chip should scroll this row natively (smoother
+     than anything hand-rolled); only a mostly-vertical drag (lifting the
+     chip up into the grid) is handled by JS — see startSomedayChipDrag. */
+  touch-action: pan-x;
   -webkit-touch-callout: none;
   user-select: none;
   border: 1.5px solid var(--line);
@@ -1067,6 +1070,11 @@ body {
 
 .cal-unplanned-chip.dragging {
   opacity: 0.5;
+}
+
+.cal-plan-preview {
+  opacity: 0.7;
+  z-index: 15;
 }
 
 .calendar-someday-add {
