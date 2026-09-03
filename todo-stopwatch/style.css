@@ -911,6 +911,7 @@ body {
      touch panning is off here; script.js scrolls calendarWeekBody itself. */
   touch-action: none;
   -webkit-touch-callout: none;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -927,6 +928,9 @@ body {
   white-space: nowrap;
   text-overflow: ellipsis;
   cursor: pointer;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .cal-plan-block {
@@ -945,6 +949,9 @@ body {
   text-overflow: ellipsis;
   cursor: grab;
   touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .cal-plan-block.dragging {
