@@ -7,6 +7,8 @@
   const SNAP_MIN = 15;
   const MIN_DURATION_MIN = 15;
   const CLICK_THRESHOLD_PX = 5;
+  const LONG_PRESS_MS = 380;
+  const TOUCH_CANCEL_PX = 10;
   const WEEKDAY_JP = ["日", "月", "火", "水", "木", "金", "土"];
   const COLOR_PALETTE = ["#d5473c", "#e8710a", "#c98a2c", "#33b679", "#039be5", "#3f51b5", "#8e24aa", "#5f6368"];
   const DEFAULT_COLOR = COLOR_PALETTE[4];
@@ -225,6 +227,77 @@
     return x < rects[0].rect.left ? rects[0].index : rects[rects.length - 1].index;
   }
 
+  // A touch drag is ambiguous: it could mean "pan the calendar" or "start
+  // editing". Mouse/pen has no such ambiguity, so those pointer types keep
+  // activating instantly. Touch instead waits for a brief hold: moving the
+  // finger before the hold completes scrolls the calendar like a normal
+  // list, while holding still activates the create/move/resize gesture.
+  function withTouchGate(pointerDownEvent, { onActivate, onTap }) {
+    if (pointerDownEvent.pointerType !== "touch") {
+      onActivate(pointerDownEvent);
+      return;
+    }
+    const startX = pointerDownEvent.clientX;
+    const startY = pointerDownEvent.clientY;
+    let resolved = false;
+
+    const timer = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      onActivate(pointerDownEvent);
+    }, LONG_PRESS_MS);
+
+    function onMove(e2) {
+      if (resolved) return;
+      if (Math.hypot(e2.clientX - startX, e2.clientY - startY) <= TOUCH_CANCEL_PX) return;
+      resolved = true;
+      clearTimeout(timer);
+      cleanup();
+      beginManualScroll(e2, startX, startY);
+    }
+
+    function onUp(e2) {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      cleanup();
+      if (onTap) onTap(e2);
+    }
+
+    function cleanup() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  function beginManualScroll(firstMoveEvent, startX, startY) {
+    let lastX = startX;
+    let lastY = startY;
+    applyScrollDelta(firstMoveEvent.clientX - lastX, firstMoveEvent.clientY - lastY);
+    lastX = firstMoveEvent.clientX;
+    lastY = firstMoveEvent.clientY;
+
+    function applyScrollDelta(dx, dy) {
+      calendarScrollEl.scrollLeft -= dx;
+      calendarScrollEl.scrollTop -= dy;
+    }
+    function onMove(e2) {
+      applyScrollDelta(e2.clientX - lastX, e2.clientY - lastY);
+      lastX = e2.clientX;
+      lastY = e2.clientY;
+    }
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
   function startEventMove(pointerDownEvent, ev, blockEl) {
     pointerDownEvent.stopPropagation();
     const startClientX = pointerDownEvent.clientX;
@@ -355,7 +428,9 @@
       const col = document.createElement("div");
       col.className = `day-column${isToday ? " today" : ""}`;
       col._dayStartMs = dayStart.getTime();
-      col.addEventListener("pointerdown", (e) => startEventCreate(e, col, dayStart));
+      col.addEventListener("pointerdown", (e) => {
+        withTouchGate(e, { onActivate: (ge) => startEventCreate(ge, col, dayStart) });
+      });
 
       const segments = [];
       for (const ev of events) {
@@ -391,11 +466,20 @@
         block.appendChild(timeSpan);
 
         const fullEvent = events.find((e) => e.id === seg.id);
-        block.addEventListener("pointerdown", (e) => startEventMove(e, fullEvent, block));
+        block.addEventListener("pointerdown", (e) => {
+          e.stopPropagation();
+          withTouchGate(e, {
+            onActivate: (ge) => startEventMove(ge, fullEvent, block),
+            onTap: (te) => openPopover(fullEvent, false, te.clientX, te.clientY)
+          });
+        });
 
         const handle = document.createElement("div");
         handle.className = "resize-handle";
-        handle.addEventListener("pointerdown", (e) => startEventResize(e, fullEvent, col));
+        handle.addEventListener("pointerdown", (e) => {
+          e.stopPropagation();
+          withTouchGate(e, { onActivate: (ge) => startEventResize(ge, fullEvent, col) });
+        });
         block.appendChild(handle);
 
         col.appendChild(block);
