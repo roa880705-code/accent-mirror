@@ -907,10 +907,14 @@ body {
   min-width: 0;
   position: relative;
   border-left: 1px solid var(--line);
+  touch-action: pan-y;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 .cal-block {
   position: absolute;
+  z-index: 3;
   border-radius: 4px;
   padding: 1px 3px;
   font-size: 0.55rem;
@@ -921,6 +925,31 @@ body {
   white-space: nowrap;
   text-overflow: ellipsis;
   cursor: pointer;
+}
+
+.cal-plan-block {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  border: 2px dashed var(--muted);
+  border-radius: 4px;
+  padding: 1px 3px;
+  font-size: 0.55rem;
+  font-weight: 600;
+  line-height: 1.3;
+  background: var(--card-bg);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: grab;
+  touch-action: none;
+}
+
+.cal-plan-block.dragging {
+  z-index: 20;
+  opacity: 0.85;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  cursor: grabbing;
 }
 
 .cal-now-line {
@@ -962,6 +991,12 @@ body {
 .cal-block-detail {
   font-size: 0.75rem;
   font-weight: 600;
+}
+
+.cal-plan-delete {
+  align-self: flex-start;
+  padding: 5px 12px;
+  font-size: 0.68rem;
 }
 
 .calendar-legend {

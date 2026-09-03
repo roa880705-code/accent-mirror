@@ -2,6 +2,7 @@
   const STORAGE_KEY = "todoStopwatch:v6";
   const HISTORY_KEY = "todoStopwatch:history:v1";
   const DRAFTS_KEY = "todoStopwatch:drafts:v1";
+  const PLANS_KEY = "todoStopwatch:plans:v1";
   const MAX_HISTORY = 60;
   const DEFAULT_COUNT = 10;
   const MAX_COUNT = 40;
@@ -87,9 +88,23 @@
     return {};
   }
 
+  function loadPlans() {
+    try {
+      const raw = localStorage.getItem(PLANS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      // corrupt storage, fall through to empty
+    }
+    return {};
+  }
+
   let state = loadState();
   let history = loadHistory();
   let drafts = loadDrafts();
+  let plans = loadPlans();
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -101,6 +116,10 @@
 
   function saveDrafts() {
     localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts));
+  }
+
+  function savePlans() {
+    localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
   }
 
   // viewingDate is the date currently shown in the タイマー list. It usually
@@ -764,6 +783,29 @@
     return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   }
 
+  function formatMinHM(min) {
+    const h = Math.floor(min / 60);
+    const m = Math.round(min % 60);
+    return `${pad2(h)}:${pad2(m)}`;
+  }
+
+  function plansForDate(dateStr) {
+    return plans[dateStr] || [];
+  }
+
+  function addPlan(dateStr, plan) {
+    if (!plans[dateStr]) plans[dateStr] = [];
+    plans[dateStr].push(plan);
+    savePlans();
+  }
+
+  function removePlan(dateStr, id) {
+    if (!plans[dateStr]) return;
+    plans[dateStr] = plans[dateStr].filter((p) => p.id !== id);
+    if (!plans[dateStr].length) delete plans[dateStr];
+    savePlans();
+  }
+
   function formatShort(ms) {
     if (ms <= 0) return "";
     const totalMinutes = Math.round(ms / 60000);
@@ -826,6 +868,177 @@
     line.className = "cal-block-detail";
     line.textContent = `${seg.label}: ${formatHM(seg.startMs)}〜${formatHM(endMs)} (${formatShort(endMs - seg.startMs) || "1分未満"})`;
     calendarDetail.appendChild(line);
+  }
+
+  function onPlanBlockClick(e, dateStr, plan) {
+    if (e) e.stopPropagation();
+    calendarDetail.hidden = false;
+    calendarDetail.innerHTML = "";
+    const line = document.createElement("div");
+    line.className = "cal-block-detail";
+    line.textContent = `${plan.label}: ${formatMinHM(plan.startMin)}〜${formatMinHM(plan.endMin)} (予定)`;
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "btn btn-modal-cancel cal-plan-delete";
+    delBtn.textContent = "この予定を削除";
+    delBtn.addEventListener("click", () => {
+      removePlan(dateStr, plan.id);
+      calendarDetail.hidden = true;
+      calendarDetail.innerHTML = "";
+      renderCalendar();
+    });
+    calendarDetail.append(line, delBtn);
+  }
+
+  // --- plan creation (long-press on empty grid space) ---
+
+  const PLAN_DEFAULT_MIN = 30;
+  const PLAN_LONGPRESS_MS = 500;
+  const PLAN_MOVE_TOLERANCE = 8;
+
+  let longPressTimer = null;
+  let longPressCtx = null;
+
+  function clearLongPress() {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+    if (longPressCtx) {
+      document.removeEventListener("pointermove", longPressCtx.onMove);
+      document.removeEventListener("pointerup", longPressCtx.onUp);
+      document.removeEventListener("pointercancel", longPressCtx.onUp);
+      longPressCtx = null;
+    }
+  }
+
+  function onDayColPointerDown(e, dayCol, dateStr) {
+    if (e.target !== dayCol) return; // an existing block handles its own gesture
+    if (e.button !== undefined && e.button !== 0) return;
+    clearLongPress();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const onMove = (ev) => {
+      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > PLAN_MOVE_TOLERANCE) clearLongPress();
+    };
+    const onUp = () => clearLongPress();
+
+    longPressCtx = { onMove, onUp };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+
+    longPressTimer = setTimeout(() => {
+      longPressTimer = null;
+      longPressCtx = null;
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      createPlanAtPosition(dayCol, dateStr, startY);
+    }, PLAN_LONGPRESS_MS);
+  }
+
+  async function createPlanAtPosition(dayCol, dateStr, clientY) {
+    const rect = dayCol.getBoundingClientRect();
+    const relY = clientY - rect.top;
+    const rawMin = (relY / rect.height) * 1440;
+    let startMin = Math.round(rawMin / 15) * 15;
+    startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+    const endMin = startMin + PLAN_DEFAULT_MIN;
+
+    const name = await openNameModal("");
+    if (name === null) return;
+    const label = name.trim() || "予定";
+
+    addPlan(dateStr, { id: `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, startMin, endMin });
+    renderCalendar();
+  }
+
+  // --- plan drag-to-move ---
+
+  let planDragCtx = null;
+
+  function startPlanDrag(e, block, dateStr, plan) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.stopPropagation();
+    planDragCtx = {
+      block,
+      dateStr,
+      plan,
+      duration: plan.endMin - plan.startMin,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      moved: false,
+      hoverDate: dateStr,
+      previewStartMin: plan.startMin,
+    };
+    document.addEventListener("pointermove", onPlanDragMove);
+    document.addEventListener("pointerup", onPlanDragEnd);
+    document.addEventListener("pointercancel", onPlanDragEnd);
+    e.preventDefault();
+  }
+
+  function onPlanDragMove(e) {
+    if (!planDragCtx) return;
+    e.preventDefault();
+    const dx = e.clientX - planDragCtx.startClientX;
+    const dy = e.clientY - planDragCtx.startClientY;
+    if (!planDragCtx.moved) {
+      if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
+      planDragCtx.moved = true;
+      planDragCtx.block.classList.add("dragging");
+    }
+
+    const cols = Array.from(calendarWeekGrid.children);
+    let targetCol = null;
+    for (const col of cols) {
+      const rect = col.getBoundingClientRect();
+      if (e.clientX >= rect.left && e.clientX < rect.right) {
+        targetCol = col;
+        break;
+      }
+    }
+    if (!targetCol) return;
+
+    const rect = targetCol.getBoundingClientRect();
+    const relY = e.clientY - rect.top;
+    const rawMin = (relY / rect.height) * 1440;
+    let startMin = Math.round(rawMin / 15) * 15;
+    startMin = Math.max(0, Math.min(1440 - planDragCtx.duration, startMin));
+
+    planDragCtx.hoverDate = targetCol.dataset.date;
+    planDragCtx.previewStartMin = startMin;
+
+    if (planDragCtx.block.parentElement !== targetCol) targetCol.appendChild(planDragCtx.block);
+    planDragCtx.block.style.top = `${(startMin / 1440) * 100}%`;
+    planDragCtx.block.style.height = `${(planDragCtx.duration / 1440) * 100}%`;
+    planDragCtx.block.style.left = "1px";
+    planDragCtx.block.style.width = "calc(100% - 2px)";
+  }
+
+  function onPlanDragEnd(e) {
+    if (!planDragCtx) return;
+    const { block, dateStr, plan, duration, moved, hoverDate, previewStartMin } = planDragCtx;
+    document.removeEventListener("pointermove", onPlanDragMove);
+    document.removeEventListener("pointerup", onPlanDragEnd);
+    document.removeEventListener("pointercancel", onPlanDragEnd);
+    block.classList.remove("dragging");
+    planDragCtx = null;
+
+    if (!moved) {
+      onPlanBlockClick(e, dateStr, plan);
+      return;
+    }
+
+    if (!hoverDate || hoverDate < state.day) {
+      renderCalendar();
+      return;
+    }
+
+    removePlan(dateStr, plan.id);
+    addPlan(hoverDate, { ...plan, startMin: previewStartMin, endMin: previewStartMin + duration });
+    renderCalendar();
   }
 
   // Lays same-day overlapping segments (e.g. a task plus a concurrent 別件
@@ -960,6 +1173,7 @@
 
       const dayCol = document.createElement("div");
       dayCol.className = "calendar-day-col";
+      dayCol.dataset.date = dateStr;
       const dayStart = new Date(`${dateStr}T00:00:00`).getTime();
 
       let segs = closedSegmentsForDate(dateStr).map((seg) => ({ ...seg, live: false }));
@@ -995,6 +1209,28 @@
         line.style.top = `${(nowMin / 1440) * 100}%`;
         dayCol.appendChild(line);
         calendarNowLineEl = line;
+      }
+
+      if (dateStr >= state.day) {
+        layoutSegments(plansForDate(dateStr).map((p) => ({ startMs: p.startMin, endMs: p.endMin, ref: p }))).forEach(
+          ({ seg, col, colCount }) => {
+            const p = seg.ref;
+            const block = document.createElement("div");
+            block.className = "cal-plan-block";
+            block.style.top = `${(p.startMin / 1440) * 100}%`;
+            block.style.height = `${Math.max(1, p.endMin - p.startMin) / 1440 * 100}%`;
+            block.style.left = `calc(${(col / colCount) * 100}% + 1px)`;
+            block.style.width = `calc(${(1 / colCount) * 100}% - 2px)`;
+            const color = colorForLabel(p.label);
+            block.style.borderColor = color;
+            block.style.color = color;
+            block.textContent = p.label;
+            block.addEventListener("pointerdown", (e) => startPlanDrag(e, block, dateStr, p));
+            dayCol.appendChild(block);
+          }
+        );
+
+        dayCol.addEventListener("pointerdown", (e) => onDayColPointerDown(e, dayCol, dateStr));
       }
 
       calendarWeekGrid.appendChild(dayCol);
@@ -1042,6 +1278,7 @@
 
   calendarPrevBtn.addEventListener("click", () => shiftCalendarWeek(-1));
   calendarNextBtn.addEventListener("click", () => shiftCalendarWeek(1));
+  calendarWeekBody.addEventListener("scroll", () => clearLongPress(), { passive: true });
 
   initCalendarHours();
 
