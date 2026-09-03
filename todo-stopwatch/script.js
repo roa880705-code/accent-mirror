@@ -877,17 +877,36 @@
     const line = document.createElement("div");
     line.className = "cal-block-detail";
     line.textContent = `${plan.label}: ${formatMinHM(plan.startMin)}〜${formatMinHM(plan.endMin)} (予定)`;
+
+    const actions = document.createElement("div");
+    actions.className = "cal-plan-actions";
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "btn btn-modal-ok cal-plan-edit";
+    editBtn.textContent = "編集";
+    editBtn.addEventListener("click", async () => {
+      const name = await openNameModal(plan.label);
+      if (name === null) return;
+      plan.label = name.trim() || plan.label;
+      savePlans();
+      renderCalendar();
+      onPlanBlockClick(null, dateStr, plan);
+    });
+
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "btn btn-modal-cancel cal-plan-delete";
-    delBtn.textContent = "この予定を削除";
+    delBtn.textContent = "削除";
     delBtn.addEventListener("click", () => {
       removePlan(dateStr, plan.id);
       calendarDetail.hidden = true;
       calendarDetail.innerHTML = "";
       renderCalendar();
     });
-    calendarDetail.append(line, delBtn);
+
+    actions.append(editBtn, delBtn);
+    calendarDetail.append(line, actions);
   }
 
   // --- plan creation (long-press on empty grid space) ---

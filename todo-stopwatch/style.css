@@ -995,8 +995,13 @@ body {
   font-weight: 600;
 }
 
+.cal-plan-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cal-plan-edit,
 .cal-plan-delete {
-  align-self: flex-start;
   padding: 5px 12px;
   font-size: 0.68rem;
 }
