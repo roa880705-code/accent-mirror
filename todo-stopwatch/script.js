@@ -856,11 +856,16 @@
       return;
     }
     selectedDayDetail = selectedDayDetail === dateStr ? null : dateStr;
-    renderCalendarDetail();
+    selectedPlanId = null;
+    renderCalendar();
   }
 
   function onCalendarBlockClick(seg, e) {
     e.stopPropagation();
+    if (selectedPlanId) {
+      selectedPlanId = null;
+      renderCalendar();
+    }
     const endMs = seg.live ? Date.now() : seg.endMs;
     calendarDetail.hidden = false;
     calendarDetail.innerHTML = "";
@@ -977,6 +982,10 @@
     function onUp() {
       cleanup();
       activeDayPress = null;
+      if (selectedPlanId) {
+        selectedPlanId = null;
+        renderCalendar();
+      }
     }
 
     document.addEventListener("pointermove", onMove);
@@ -1421,6 +1430,10 @@
   let activePage = 0;
 
   function setActiveTab(i) {
+    if (i !== 3 && activePage === 3 && selectedPlanId) {
+      selectedPlanId = null;
+      renderCalendar();
+    }
     activePage = i;
     tabBtns.forEach((b, idx) => b.classList.toggle("active", idx === i));
   }
