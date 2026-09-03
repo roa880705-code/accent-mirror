@@ -1091,7 +1091,7 @@ body {
   outline-offset: 1px;
 }
 
-.cal-unscheduled-today {
+.cal-unscheduled-day {
   position: absolute;
   left: 0;
   right: 0;

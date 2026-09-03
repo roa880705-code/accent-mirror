@@ -5,7 +5,6 @@
   const PLANS_KEY = "todoStopwatch:plans:v1";
   const SOMEDAY_KEY = "todoStopwatch:someday:v1";
   const MAX_HISTORY = 60;
-  const DEFAULT_COUNT = 10;
   const MAX_COUNT = 40;
   const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -26,10 +25,6 @@
 
   function freshItem(label) {
     return { label: label || "", elapsedMs: 0, running: false, startedAt: null, planId: null };
-  }
-
-  function defaultItems() {
-    return Array.from({ length: DEFAULT_COUNT }, () => freshItem(""));
   }
 
   function loadState() {
@@ -87,7 +82,17 @@
       const raw = localStorage.getItem(DRAFTS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          // Older versions stored each date as a plain array of label strings.
+          // Upgrade those to full item objects so planId links survive.
+          Object.keys(parsed).forEach((dateStr) => {
+            if (!Array.isArray(parsed[dateStr])) return;
+            parsed[dateStr] = parsed[dateStr].map((it) =>
+              typeof it === "string" ? freshItem(it) : { ...it, planId: it.planId ?? null }
+            );
+          });
+          return parsed;
+        }
       }
     } catch (e) {
       // corrupt storage, fall through to empty
@@ -149,25 +154,50 @@
 
   // viewingDate is the date currently shown in the タイマー list. It usually
   // tracks state.day, but the day picker can point it at a future date to
-  // edit a draft task list without touching today's live tracking.
+  // edit that date's task list without touching today's live tracking.
   let viewingDate = state.day;
-  let draftItems = [];
 
   function isLive() {
     return viewingDate === state.day;
   }
 
+  // Every date has its own item list: today's is state.items, any other
+  // date's lives in drafts[dateStr]. This is what keeps a calendar plan and
+  // its linked timer task in sync across any day, not just today.
+  function itemsArrayForDate(dateStr) {
+    return dateStr === state.day ? state.items : drafts[dateStr] || [];
+  }
+
+  // Same as itemsArrayForDate, but materializes drafts[dateStr] first if it
+  // doesn't exist yet — use this before pushing a new item onto a date.
+  function ensureItemsArrayForDate(dateStr) {
+    if (dateStr === state.day) return state.items;
+    if (!drafts[dateStr]) drafts[dateStr] = [];
+    return drafts[dateStr];
+  }
+
+  function persistItemsForDate(dateStr) {
+    if (dateStr === state.day) {
+      saveState();
+    } else {
+      if (drafts[dateStr] && !drafts[dateStr].length) delete drafts[dateStr];
+      saveDrafts();
+    }
+  }
+
+  function refreshTimerIfShowing(dateStr) {
+    if (viewingDate === dateStr) {
+      buildRows();
+      render();
+    }
+  }
+
   function currentItemsArray() {
-    return isLive() ? state.items : draftItems;
+    return itemsArrayForDate(viewingDate);
   }
 
   function persistItemsChange() {
-    if (isLive()) {
-      saveState();
-    } else {
-      drafts[viewingDate] = draftItems.map((it) => it.label);
-      saveDrafts();
-    }
+    persistItemsForDate(viewingDate);
   }
 
   function labelOf(item, fallback) {
@@ -245,7 +275,9 @@
 
     const draftForToday = drafts[today];
     if (draftForToday && draftForToday.length) {
-      state.items = draftForToday.map((label) => freshItem(label));
+      // Already full item objects with their planId links intact, so a plan
+      // made for this date while it was still "tomorrow" stays linked.
+      state.items = draftForToday;
       delete drafts[today];
       saveDrafts();
     } else {
@@ -261,6 +293,7 @@
     state.interrupt.elapsedMs = 0;
     state.segments = [];
     state.day = today;
+    sortItemsByPlan(today);
     saveState();
 
     if (wasFollowingToday) viewingDate = today;
@@ -305,8 +338,8 @@
       input.value = item.label;
       input.addEventListener("input", () => {
         item.label = input.value;
-        if (live && item.planId) {
-          const plan = plansForDate(state.day).find((p) => p.id === item.planId);
+        if (item.planId) {
+          const plan = plansForDate(viewingDate).find((p) => p.id === item.planId);
           if (plan) {
             plan.label = item.label;
             savePlans();
@@ -340,7 +373,7 @@
   }
 
   function addWatch() {
-    const items = currentItemsArray();
+    const items = ensureItemsArrayForDate(viewingDate);
     if (items.length >= MAX_COUNT) return;
     items.push(freshItem(""));
     persistItemsChange();
@@ -667,11 +700,11 @@
     const newOrder = rowEls.map((r) => r.item);
     if (isLive()) {
       state.items = newOrder;
-      const draggedIndex = newOrder.indexOf(draggedItem);
-      if (draggedIndex >= 0) resnapPlanForReorderedItem(newOrder, draggedIndex);
     } else {
-      draftItems = newOrder;
+      drafts[viewingDate] = newOrder;
     }
+    const draggedIndex = newOrder.indexOf(draggedItem);
+    if (draggedIndex >= 0) resnapPlanForReorderedItem(viewingDate, newOrder, draggedIndex);
     persistItemsChange();
     render();
 
@@ -859,18 +892,18 @@
     savePlans();
   }
 
-  // --- keeping today's timer list and today's plans in sync ---
+  // --- keeping a date's timer list and that date's plans in sync ---
 
-  // Orders state.items by their linked plan's start time; items with no
+  // Orders a date's items by their linked plan's start time; items with no
   // plan (or whose plan vanished) sort after all planned ones, keeping
   // their existing relative order (Array#sort is stable).
-  function sortItemsByPlan() {
-    const todays = plansForDate(state.day);
+  function sortItemsByPlan(dateStr) {
+    const dayPlans = plansForDate(dateStr);
     const startOf = (planId) => {
-      const p = planId && todays.find((pl) => pl.id === planId);
+      const p = planId && dayPlans.find((pl) => pl.id === planId);
       return p ? p.startMin : Infinity;
     };
-    state.items.sort((a, b) => {
+    itemsArrayForDate(dateStr).sort((a, b) => {
       const sa = startOf(a.planId);
       const sb = startOf(b.planId);
       return sa === sb ? 0 : sa - sb;
@@ -880,18 +913,18 @@
   // After a manual drag reorders the timer list, re-times the moved item's
   // plan so it actually sits in the gap between its new neighbors' plans,
   // instead of leaving the list order and the calendar time out of sync.
-  function resnapPlanForReorderedItem(items, index) {
+  function resnapPlanForReorderedItem(dateStr, items, index) {
     const item = items[index];
     if (!item.planId) return;
-    const todays = plansForDate(state.day);
-    const plan = todays.find((p) => p.id === item.planId);
+    const dayPlans = plansForDate(dateStr);
+    const plan = dayPlans.find((p) => p.id === item.planId);
     if (!plan) return;
     const duration = plan.endMin - plan.startMin;
 
     const prevItem = items[index - 1];
     const nextItem = items[index + 1];
-    const prevPlan = prevItem && prevItem.planId ? todays.find((p) => p.id === prevItem.planId) : null;
-    const nextPlan = nextItem && nextItem.planId ? todays.find((p) => p.id === nextItem.planId) : null;
+    const prevPlan = prevItem && prevItem.planId ? dayPlans.find((p) => p.id === prevItem.planId) : null;
+    const nextPlan = nextItem && nextItem.planId ? dayPlans.find((p) => p.id === nextItem.planId) : null;
     if (!prevPlan && !nextPlan) return;
 
     let newStart = prevPlan ? prevPlan.endMin : Math.max(0, nextPlan.startMin - duration);
@@ -940,10 +973,6 @@
 
   function goToDate(dateStr) {
     viewingDate = dateStr;
-    if (!isLive()) {
-      const stored = drafts[viewingDate];
-      draftItems = stored && stored.length ? stored.map((label) => freshItem(label)) : defaultItems();
-    }
     dayPicker.value = viewingDate;
     applyModeUI();
     buildRows();
@@ -1011,14 +1040,12 @@
       if (name === null) return;
       plan.label = name.trim() || plan.label;
       savePlans();
-      if (dateStr === state.day) {
-        const item = state.items.find((it) => it.planId === plan.id);
-        if (item) {
-          item.label = plan.label;
-          saveState();
-          buildRows();
-          render();
-        }
+      const items = itemsArrayForDate(dateStr);
+      const item = items.find((it) => it.planId === plan.id);
+      if (item) {
+        item.label = plan.label;
+        persistItemsForDate(dateStr);
+        refreshTimerIfShowing(dateStr);
       }
       onPlanBlockClick(null, dateStr, plan);
     });
@@ -1030,14 +1057,17 @@
     delBtn.addEventListener("click", () => {
       removePlan(dateStr, plan.id);
       selectedPlanId = null;
-      if (dateStr === state.day) {
-        const idx = state.items.findIndex((it) => it.planId === plan.id);
-        if (idx >= 0) {
-          state.items.splice(idx, 1);
-          saveState();
-          buildRows();
-          render();
+      const items = itemsArrayForDate(dateStr);
+      const idx = items.findIndex((it) => it.planId === plan.id);
+      if (idx >= 0) {
+        if (items[idx].elapsedMs > 0 || items[idx].running) {
+          // real recorded time exists: keep the item, just unlink it
+          items[idx].planId = null;
+        } else {
+          items.splice(idx, 1);
         }
+        persistItemsForDate(dateStr);
+        refreshTimerIfShowing(dateStr);
       }
       calendarDetail.hidden = true;
       calendarDetail.innerHTML = "";
@@ -1136,15 +1166,12 @@
 
     addPlan(dateStr, { id, label, startMin, endMin });
 
-    if (dateStr === state.day) {
-      const item = freshItem(label);
-      item.planId = id;
-      state.items.push(item);
-      sortItemsByPlan();
-      saveState();
-      buildRows();
-      render();
-    }
+    const item = freshItem(label);
+    item.planId = id;
+    ensureItemsArrayForDate(dateStr).push(item);
+    sortItemsByPlan(dateStr);
+    persistItemsForDate(dateStr);
+    refreshTimerIfShowing(dateStr);
 
     renderCalendar();
   }
@@ -1245,23 +1272,23 @@
 
     if (overUnplannedBox) {
       removePlan(dateStr, plan.id);
-      const idx = state.items.findIndex((it) => it.planId === plan.id);
+      const items = itemsArrayForDate(dateStr);
+      const idx = items.findIndex((it) => it.planId === plan.id);
       if (idx >= 0) {
-        if (state.items[idx].elapsedMs > 0 || state.items[idx].running) {
+        if (items[idx].elapsedMs > 0 || items[idx].running) {
           // real recorded time exists: keep the item, just unlink it from the removed plan
-          state.items[idx].planId = null;
-          sortItemsByPlan();
+          items[idx].planId = null;
+          sortItemsByPlan(dateStr);
         } else {
           // nothing was ever tracked: drop the item and send it back to the いつか backlog
-          state.items.splice(idx, 1);
+          items.splice(idx, 1);
           someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: plan.label });
           saveSomeday();
         }
-        saveState();
-        buildRows();
-        render();
+        persistItemsForDate(dateStr);
+        refreshTimerIfShowing(dateStr);
       } else {
-        // a plan with no linked item (e.g. a future day's plan) goes straight to いつか
+        // a plan with no linked item goes straight to いつか
         someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: plan.label });
         saveSomeday();
       }
@@ -1280,39 +1307,31 @@
     const movedPlan = { ...plan, startMin: previewStartMin, endMin: previewStartMin + duration };
     addPlan(hoverDate, movedPlan);
 
-    const wasToday = dateStr === state.day;
-    const isToday = hoverDate === state.day;
-    if (wasToday && isToday) {
-      // same-day move: the linked item's time slot changed, keep the list ordered to match
-      if (state.items.some((it) => it.planId === movedPlan.id)) {
-        sortItemsByPlan();
-        saveState();
-        buildRows();
-        render();
+    if (dateStr === hoverDate) {
+      // same-date move: the linked item's time slot changed, keep the list ordered to match
+      if (itemsArrayForDate(dateStr).some((it) => it.planId === movedPlan.id)) {
+        sortItemsByPlan(dateStr);
+        persistItemsForDate(dateStr);
+        refreshTimerIfShowing(dateStr);
       }
-    } else if (wasToday && !isToday) {
-      // moved off today: drop the item if nothing was ever tracked on it, otherwise keep
-      // the recorded time but unlink it from the (no longer today's) plan
-      const idx = state.items.findIndex((it) => it.planId === movedPlan.id);
-      if (idx >= 0) {
-        if (state.items[idx].elapsedMs > 0 || state.items[idx].running) {
-          state.items[idx].planId = null;
-        } else {
-          state.items.splice(idx, 1);
-        }
-        saveState();
-        buildRows();
-        render();
+    } else {
+      // moved to a different date: migrate the linked item across the two date lists
+      const sourceItems = itemsArrayForDate(dateStr);
+      const idx = sourceItems.findIndex((it) => it.planId === movedPlan.id);
+      const item = idx >= 0 ? sourceItems[idx] : freshItem(movedPlan.label);
+      if (idx >= 0 && (item.elapsedMs > 0 || item.running)) {
+        // real recorded time exists: keep it on its original date, just unlink it
+        item.planId = null;
+      } else {
+        if (idx >= 0) sourceItems.splice(idx, 1);
+        item.planId = movedPlan.id;
+        ensureItemsArrayForDate(hoverDate).push(item);
+        sortItemsByPlan(hoverDate);
+        persistItemsForDate(hoverDate);
+        refreshTimerIfShowing(hoverDate);
       }
-    } else if (!wasToday && isToday) {
-      // moved onto today: give it a linked item so it shows up in the timer list
-      const item = freshItem(movedPlan.label);
-      item.planId = movedPlan.id;
-      state.items.push(item);
-      sortItemsByPlan();
-      saveState();
-      buildRows();
-      render();
+      persistItemsForDate(dateStr);
+      refreshTimerIfShowing(dateStr);
     }
 
     renderCalendar();
@@ -1373,32 +1392,32 @@
     onPlanBlockClick(null, dateStr, plan);
   }
 
-  // --- today's own "unscheduled but today" list, drawn below the 24:00 line ---
-  // (items already in state.items with no plan — dragging one up onto today's
-  // column schedules it; only today is a valid drop target since these items
-  // only exist in today's list.)
+  // --- a day's own "unscheduled but on that day" list, drawn below the
+  // 24:00 line (items already in that date's item list with no plan —
+  // dragging one up onto its own column schedules it; only that same day
+  // is a valid drop target since these items only exist on that date.)
 
-  let todayUnschedDragCtx = null;
+  let dayUnschedDragCtx = null;
 
-  function startTodayUnscheduledDrag(e, row, item) {
+  function startDayUnscheduledDrag(e, row, item, dateStr) {
     if (e.button !== undefined && e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
-    todayUnschedDragCtx = { row, item, moved: false, startClientX: e.clientX, startClientY: e.clientY, targetCol: null, clientY: e.clientY };
-    document.addEventListener("pointermove", onTodayUnscheduledDragMove);
-    document.addEventListener("pointerup", onTodayUnscheduledDragEnd);
-    document.addEventListener("pointercancel", onTodayUnscheduledDragEnd);
+    dayUnschedDragCtx = { row, item, dateStr, moved: false, startClientX: e.clientX, startClientY: e.clientY, targetCol: null, clientY: e.clientY };
+    document.addEventListener("pointermove", onDayUnscheduledDragMove);
+    document.addEventListener("pointerup", onDayUnscheduledDragEnd);
+    document.addEventListener("pointercancel", onDayUnscheduledDragEnd);
   }
 
-  function onTodayUnscheduledDragMove(e) {
-    if (!todayUnschedDragCtx) return;
+  function onDayUnscheduledDragMove(e) {
+    if (!dayUnschedDragCtx) return;
     e.preventDefault();
-    const dx = e.clientX - todayUnschedDragCtx.startClientX;
-    const dy = e.clientY - todayUnschedDragCtx.startClientY;
-    if (!todayUnschedDragCtx.moved) {
+    const dx = e.clientX - dayUnschedDragCtx.startClientX;
+    const dy = e.clientY - dayUnschedDragCtx.startClientY;
+    if (!dayUnschedDragCtx.moved) {
       if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
-      todayUnschedDragCtx.moved = true;
-      todayUnschedDragCtx.row.classList.add("dragging");
+      dayUnschedDragCtx.moved = true;
+      dayUnschedDragCtx.row.classList.add("dragging");
       vibrate(15);
     }
 
@@ -1411,26 +1430,26 @@
         e.clientX <= rect.right &&
         e.clientY >= rect.top &&
         e.clientY <= rect.top + 24 * CAL_HOUR_H &&
-        col.dataset.date === state.day
+        col.dataset.date === dayUnschedDragCtx.dateStr
       ) {
         targetCol = col;
         break;
       }
     }
     cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
-    todayUnschedDragCtx.targetCol = targetCol;
-    todayUnschedDragCtx.clientY = e.clientY;
+    dayUnschedDragCtx.targetCol = targetCol;
+    dayUnschedDragCtx.clientY = e.clientY;
   }
 
-  function onTodayUnscheduledDragEnd() {
-    if (!todayUnschedDragCtx) return;
-    const { row, item, moved, targetCol, clientY } = todayUnschedDragCtx;
-    document.removeEventListener("pointermove", onTodayUnscheduledDragMove);
-    document.removeEventListener("pointerup", onTodayUnscheduledDragEnd);
-    document.removeEventListener("pointercancel", onTodayUnscheduledDragEnd);
+  function onDayUnscheduledDragEnd() {
+    if (!dayUnschedDragCtx) return;
+    const { row, item, dateStr, moved, targetCol, clientY } = dayUnschedDragCtx;
+    document.removeEventListener("pointermove", onDayUnscheduledDragMove);
+    document.removeEventListener("pointerup", onDayUnscheduledDragEnd);
+    document.removeEventListener("pointercancel", onDayUnscheduledDragEnd);
     row.classList.remove("dragging");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
-    todayUnschedDragCtx = null;
+    dayUnschedDragCtx = null;
 
     if (!moved || !targetCol) return;
 
@@ -1442,13 +1461,12 @@
     const endMin = startMin + PLAN_DEFAULT_MIN;
     const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-    addPlan(state.day, { id, label: labelOf(item, "予定"), startMin, endMin });
+    addPlan(dateStr, { id, label: labelOf(item, "予定"), startMin, endMin });
     item.planId = id;
     vibrate(20);
-    sortItemsByPlan();
-    saveState();
-    buildRows();
-    render();
+    sortItemsByPlan(dateStr);
+    persistItemsForDate(dateStr);
+    refreshTimerIfShowing(dateStr);
     renderCalendar();
   }
 
@@ -1539,15 +1557,12 @@
     const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
     addPlan(dateStr, { id, label: task.label, startMin, endMin });
-    if (dateStr === state.day) {
-      const item = freshItem(task.label);
-      item.planId = id;
-      state.items.push(item);
-      sortItemsByPlan();
-      saveState();
-      buildRows();
-      render();
-    }
+    const item = freshItem(task.label);
+    item.planId = id;
+    ensureItemsArrayForDate(dateStr).push(item);
+    sortItemsByPlan(dateStr);
+    persistItemsForDate(dateStr);
+    refreshTimerIfShowing(dateStr);
     someday = someday.filter((t) => t.id !== task.id);
     saveSomeday();
     vibrate(20);
@@ -1656,16 +1671,26 @@
     calendarLiveBlocks = [];
     calendarNowLineEl = null;
 
-    const todaysUnscheduled = state.items.filter((it) => !it.planId);
-    const unschedExtraH = todaysUnscheduled.length
-      ? todaysUnscheduled.length * CAL_UNSCHEDULED_ROW_H + (todaysUnscheduled.length - 1) * CAL_UNSCHEDULED_GAP + 16
+    const dayDates = Array.from({ length: CAL_DAYS }, (_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    });
+    const dayUnscheduled = {};
+    let maxUnscheduled = 0;
+    dayDates.forEach((dateStr) => {
+      const unscheduled = dateStr >= state.day ? itemsArrayForDate(dateStr).filter((it) => !it.planId) : [];
+      dayUnscheduled[dateStr] = unscheduled;
+      maxUnscheduled = Math.max(maxUnscheduled, unscheduled.length);
+    });
+    const unschedExtraH = maxUnscheduled
+      ? maxUnscheduled * CAL_UNSCHEDULED_ROW_H + (maxUnscheduled - 1) * CAL_UNSCHEDULED_GAP + 16
       : 0;
     calendarWeekGrid.style.height = `${24 * CAL_HOUR_H + unschedExtraH}px`;
 
     for (let i = 0; i < CAL_DAYS; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      const dateStr = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      const dateStr = dayDates[i];
+      const d = parseDateStr(dateStr);
 
       const header = document.createElement("button");
       header.type = "button";
@@ -1768,15 +1793,16 @@
         dayCol.addEventListener("pointerdown", (e) => onDayColPointerDown(e, dayCol, dateStr));
       }
 
-      if (dateStr === state.day && todaysUnscheduled.length) {
+      const unscheduledForDay = dayUnscheduled[dateStr];
+      if (unscheduledForDay.length) {
         const zone = document.createElement("div");
-        zone.className = "cal-unscheduled-today";
+        zone.className = "cal-unscheduled-day";
         zone.style.top = `${24 * CAL_HOUR_H}px`;
-        todaysUnscheduled.forEach((item, idx) => {
+        unscheduledForDay.forEach((item, idx) => {
           const row = document.createElement("div");
           row.className = "cal-unscheduled-row";
           row.textContent = labelOf(item, `タスク${idx + 1}`);
-          row.addEventListener("pointerdown", (e) => startTodayUnscheduledDrag(e, row, item));
+          row.addEventListener("pointerdown", (e) => startDayUnscheduledDrag(e, row, item, dateStr));
           zone.appendChild(row);
         });
         dayCol.appendChild(zone);
@@ -1947,7 +1973,7 @@
   }
 
   rolloverIfNeeded();
-  sortItemsByPlan();
+  sortItemsByPlan(state.day);
   dayPicker.value = viewingDate;
   applyModeUI();
   buildRows();
