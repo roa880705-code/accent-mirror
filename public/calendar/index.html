@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>週間プランナー</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="app-header">
+    <h1>週間プランナー</h1>
+    <p class="app-sub">空いている時間をクリックまたはドラッグで予定を作成。予定本体をドラッグすると時間帯を移動、下端をドラッグすると長さを変更できます。</p>
+  </header>
+
+  <div class="calendar-toolbar">
+    <div class="calendar-nav">
+      <button type="button" id="prev-week" class="icon-btn" aria-label="前週">‹</button>
+      <button type="button" id="today-btn">今日</button>
+      <button type="button" id="next-week" class="icon-btn" aria-label="次週">›</button>
+    </div>
+    <div class="calendar-range" id="calendar-range"></div>
+  </div>
+
+  <div class="calendar-scroll" id="calendar-scroll">
+    <div class="calendar-grid" id="calendar-grid">
+      <div class="time-gutter" id="time-gutter"></div>
+      <div class="day-columns" id="day-columns"></div>
+    </div>
+  </div>
+</div>
+
+<div class="popover" id="popover" hidden>
+  <input type="text" id="popover-title" class="popover-title" placeholder="予定のタイトル" maxlength="80">
+  <div class="popover-time" id="popover-time"></div>
+  <div class="popover-colors" id="popover-colors"></div>
+  <div class="popover-actions">
+    <button type="button" id="popover-delete" class="danger-btn">削除</button>
+    <button type="button" id="popover-done" class="primary-btn">完了</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
