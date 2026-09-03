@@ -46,14 +46,9 @@
           parsed.chore
         ) {
           if (!Array.isArray(parsed.segments)) parsed.segments = [];
-          if (!parsed.itemsMigratedToPlans) {
-            // One-time cleanup for the 予定<->タイマー linkage: items are now
-            // meant to originate from calendar plans, so drop unused blank
-            // rows left over from the old free-typed list. Anything with
-            // real recorded time is kept (just left unlinked to a plan).
-            parsed.items = parsed.items.filter((it) => it.elapsedMs > 0 || it.running);
-            parsed.itemsMigratedToPlans = true;
-          }
+          // Items with no linked plan (old free-typed rows, or ones added via
+          // the + button) are kept as-is; sortItemsByPlan() groups them after
+          // all planned items whenever the list is sorted.
           parsed.items.forEach((it) => {
             if (it.planId === undefined) it.planId = null;
           });
@@ -70,7 +65,6 @@
       interrupt: freshItem("割込対応"),
       chore: freshItem("雑務"),
       segments: [],
-      itemsMigratedToPlans: true,
     };
   }
 
@@ -1669,6 +1663,7 @@
   }
 
   rolloverIfNeeded();
+  sortItemsByPlan();
   dayPicker.value = viewingDate;
   applyModeUI();
   buildRows();
