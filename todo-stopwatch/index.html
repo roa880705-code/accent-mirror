@@ -27,6 +27,7 @@
     <button class="tab-btn active" data-page="0" type="button">タイマー</button>
     <button class="tab-btn" data-page="1" type="button">内訳</button>
     <button class="tab-btn" data-page="2" type="button">履歴</button>
+    <button class="tab-btn" data-page="3" type="button">カレンダー</button>
   </nav>
 
   <div class="pages" id="pages">
@@ -59,6 +60,20 @@
     </section>
     <section class="page">
       <div id="history" class="history"></div>
+    </section>
+    <section class="page">
+      <div class="calendar">
+        <div class="calendar-header">
+          <button id="calendarPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の月">&#8249;</button>
+          <span id="calendarMonthLabel" class="calendar-month-label"></span>
+          <button id="calendarNextBtn" class="calendar-nav-btn" type="button" aria-label="次の月">&#8250;</button>
+        </div>
+        <div class="calendar-weekdays">
+          <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+        </div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+        <div id="calendarDetail" class="calendar-detail"></div>
+      </div>
     </section>
   </div>
 </div>

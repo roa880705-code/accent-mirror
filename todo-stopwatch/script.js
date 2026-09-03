@@ -227,6 +227,11 @@
   const breakdownEl = document.getElementById("breakdown");
   const historyEl = document.getElementById("history");
   const listWrap = document.querySelector(".list-wrap");
+  const calendarGrid = document.getElementById("calendarGrid");
+  const calendarMonthLabel = document.getElementById("calendarMonthLabel");
+  const calendarDetail = document.getElementById("calendarDetail");
+  const calendarPrevBtn = document.getElementById("calendarPrevBtn");
+  const calendarNextBtn = document.getElementById("calendarNextBtn");
 
   let rowEls = [];
 
@@ -708,6 +713,178 @@
     });
   }
 
+  // --- calendar page ---
+
+  let calendarYear;
+  let calendarMonth;
+  let selectedPastDate = null;
+
+  function initCalendarView() {
+    const [y, m] = state.day.split("-").map(Number);
+    calendarYear = y;
+    calendarMonth = m - 1;
+  }
+
+  function shiftCalendarMonth(delta) {
+    calendarMonth += delta;
+    if (calendarMonth < 0) {
+      calendarMonth = 11;
+      calendarYear -= 1;
+    } else if (calendarMonth > 11) {
+      calendarMonth = 0;
+      calendarYear += 1;
+    }
+    renderCalendar();
+  }
+
+  function totalsForDate(dateStr) {
+    if (dateStr === state.day) {
+      let total = 0;
+      allTrackedEntries().forEach(({ item }) => {
+        total += currentElapsed(item);
+      });
+      return { totalMs: total, hasDraft: false };
+    }
+    if (dateStr < state.day) {
+      const rec = history.find((h) => h.date === dateStr);
+      return { totalMs: rec ? rec.totalMs : 0, hasDraft: false };
+    }
+    const draft = drafts[dateStr];
+    return { totalMs: 0, hasDraft: !!(draft && draft.length) };
+  }
+
+  function formatShort(ms) {
+    if (ms <= 0) return "";
+    const totalMinutes = Math.round(ms / 60000);
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    if (h > 0 && m > 0) return `${h}h${m}m`;
+    if (h > 0) return `${h}h`;
+    return `${m}m`;
+  }
+
+  function goToDate(dateStr) {
+    viewingDate = dateStr;
+    if (!isLive()) {
+      const stored = drafts[viewingDate];
+      draftItems = stored && stored.length ? stored.map((label) => freshItem(label)) : defaultItems();
+    }
+    dayPicker.value = viewingDate;
+    applyModeUI();
+    buildRows();
+    render();
+  }
+
+  function onCalendarCellClick(dateStr) {
+    if (dateStr >= state.day) {
+      goToDate(dateStr);
+      goToPage(0);
+      return;
+    }
+    selectedPastDate = selectedPastDate === dateStr ? null : dateStr;
+    renderCalendar();
+  }
+
+  function renderCalendar() {
+    calendarMonthLabel.textContent = `${calendarYear}年${calendarMonth + 1}月`;
+    calendarGrid.innerHTML = "";
+
+    const gridStart = new Date(calendarYear, calendarMonth, 1);
+    gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(gridStart);
+      d.setDate(gridStart.getDate() + i);
+      const dateStr = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "calendar-cell";
+      if (d.getMonth() !== calendarMonth) cell.classList.add("other-month");
+      if (dateStr === state.day) cell.classList.add("today");
+      if (dateStr === selectedPastDate) cell.classList.add("selected");
+
+      const { totalMs, hasDraft } = totalsForDate(dateStr);
+      if (totalMs > 0) cell.classList.add("has-data");
+
+      const dateEl = document.createElement("span");
+      dateEl.className = "cc-date";
+      dateEl.textContent = String(d.getDate());
+
+      const timeEl = document.createElement("span");
+      timeEl.className = "cc-time";
+      timeEl.textContent = formatShort(totalMs);
+
+      cell.append(dateEl, timeEl);
+
+      if (hasDraft) {
+        const dot = document.createElement("span");
+        dot.className = "cc-dot";
+        cell.appendChild(dot);
+      }
+
+      cell.addEventListener("click", () => onCalendarCellClick(dateStr));
+      calendarGrid.appendChild(cell);
+    }
+
+    renderCalendarDetail();
+  }
+
+  function renderCalendarDetail() {
+    calendarDetail.innerHTML = "";
+
+    if (!selectedPastDate) {
+      const hint = document.createElement("div");
+      hint.className = "history-empty";
+      hint.textContent = "過去の日付をタップすると、その日の記録を確認できます。";
+      calendarDetail.appendChild(hint);
+      return;
+    }
+
+    const top = document.createElement("div");
+    top.className = "h-top";
+    const dateLabel = document.createElement("span");
+    dateLabel.className = "h-date";
+    dateLabel.textContent = formatDateLabel(selectedPastDate);
+    top.appendChild(dateLabel);
+
+    const rec = history.find((h) => h.date === selectedPastDate);
+    const totalEl = document.createElement("span");
+    totalEl.className = "h-total";
+    totalEl.textContent = formatTime(rec ? rec.totalMs : 0);
+    top.appendChild(totalEl);
+    calendarDetail.appendChild(top);
+
+    if (!rec) {
+      const empty = document.createElement("div");
+      empty.className = "history-empty";
+      empty.textContent = "この日の記録はありません。";
+      calendarDetail.appendChild(empty);
+      return;
+    }
+
+    const stack = document.createElement("div");
+    stack.className = "history-stack";
+    rec.items.forEach((it, i) => {
+      const seg = document.createElement("span");
+      seg.style.width = `${(it.elapsedMs / rec.totalMs) * 100}%`;
+      seg.style.opacity = String(Math.max(0.32, 1 - i * 0.16));
+      seg.title = `${it.label} ${formatTime(it.elapsedMs)}`;
+      stack.appendChild(seg);
+    });
+
+    const legend = document.createElement("div");
+    legend.className = "history-legend calendar-legend";
+    legend.textContent = rec.items.map((it) => `${it.label} ${formatTime(it.elapsedMs)}`).join(" ・ ");
+
+    calendarDetail.append(stack, legend);
+  }
+
+  calendarPrevBtn.addEventListener("click", () => shiftCalendarMonth(-1));
+  calendarNextBtn.addEventListener("click", () => shiftCalendarMonth(1));
+
+  initCalendarView();
+
   // --- tabs / paging ---
 
   const pages = document.getElementById("pages");
@@ -760,14 +937,7 @@
       dayPicker.value = viewingDate;
       return;
     }
-    viewingDate = val;
-    if (!isLive()) {
-      const stored = drafts[viewingDate];
-      draftItems = stored && stored.length ? stored.map((label) => freshItem(label)) : defaultItems();
-    }
-    applyModeUI();
-    buildRows();
-    render();
+    goToDate(val);
   });
 
   // --- main render loop ---
@@ -806,6 +976,7 @@
 
     totalTimeEl.textContent = formatTime(total);
     renderBreakdown();
+    renderCalendar();
   }
 
   rolloverIfNeeded();
