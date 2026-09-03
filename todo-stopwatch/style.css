@@ -961,6 +961,26 @@ body {
   cursor: grabbing;
 }
 
+.cal-plan-block.selected {
+  z-index: 10;
+  border-style: solid;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.cal-plan-resize-handle {
+  position: absolute;
+  z-index: 12;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 14px;
+  border-radius: 7px;
+  border: 2px solid var(--card-bg);
+  cursor: ns-resize;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
 .cal-now-line {
   position: absolute;
   left: 0;

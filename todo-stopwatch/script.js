@@ -760,6 +760,7 @@
 
   let weekAnchor = state.day; // any date string within the displayed week
   let selectedDayDetail = null; // date string whose textual summary is shown below the grid
+  let selectedPlanId = null; // plan currently tapped; shows a resize handle on its block
   let calendarAutoScrollPending = true;
   // live-updating pieces, refreshed every second without a full rebuild
   let calendarLiveBlocks = []; // { el, startMs, dayStart }
@@ -884,6 +885,8 @@
       e.stopPropagation();
       vibrate(10);
     }
+    selectedPlanId = plan.id;
+    renderCalendar();
     calendarDetail.hidden = false;
     calendarDetail.innerHTML = "";
     const line = document.createElement("div");
@@ -902,7 +905,6 @@
       if (name === null) return;
       plan.label = name.trim() || plan.label;
       savePlans();
-      renderCalendar();
       onPlanBlockClick(null, dateStr, plan);
     });
 
@@ -912,6 +914,7 @@
     delBtn.textContent = "削除";
     delBtn.addEventListener("click", () => {
       removePlan(dateStr, plan.id);
+      selectedPlanId = null;
       calendarDetail.hidden = true;
       calendarDetail.innerHTML = "";
       renderCalendar();
@@ -1097,6 +1100,62 @@
     removePlan(dateStr, plan.id);
     addPlan(hoverDate, { ...plan, startMin: previewStartMin, endMin: previewStartMin + duration });
     renderCalendar();
+  }
+
+  // --- plan resize (drag the handle on a selected block's bottom edge) ---
+
+  let planResizeCtx = null;
+
+  function startPlanResize(e, block, handle, dayCol, dateStr, plan) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    planResizeCtx = {
+      block,
+      handle,
+      dayCol,
+      dateStr,
+      plan,
+      startClientY: e.clientY,
+      previewEndMin: plan.endMin,
+      lastVibrateMin: plan.endMin,
+    };
+    document.addEventListener("pointermove", onPlanResizeMove);
+    document.addEventListener("pointerup", onPlanResizeEnd);
+    document.addEventListener("pointercancel", onPlanResizeEnd);
+  }
+
+  function onPlanResizeMove(e) {
+    if (!planResizeCtx) return;
+    e.preventDefault();
+    const { dayCol, plan, startClientY } = planResizeCtx;
+    const rect = dayCol.getBoundingClientRect();
+    const deltaMin = ((e.clientY - startClientY) / rect.height) * 1440;
+    let endMin = Math.round((plan.endMin + deltaMin) / 15) * 15;
+    endMin = Math.max(plan.startMin + 15, Math.min(1440, endMin));
+    planResizeCtx.previewEndMin = endMin;
+    if (endMin !== planResizeCtx.lastVibrateMin) {
+      vibrate(8);
+      planResizeCtx.lastVibrateMin = endMin;
+    }
+    planResizeCtx.block.style.height = `${((endMin - plan.startMin) / 1440) * 100}%`;
+    planResizeCtx.handle.style.top = `${(endMin / 1440) * 100}%`;
+  }
+
+  function onPlanResizeEnd() {
+    if (!planResizeCtx) return;
+    const { dateStr, plan, previewEndMin } = planResizeCtx;
+    document.removeEventListener("pointermove", onPlanResizeMove);
+    document.removeEventListener("pointerup", onPlanResizeEnd);
+    document.removeEventListener("pointercancel", onPlanResizeEnd);
+    planResizeCtx = null;
+
+    if (previewEndMin !== plan.endMin) {
+      vibrate(20);
+      plan.endMin = previewEndMin;
+      savePlans();
+    }
+    onPlanBlockClick(null, dateStr, plan);
   }
 
   // Lays same-day overlapping segments (e.g. a task plus a concurrent 別件
@@ -1285,7 +1344,22 @@
             block.style.color = color;
             block.textContent = p.label;
             block.addEventListener("pointerdown", (e) => startPlanDrag(e, block, dateStr, p));
+
             dayCol.appendChild(block);
+
+            if (p.id === selectedPlanId) {
+              block.classList.add("selected");
+              // A sibling of block, not a child: .cal-plan-block clips overflow
+              // for text-ellipsis, which would clip a handle meant to protrude
+              // past its bottom edge and make it untappable.
+              const handle = document.createElement("div");
+              handle.className = "cal-plan-resize-handle";
+              handle.style.top = `${(p.endMin / 1440) * 100}%`;
+              handle.style.left = `calc(${(col / colCount) * 100}% + ${(1 / colCount) * 50}%)`;
+              handle.style.background = color;
+              handle.addEventListener("pointerdown", (e) => startPlanResize(e, block, handle, dayCol, dateStr, p));
+              dayCol.appendChild(handle);
+            }
           }
         );
 
