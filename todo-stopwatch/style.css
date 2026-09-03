@@ -1015,6 +1015,13 @@ body {
   padding: 6px 2px;
   border-top: 1px solid var(--line);
   transition: background 0.15s ease;
+  /* Chips already block iOS's text-selection callout, but the title label
+     and the gaps around chips didn't — a press-and-drag starting there
+     could trigger native text selection instead of the tray's own drag
+     gestures. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .calendar-unplanned.drop-target {
