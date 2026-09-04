@@ -1043,6 +1043,11 @@ body {
   gap: 6px;
   overflow-x: auto;
   padding: 2px 0;
+  /* Without this, scrolling past either edge of the いつか tray chains into
+     .pages (the タイマー/内訳/履歴/カレンダー tab pager, itself horizontally
+     scrollable with scroll-snap), so a swipe meant to browse チップs could
+     switch tabs instead. */
+  overscroll-behavior-x: contain;
 }
 
 .calendar-unplanned-empty {
