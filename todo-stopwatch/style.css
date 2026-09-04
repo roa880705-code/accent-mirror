@@ -1135,6 +1135,10 @@ body {
   gap: 4px;
 }
 
+.cal-unscheduled-day.drop-target {
+  background: var(--accent-soft);
+}
+
 .cal-unscheduled-row {
   box-sizing: border-box;
   height: 30px;

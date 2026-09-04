@@ -1466,6 +1466,23 @@
       vibrate(15);
     }
 
+    // dragging this row into the いつか tray sends it back to the backlog
+    // instead of scheduling it
+    const boxRect = calendarUnplannedBox.getBoundingClientRect();
+    const overBox =
+      e.clientX >= boxRect.left &&
+      e.clientX <= boxRect.right &&
+      e.clientY >= boxRect.top &&
+      e.clientY <= boxRect.bottom;
+    calendarUnplannedBox.classList.toggle("drop-target", overBox);
+    dayUnschedDragCtx.overUnplannedBox = overBox;
+    if (overBox) {
+      Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+      dayUnschedDragCtx.targetCol = null;
+      clearDragPreview();
+      return;
+    }
+
     const cols = Array.from(calendarWeekGrid.children);
     let targetCol = null;
     for (const col of cols) {
@@ -1499,16 +1516,38 @@
 
   function onDayUnscheduledDragEnd() {
     if (!dayUnschedDragCtx) return;
-    const { row, item, dateStr, moved, targetCol, clientY } = dayUnschedDragCtx;
+    const { row, item, dateStr, moved, targetCol, clientY, overUnplannedBox } = dayUnschedDragCtx;
     document.removeEventListener("pointermove", onDayUnscheduledDragMove);
     document.removeEventListener("pointerup", onDayUnscheduledDragEnd);
     document.removeEventListener("pointercancel", onDayUnscheduledDragEnd);
     row.classList.remove("dragging");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+    calendarUnplannedBox.classList.remove("drop-target");
     clearDragPreview();
     dayUnschedDragCtx = null;
 
-    if (!moved || !targetCol) return;
+    if (!moved) return;
+
+    if (overUnplannedBox) {
+      if (item.elapsedMs > 0 || item.running) {
+        // real recorded time exists: refuse the move so it isn't lost, いつか
+        // entries carry no time fields to hold it
+        vibrate([10, 30, 10]);
+        return;
+      }
+      const items = itemsArrayForDate(dateStr);
+      const idx = items.indexOf(item);
+      if (idx >= 0) items.splice(idx, 1);
+      someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: labelOf(item, "予定") });
+      saveSomeday();
+      persistItemsForDate(dateStr);
+      refreshTimerIfShowing(dateStr);
+      vibrate(20);
+      renderCalendar();
+      return;
+    }
+
+    if (!targetCol) return;
 
     const rect = targetCol.getBoundingClientRect();
     const relY = clientY - rect.top;
@@ -1641,7 +1680,7 @@
           e.clientX >= rect.left &&
           e.clientX <= rect.right &&
           e.clientY >= rect.top &&
-          e.clientY <= rect.top + 24 * CAL_HOUR_H
+          e.clientY <= rect.bottom
         ) {
           targetCol = col;
           break;
@@ -1654,11 +1693,22 @@
       if (targetCol) {
         const colRect = targetCol.getBoundingClientRect();
         const relY = e.clientY - colRect.top;
-        const rawMin = pxToMin(relY);
-        let startMin = Math.round(rawMin / 15) * 15;
-        startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
-        showDragPreview(targetCol, ctx.task.label, startMin, PLAN_DEFAULT_MIN);
+        // dropping below the 24-hour line sends it to that day's own "time
+        // undetermined" list instead of a specific timed slot
+        const overZone = targetCol.dataset.date >= state.day && relY > 24 * CAL_HOUR_H;
+        ctx.overZone = overZone;
+        const zoneEl = targetCol.querySelector(".cal-unscheduled-day");
+        if (zoneEl) zoneEl.classList.toggle("drop-target", overZone);
+        if (overZone) {
+          clearDragPreview();
+        } else {
+          const rawMin = pxToMin(relY);
+          let startMin = Math.round(rawMin / 15) * 15;
+          startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+          showDragPreview(targetCol, ctx.task.label, startMin, PLAN_DEFAULT_MIN);
+        }
       } else {
+        ctx.overZone = false;
         clearDragPreview();
       }
       return;
@@ -1699,6 +1749,7 @@
     if (ctx.longPressTimer) clearTimeout(ctx.longPressTimer);
     ctx.chip.classList.remove("armed");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+    Array.from(document.querySelectorAll(".cal-unscheduled-day.drop-target")).forEach((z) => z.classList.remove("drop-target"));
     clearDragPreview();
 
     if (ctx.phase === "scroll") {
@@ -1709,10 +1760,23 @@
     if (ctx.phase === "schedule") {
       ctx.chip.classList.remove("dragging");
       somedayDragCtx = null;
-      const { task, targetCol, clientY } = ctx;
+      const { task, targetCol, clientY, overZone } = ctx;
       if (!targetCol) return;
 
       const dateStr = targetCol.dataset.date;
+
+      if (overZone) {
+        const item = freshItem(task.label);
+        ensureItemsArrayForDate(dateStr).push(item);
+        persistItemsForDate(dateStr);
+        refreshTimerIfShowing(dateStr);
+        someday = someday.filter((t) => t.id !== task.id);
+        saveSomeday();
+        vibrate(20);
+        renderCalendar();
+        return;
+      }
+
       const rect = targetCol.getBoundingClientRect();
       const relY = clientY - rect.top;
       const rawMin = pxToMin(relY);
