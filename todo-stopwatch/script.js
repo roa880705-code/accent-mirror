@@ -1096,6 +1096,7 @@
   // --- plan creation (long-press on empty grid space) ---
 
   const PLAN_DEFAULT_MIN = 30;
+  const PLAN_MIN_DURATION = 15; // minimum length a hand-drawn plan can shrink to
   const PLAN_LONGPRESS_MS = 500;
   const PLAN_MOVE_TOLERANCE = 8;
 
@@ -1161,19 +1162,92 @@
       timer = null;
       cleanup();
       activeDayPress = null;
-      createPlanAtPosition(dayCol, dateStr, startY);
+      startPlanRangeDraw(dayCol, dateStr, startY);
     }, PLAN_LONGPRESS_MS);
   }
 
-  async function createPlanAtPosition(dayCol, dateStr, clientY) {
+  // --- Googleカレンダー式: 長押しで始点を固定し、指を離すまでドラッグで
+  // 任意の時間帯(長さ)を決めてから、最後に名前の入力に進む ---
+
+  let planDrawCtx = null;
+
+  function startPlanRangeDraw(dayCol, dateStr, startClientY) {
     vibrate(20);
     const rect = dayCol.getBoundingClientRect();
-    const relY = clientY - rect.top;
-    const rawMin = pxToMin(relY);
-    let startMin = Math.round(rawMin / 15) * 15;
-    startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
-    const endMin = startMin + PLAN_DEFAULT_MIN;
+    const rawMin = pxToMin(startClientY - rect.top);
+    let anchorMin = Math.round(rawMin / 15) * 15;
+    anchorMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, anchorMin));
+    // starts at the usual default length so a long-press with no follow-up
+    // drag still creates a normal-sized plan; dragging overrides this as
+    // soon as the pointer moves.
+    const initialEnd = Math.min(1440, anchorMin + PLAN_DEFAULT_MIN);
 
+    planDrawCtx = {
+      dayCol,
+      dateStr,
+      anchorMin,
+      startClientY,
+      startMin: anchorMin,
+      endMin: initialEnd,
+      lastVibrateStart: anchorMin,
+      lastVibrateEnd: initialEnd,
+    };
+    showDragPreview(dayCol, `${formatMinHM(anchorMin)}〜${formatMinHM(initialEnd)}`, anchorMin, initialEnd - anchorMin);
+
+    document.addEventListener("pointermove", onPlanRangeDrawMove);
+    document.addEventListener("pointerup", onPlanRangeDrawEnd);
+    document.addEventListener("pointercancel", onPlanRangeDrawEnd);
+  }
+
+  function onPlanRangeDrawMove(e) {
+    if (!planDrawCtx) return;
+    e.preventDefault();
+    const ctx = planDrawCtx;
+    // ignore sub-pixel jitter right after the long-press fires so the
+    // default 30-min block doesn't shrink to the 15-min floor on a
+    // stationary finger — only a real, deliberate drag should override it
+    if (Math.abs(e.clientY - ctx.startClientY) < PLAN_MOVE_TOLERANCE) return;
+    const rect = ctx.dayCol.getBoundingClientRect();
+    const rawMin = pxToMin(e.clientY - rect.top);
+    let pointerMin = Math.round(rawMin / 15) * 15;
+    pointerMin = Math.max(0, Math.min(1440, pointerMin));
+
+    // the drag can extend either later (below the anchor) or earlier (above
+    // it) — whichever side the pointer is on becomes the moving edge, while
+    // the long-press point itself never moves, like a click-drag selection
+    let startMin = Math.min(ctx.anchorMin, pointerMin);
+    let endMin = Math.max(ctx.anchorMin, pointerMin);
+    if (endMin - startMin < PLAN_MIN_DURATION) {
+      if (pointerMin >= ctx.anchorMin) endMin = startMin + PLAN_MIN_DURATION;
+      else startMin = endMin - PLAN_MIN_DURATION;
+    }
+    startMin = Math.max(0, startMin);
+    endMin = Math.min(1440, endMin);
+
+    ctx.startMin = startMin;
+    ctx.endMin = endMin;
+
+    if (startMin !== ctx.lastVibrateStart || endMin !== ctx.lastVibrateEnd) {
+      vibrate(8);
+      ctx.lastVibrateStart = startMin;
+      ctx.lastVibrateEnd = endMin;
+    }
+    showDragPreview(ctx.dayCol, `${formatMinHM(startMin)}〜${formatMinHM(endMin)}`, startMin, endMin - startMin);
+  }
+
+  function onPlanRangeDrawEnd() {
+    if (!planDrawCtx) return;
+    const { dateStr, startMin, endMin } = planDrawCtx;
+    document.removeEventListener("pointermove", onPlanRangeDrawMove);
+    document.removeEventListener("pointerup", onPlanRangeDrawEnd);
+    document.removeEventListener("pointercancel", onPlanRangeDrawEnd);
+    clearDragPreview();
+    planDrawCtx = null;
+    vibrate(20);
+    finalizePlanRangeDraw(dateStr, startMin, endMin);
+  }
+
+  async function finalizePlanRangeDraw(dateStr, startMin, endMin) {
     const name = await openNameModal("");
     if (name === null) return;
     const label = name.trim() || "予定";
