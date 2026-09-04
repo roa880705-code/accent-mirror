@@ -4,6 +4,7 @@
   const DRAFTS_KEY = "todoStopwatch:drafts:v1";
   const PLANS_KEY = "todoStopwatch:plans:v1";
   const SOMEDAY_KEY = "todoStopwatch:someday:v1";
+  const DAY_TITLES_KEY = "todoStopwatch:dayTitles:v1";
   const MAX_HISTORY = 60;
   const MAX_COUNT = 40;
   const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
@@ -125,11 +126,27 @@
     return [];
   }
 
+  function loadDayTitles() {
+    try {
+      const raw = localStorage.getItem(DAY_TITLES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      // corrupt storage, fall through to empty
+    }
+    return {};
+  }
+
   let state = loadState();
   let history = loadHistory();
   let drafts = loadDrafts();
   let plans = loadPlans();
   let someday = loadSomeday(); // tasks with no day or time assigned yet ("いつか")
+  // day titles are a label on the DATE itself (e.g. "旅行"), distinct from
+  // any plan or task placed on that date — keyed by date string.
+  let dayTitles = loadDayTitles();
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -149,6 +166,25 @@
 
   function saveSomeday() {
     localStorage.setItem(SOMEDAY_KEY, JSON.stringify(someday));
+  }
+
+  function saveDayTitles() {
+    localStorage.setItem(DAY_TITLES_KEY, JSON.stringify(dayTitles));
+  }
+
+  function dayTitleFor(dateStr) {
+    return dayTitles[dateStr] || "";
+  }
+
+  async function editDayTitle(dateStr) {
+    const current = dayTitleFor(dateStr);
+    const name = await openNameModal(current, "日付のタイトルを入力");
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (trimmed) dayTitles[dateStr] = trimmed;
+    else delete dayTitles[dateStr];
+    saveDayTitles();
+    renderCalendar();
   }
 
   // viewingDate is the date currently shown in the タスク list. It usually
@@ -583,8 +619,8 @@
     });
   }
 
-  function openNameModal(initial) {
-    return openModal({ title: "タスク名を入力", showInput: true, initialValue: initial });
+  function openNameModal(initial, title = "タスク名を入力") {
+    return openModal({ title, showInput: true, initialValue: initial });
   }
 
   function openConfirmModal(message) {
@@ -2145,6 +2181,19 @@
       dateEl.textContent = String(d.getDate());
       header.append(weekdayEl, dateEl);
 
+      // day title: a label on the date itself, separate from any plan or
+      // task placed on it — shown right under the date, above the time grid
+      const titleEl = document.createElement("span");
+      const dayTitle = dayTitleFor(dateStr);
+      titleEl.className = dayTitle ? "cdh-title" : "cdh-title empty";
+      titleEl.textContent = dayTitle || "+";
+      titleEl.title = dayTitle ? "タップしてタイトルを編集" : "タップして日付にタイトルを追加";
+      titleEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        editDayTitle(dateStr);
+      });
+      header.appendChild(titleEl);
+
       const draft = drafts[dateStr];
       if (dateStr > state.day && draft && draft.length) {
         const dot = document.createElement("span");
@@ -2360,7 +2409,7 @@
   // weeks are on screen or the scroll position.
   function refreshMonthlyCellContent(cell, dateStr) {
     cell.classList.toggle("today", dateStr === todayStr());
-    cell.querySelectorAll(".mc-date, .mc-month-tag, .mc-events").forEach((el) => el.remove());
+    cell.querySelectorAll(".mc-date, .mc-month-tag, .mc-day-title, .mc-events").forEach((el) => el.remove());
 
     const d = parseDateStr(dateStr);
     const dateEl = document.createElement("span");
@@ -2373,6 +2422,21 @@
       tag.className = "mc-month-tag";
       tag.textContent = `${d.getMonth() + 1}月`;
       cell.appendChild(tag);
+    }
+
+    // day title takes priority over the timed plans/tasks below it — always
+    // shown first, at the very top of the cell's event area
+    const dayTitle = dayTitleFor(dateStr);
+    if (dayTitle) {
+      const titleEl = document.createElement("span");
+      titleEl.className = "mc-day-title";
+      titleEl.textContent = dayTitle;
+      titleEl.title = "タップしてタイトルを編集";
+      titleEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        editDayTitle(dateStr);
+      });
+      cell.appendChild(titleEl);
     }
 
     const labels = labelsForDate(dateStr);

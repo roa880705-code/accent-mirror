@@ -936,6 +936,26 @@ body {
   color: #fff;
 }
 
+/* day title: a label on the date itself (e.g. "旅行"), separate from any
+   plan or task on it — shown filled-in so it reads as a title, and placed
+   above the regular event list so it always wins the limited space there */
+.mc-day-title {
+  align-self: stretch;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.5rem;
+  font-weight: 700;
+  text-align: center;
+  color: #fff;
+  background: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
 .mc-events {
   align-self: stretch;
   width: 100%;
@@ -1073,6 +1093,30 @@ body {
 .calendar-day-header.today .cdh-date {
   color: #fff;
   background: var(--accent);
+}
+
+/* day title: separate from any plan/task on the date, so it's shown filled
+   solid to read as a title, sitting right under the date and above the
+   scrollable hour grid below it */
+.calendar-day-header .cdh-title {
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calendar-day-header .cdh-title.empty {
+  background: transparent;
+  border: 1.5px dashed var(--line);
+  color: var(--muted);
+  padding: 1px 6px;
 }
 
 .calendar-day-header .cdh-dot {
