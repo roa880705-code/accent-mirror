@@ -36,7 +36,6 @@
           parsed &&
           typeof parsed.day === "string" &&
           Array.isArray(parsed.items) &&
-          parsed.items.length >= 1 &&
           parsed.sidework &&
           parsed.interrupt &&
           parsed.chore
