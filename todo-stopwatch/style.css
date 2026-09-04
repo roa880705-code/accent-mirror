@@ -110,6 +110,10 @@ body {
   gap: clamp(4px, 1vh, 10px);
 }
 
+.app-header[hidden] {
+  display: none;
+}
+
 .app-header {
   display: flex;
   align-items: center;
@@ -118,14 +122,6 @@ body {
   flex: none;
   padding-bottom: clamp(5px, 1vh, 10px);
   border-bottom: 1px solid var(--line);
-}
-
-.app-header h1 {
-  margin: 0;
-  font-size: clamp(0.95rem, 2.2vw, 1.25rem);
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
 }
 
 .header-left {
@@ -177,10 +173,6 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.total-panel[hidden] {
-  display: none;
 }
 
 .total-panel {

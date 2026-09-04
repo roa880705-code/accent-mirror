@@ -305,7 +305,7 @@
   const template = document.getElementById("rowTemplate");
   const totalTimeEl = document.getElementById("totalTime");
   const resetAllBtn = document.getElementById("resetAllBtn");
-  const totalPanelEl = document.getElementById("totalPanel");
+  const appHeaderEl = document.querySelector(".app-header");
   const breakdownEl = document.getElementById("breakdown");
   const historyEl = document.getElementById("history");
   const listWrap = document.querySelector(".list-wrap");
@@ -1688,6 +1688,10 @@
       const cols = Array.from(calendarWeekGrid.children);
       let targetCol = null;
       for (const col of cols) {
+        // a past day can't be a drop target: いつか has no linked timer item
+        // once its date has passed, so anything dropped there would just
+        // vanish into an unreachable past-day draft
+        if (col.dataset.date < state.day) continue;
         const rect = col.getBoundingClientRect();
         if (
           e.clientX >= rect.left &&
@@ -1708,7 +1712,7 @@
         const relY = e.clientY - colRect.top;
         // dropping below the 24-hour line sends it to that day's own "time
         // undetermined" list instead of a specific timed slot
-        const overZone = targetCol.dataset.date >= state.day && relY > 24 * CAL_HOUR_H;
+        const overZone = relY > 24 * CAL_HOUR_H;
         ctx.overZone = overZone;
         const zoneEl = targetCol.querySelector(".cal-unscheduled-day");
         if (zoneEl) zoneEl.classList.toggle("drop-target", overZone);
@@ -1829,7 +1833,22 @@
       return;
     }
 
-    // phase === "pending": a tap, or a gesture that bailed out early — nothing to do
+    if (ctx.phase === "pending") {
+      // a plain tap, with no drag ever starting: rename this いつか task
+      const { task } = ctx;
+      somedayDragCtx = null;
+      openNameModal(task.label).then((name) => {
+        if (name === null) return;
+        const label = name.trim();
+        if (!label) return;
+        task.label = label;
+        saveSomeday();
+        renderSomedayList();
+      });
+      return;
+    }
+
+    // a gesture that bailed out early some other way — nothing to do
     somedayDragCtx = null;
   }
 
@@ -2236,10 +2255,8 @@
   // 隠して画面を広く使う。
   function updateHeaderForTab() {
     const onTask = activePage === TASK_PAGE;
-    dayPicker.hidden = !onTask;
-    totalPanelEl.hidden = !onTask;
-    resetAllBtn.hidden = !onTask;
-    draftBadge.hidden = !onTask || isLive();
+    appHeaderEl.hidden = !onTask;
+    draftBadge.hidden = isLive();
   }
 
   function setActiveTab(i) {
