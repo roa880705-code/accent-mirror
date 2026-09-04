@@ -828,6 +828,21 @@
   const CAL_PALETTE = ["#b8672a", "#3e8c4e", "#5b7596", "#a3651f", "#7a6ba8", "#3f7a75", "#ab3d3d", "#62744c"];
   const CAL_UNSCHEDULED_ROW_H = 34; // px per row in today's "unscheduled but today" list
   const CAL_UNSCHEDULED_GAP = 4;
+  // 学校の時限表示: 8-9時を0限、9-13時を1-4限、13-14時は昼休みで表示なし、
+  // 14-20時を5-10限として、各時間枠の中央にマークする。
+  const PERIOD_LABELS = [
+    { hour: 8, symbol: "⓪" },
+    { hour: 9, symbol: "①" },
+    { hour: 10, symbol: "②" },
+    { hour: 11, symbol: "③" },
+    { hour: 12, symbol: "④" },
+    { hour: 14, symbol: "⑤" },
+    { hour: 15, symbol: "⑥" },
+    { hour: 16, symbol: "⑦" },
+    { hour: 17, symbol: "⑧" },
+    { hour: 18, symbol: "⑨" },
+    { hour: 19, symbol: "⑩" },
+  ];
 
   // Grid block positions are pixel-based (not %) because the grid's total
   // height isn't always exactly 24h anymore — it grows to fit today's
@@ -2171,6 +2186,13 @@
       label.textContent = `${h}:00`;
       calendarHours.appendChild(label);
     }
+    PERIOD_LABELS.forEach(({ hour, symbol }) => {
+      const label = document.createElement("div");
+      label.className = "cal-period-label";
+      label.style.top = `${(hour + 0.5) * CAL_HOUR_H}px`;
+      label.textContent = symbol;
+      calendarHours.appendChild(label);
+    });
   }
 
   // --- monthly calendar page (Monday-start; tap a day to jump the daily

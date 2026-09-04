@@ -1085,6 +1085,20 @@ body {
   white-space: nowrap;
 }
 
+/* 時限マーク: 8-9時を0限として9-13時に1-4限、14-20時に5-10限を振る
+   (13-14時の昼休みは番号なし)。 */
+.cal-period-label {
+  position: absolute;
+  left: 0;
+  right: 4px;
+  text-align: right;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--tab-daily);
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+
 .calendar-week-grid {
   flex: 1;
   min-width: 0;
