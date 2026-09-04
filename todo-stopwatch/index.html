@@ -24,62 +24,72 @@
   </header>
 
   <nav class="tabs" id="tabs">
-    <button class="tab-btn active" data-page="0" type="button">タスク</button>
-    <button class="tab-btn" data-page="1" type="button">内訳</button>
-    <button class="tab-btn" data-page="2" type="button">履歴</button>
-    <button class="tab-btn" data-page="3" type="button">カレンダー</button>
+    <button class="tab-btn tab-monthly" type="button">マンスリー</button>
+    <button class="tab-btn tab-daily" type="button">デイリー</button>
+    <div class="tab-btn tab-task" id="taskTabBtn">
+      <span class="tab-task-label">タスク</span>
+      <button type="button" class="tab-round-btn tab-round-breakdown" id="openBreakdownBtn">内訳</button>
+      <button type="button" class="tab-round-btn tab-round-history" id="openHistoryBtn">履歴</button>
+    </div>
   </nav>
 
   <div class="pages" id="pages">
-    <section class="page">
-      <div class="sidework-bar">
-        <div class="sidework-widget" id="sideworkWidget">
-          <input class="sidework-input" id="sideworkInput" type="text" maxlength="16">
-          <button class="sidework-circle" id="sideworkCircle" type="button">
-            <span class="sidework-time" id="sideworkTime">00:00:00</span>
-          </button>
+    <div class="pages-track" id="pagesTrack">
+      <section class="page">
+        <div class="monthly-calendar" id="monthlyCalendar">
+          <div class="calendar-header">
+            <button id="monthlyPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の月">&#8249;</button>
+            <span id="monthlyLabel" class="calendar-month-label"></span>
+            <button id="monthlyNextBtn" class="calendar-nav-btn" type="button" aria-label="次の月">&#8250;</button>
+          </div>
+          <div class="monthly-weekday-row" id="monthlyWeekdayRow"></div>
+          <div class="monthly-grid" id="monthlyGrid"></div>
         </div>
-        <div class="side-btn-stack">
-          <button id="deductPrevBtn" class="side-btn" type="button" title="割込の時間分を、進行中のタスクから差し引きます(どこにも保存しません)">進行中<br>から差引</button>
-          <button id="newTaskBtn" class="side-btn" type="button" title="割込の時間を、進行中のタスクから差し引いたうえで、名前をつけて新しいタスクとしてリストの先頭に追加します">新規タスク<br>として追加</button>
+      </section>
+      <section class="page">
+        <div class="calendar">
+          <div class="calendar-header">
+            <button id="calendarPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の週">&#8249;</button>
+            <span id="calendarWeekLabel" class="calendar-month-label"></span>
+            <button id="calendarNextBtn" class="calendar-nav-btn" type="button" aria-label="次の週">&#8250;</button>
+          </div>
+          <div class="calendar-week-header" id="calendarWeekHeader"></div>
+          <div class="calendar-week-body" id="calendarWeekBody">
+            <div class="calendar-hours" id="calendarHours"></div>
+            <div class="calendar-week-grid" id="calendarWeekGrid"></div>
+          </div>
+          <div class="calendar-unplanned" id="calendarUnplannedBox">
+            <span class="calendar-unplanned-title">いつか</span>
+            <div class="calendar-unplanned-list" id="calendarUnplannedList"></div>
+            <button type="button" class="calendar-someday-add" id="calendarSomedayAddBtn" aria-label="いつかタスクを追加">＋</button>
+          </div>
+          <div id="calendarDetail" class="calendar-detail" hidden></div>
         </div>
-        <div class="sidework-widget" id="choreWidget">
-          <input class="sidework-input" id="choreInput" type="text" maxlength="16">
-          <button class="sidework-circle" id="choreCircle" type="button">
-            <span class="sidework-time" id="choreTime">00:00:00</span>
-          </button>
+      </section>
+      <section class="page">
+        <div class="sidework-bar">
+          <div class="sidework-widget" id="sideworkWidget">
+            <input class="sidework-input" id="sideworkInput" type="text" maxlength="16">
+            <button class="sidework-circle" id="sideworkCircle" type="button">
+              <span class="sidework-time" id="sideworkTime">00:00:00</span>
+            </button>
+          </div>
+          <div class="side-btn-stack">
+            <button id="deductPrevBtn" class="side-btn" type="button" title="割込の時間分を、進行中のタスクから差し引きます(どこにも保存しません)">進行中<br>から差引</button>
+            <button id="newTaskBtn" class="side-btn" type="button" title="割込の時間を、進行中のタスクから差し引いたうえで、名前をつけて新しいタスクとしてリストの先頭に追加します">新規タスク<br>として追加</button>
+          </div>
+          <div class="sidework-widget" id="choreWidget">
+            <input class="sidework-input" id="choreInput" type="text" maxlength="16">
+            <button class="sidework-circle" id="choreCircle" type="button">
+              <span class="sidework-time" id="choreTime">00:00:00</span>
+            </button>
+          </div>
         </div>
-      </div>
-      <div class="list-wrap">
-        <main id="list" class="list"></main>
-      </div>
-    </section>
-    <section class="page">
-      <div id="breakdown" class="breakdown"></div>
-    </section>
-    <section class="page">
-      <div id="history" class="history"></div>
-    </section>
-    <section class="page">
-      <div class="calendar">
-        <div class="calendar-header">
-          <button id="calendarPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の週">&#8249;</button>
-          <span id="calendarWeekLabel" class="calendar-month-label"></span>
-          <button id="calendarNextBtn" class="calendar-nav-btn" type="button" aria-label="次の週">&#8250;</button>
+        <div class="list-wrap">
+          <main id="list" class="list"></main>
         </div>
-        <div class="calendar-week-header" id="calendarWeekHeader"></div>
-        <div class="calendar-week-body" id="calendarWeekBody">
-          <div class="calendar-hours" id="calendarHours"></div>
-          <div class="calendar-week-grid" id="calendarWeekGrid"></div>
-        </div>
-        <div class="calendar-unplanned" id="calendarUnplannedBox">
-          <span class="calendar-unplanned-title">いつか</span>
-          <div class="calendar-unplanned-list" id="calendarUnplannedList"></div>
-          <button type="button" class="calendar-someday-add" id="calendarSomedayAddBtn" aria-label="いつかタスクを追加">＋</button>
-        </div>
-        <div id="calendarDetail" class="calendar-detail" hidden></div>
-      </div>
-    </section>
+      </section>
+    </div>
   </div>
 </div>
 
@@ -101,6 +111,26 @@
       <button class="btn btn-modal-cancel" id="nameModalCancel" type="button">キャンセル</button>
       <button class="btn btn-modal-ok" id="nameModalOk" type="button">OK</button>
     </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="breakdownModal" hidden>
+  <div class="modal-box modal-box-wide" role="dialog" aria-modal="true" aria-labelledby="breakdownModalTitle">
+    <div class="modal-panel-header">
+      <h2 id="breakdownModalTitle">内訳</h2>
+      <button type="button" class="modal-close-btn" id="breakdownModalClose" aria-label="閉じる">&times;</button>
+    </div>
+    <div id="breakdown" class="breakdown"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="historyModal" hidden>
+  <div class="modal-box modal-box-wide" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
+    <div class="modal-panel-header">
+      <h2 id="historyModalTitle">履歴</h2>
+      <button type="button" class="modal-close-btn" id="historyModalClose" aria-label="閉じる">&times;</button>
+    </div>
+    <div id="history" class="history"></div>
   </div>
 </div>
 

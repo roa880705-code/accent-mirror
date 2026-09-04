@@ -319,6 +319,17 @@
   const calendarSomedayAddBtn = document.getElementById("calendarSomedayAddBtn");
   const calendarPrevBtn = document.getElementById("calendarPrevBtn");
   const calendarNextBtn = document.getElementById("calendarNextBtn");
+  const monthlyLabel = document.getElementById("monthlyLabel");
+  const monthlyWeekdayRow = document.getElementById("monthlyWeekdayRow");
+  const monthlyGrid = document.getElementById("monthlyGrid");
+  const monthlyPrevBtn = document.getElementById("monthlyPrevBtn");
+  const monthlyNextBtn = document.getElementById("monthlyNextBtn");
+  const breakdownModal = document.getElementById("breakdownModal");
+  const historyModal = document.getElementById("historyModal");
+  const openBreakdownBtn = document.getElementById("openBreakdownBtn");
+  const openHistoryBtn = document.getElementById("openHistoryBtn");
+  const breakdownModalClose = document.getElementById("breakdownModalClose");
+  const historyModalClose = document.getElementById("historyModalClose");
 
   let rowEls = [];
 
@@ -827,6 +838,7 @@
   }
 
   let weekAnchor = state.day; // any date string within the displayed week
+  let monthAnchor = state.day; // any date string within the displayed month (マンスリーカレンダー)
   let selectedDayDetail = null; // date string whose textual summary is shown below the grid
   let selectedPlanId = null; // plan currently tapped; shows a resize handle on its block
   let calendarAutoScrollPending = true;
@@ -966,7 +978,7 @@
   function onCalendarHeaderClick(dateStr) {
     if (dateStr >= state.day) {
       goToDate(dateStr);
-      goToPage(0);
+      goToPage(2); // タスク tab
       return;
     }
     selectedDayDetail = selectedDayDetail === dateStr ? null : dateStr;
@@ -2090,6 +2102,8 @@
         calendarWeekBody.scrollTop = Math.max(0, (nowHour - 1.5) * CAL_HOUR_H);
       });
     }
+
+    renderMonthly();
   }
 
   function tickCalendarLive() {
@@ -2118,6 +2132,80 @@
     }
   }
 
+  // --- monthly calendar page (Monday-start; tap a day to jump the daily
+  // 3-day view to it) ---
+
+  const MONTH_WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
+
+  function shiftMonthlyMonth(delta) {
+    const d = parseDateStr(monthAnchor);
+    d.setMonth(d.getMonth() + delta, 1);
+    monthAnchor = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    renderMonthly();
+  }
+
+  function jumpDailyToDate(dateStr) {
+    weekAnchor = dateStr;
+    calendarAutoScrollPending = true;
+    renderCalendar();
+    goToPage(1);
+  }
+
+  function dateHasContent(dateStr) {
+    if (plans[dateStr] && plans[dateStr].length) return true;
+    return itemsArrayForDate(dateStr).some((it) => it.label && it.label.trim());
+  }
+
+  function renderMonthly() {
+    const anchor = parseDateStr(monthAnchor);
+    const year = anchor.getFullYear();
+    const month = anchor.getMonth();
+    monthlyLabel.textContent = `${year}年${month + 1}月`;
+
+    if (!monthlyWeekdayRow.childElementCount) {
+      MONTH_WEEKDAYS.forEach((w) => {
+        const span = document.createElement("span");
+        span.textContent = w;
+        monthlyWeekdayRow.appendChild(span);
+      });
+    }
+
+    monthlyGrid.innerHTML = "";
+    const firstOfMonth = new Date(year, month, 1);
+    // JS getDay() is 0=Sun..6=Sat; shift so the grid starts on Monday.
+    const leadDays = (firstOfMonth.getDay() + 6) % 7;
+    const gridStart = new Date(year, month, 1 - leadDays);
+
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(gridStart);
+      d.setDate(gridStart.getDate() + i);
+      const dateStr = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "monthly-cell";
+      if (d.getMonth() !== month) cell.classList.add("other-month");
+      if (dateStr === todayStr()) cell.classList.add("today");
+
+      const dateEl = document.createElement("span");
+      dateEl.className = "mc-date";
+      dateEl.textContent = String(d.getDate());
+      cell.appendChild(dateEl);
+
+      if (dateHasContent(dateStr)) {
+        const dot = document.createElement("span");
+        dot.className = "mc-dot";
+        cell.appendChild(dot);
+      }
+
+      cell.addEventListener("click", () => jumpDailyToDate(dateStr));
+      monthlyGrid.appendChild(cell);
+    }
+  }
+
+  monthlyPrevBtn.addEventListener("click", () => shiftMonthlyMonth(-1));
+  monthlyNextBtn.addEventListener("click", () => shiftMonthlyMonth(1));
+
   calendarPrevBtn.addEventListener("click", () => shiftCalendarWeek(-1));
   calendarNextBtn.addEventListener("click", () => shiftCalendarWeek(1));
   calendarSomedayAddBtn.addEventListener("click", async () => {
@@ -2133,17 +2221,21 @@
   initCalendarHours();
 
   // --- tabs / paging ---
+  // Page order: 0 マンスリーカレンダー, 1 デイリーカレンダー, 2 タスク.
+  // Switching is tap-only (no swipe): goToPage() slides pagesTrack via a CSS
+  // transform instead of relying on native horizontal scrolling.
 
-  const pages = document.getElementById("pages");
+  const DAILY_PAGE = 1;
+  const pagesTrack = document.getElementById("pagesTrack");
   const tabBtns = Array.from(document.querySelectorAll(".tab-btn"));
   let activePage = 0;
 
   function setActiveTab(i) {
-    if (i !== 3 && activePage === 3 && selectedPlanId) {
+    if (i !== DAILY_PAGE && activePage === DAILY_PAGE && selectedPlanId) {
       selectedPlanId = null;
       renderCalendar();
     }
-    if (i === 3 && activePage !== 3) {
+    if (i === DAILY_PAGE && activePage !== DAILY_PAGE) {
       renderCalendar(); // pick up any plan/label changes made from the timer tab
     }
     activePage = i;
@@ -2151,23 +2243,32 @@
   }
 
   function goToPage(i) {
-    pages.scrollTo({ left: i * pages.clientWidth, behavior: "smooth" });
+    pagesTrack.style.transform = `translateX(-${i * 100}%)`;
     setActiveTab(i);
   }
 
   tabBtns.forEach((btn, i) => btn.addEventListener("click", () => goToPage(i)));
 
-  pages.addEventListener(
-    "scroll",
-    () => {
-      const i = Math.round(pages.scrollLeft / pages.clientWidth);
-      if (i !== activePage) setActiveTab(i);
-    },
-    { passive: true }
-  );
+  openBreakdownBtn.addEventListener("click", () => {
+    renderBreakdown();
+    breakdownModal.hidden = false;
+  });
+  breakdownModalClose.addEventListener("click", () => {
+    breakdownModal.hidden = true;
+  });
+  breakdownModal.addEventListener("mousedown", (e) => {
+    if (e.target === breakdownModal) breakdownModal.hidden = true;
+  });
 
-  window.addEventListener("resize", () => {
-    pages.scrollTo({ left: activePage * pages.clientWidth });
+  openHistoryBtn.addEventListener("click", () => {
+    renderHistory();
+    historyModal.hidden = false;
+  });
+  historyModalClose.addEventListener("click", () => {
+    historyModal.hidden = true;
+  });
+  historyModal.addEventListener("mousedown", (e) => {
+    if (e.target === historyModal) historyModal.hidden = true;
   });
 
   // --- day picker / draft mode ---
@@ -2245,6 +2346,7 @@
   buildRows();
   render();
   renderHistory();
+  goToPage(2); // default to タスク on launch
 
   setInterval(() => {
     const rolled = rolloverIfNeeded();
