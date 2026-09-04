@@ -838,7 +838,7 @@ body {
    3-day view to it) --- */
 
 .monthly-calendar {
-  --monthly-row-h: 220px;
+  --monthly-row-h: 147px;
   flex: 1;
   min-height: 0;
   display: flex;

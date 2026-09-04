@@ -2201,13 +2201,13 @@
   // 3-day view to it) ---
 
   const MONTH_WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
-  const MONTHLY_ROW_H = 220; // px per week row; keep in sync with --monthly-row-h in style.css
+  const MONTHLY_ROW_H = 147; // px per week row; keep in sync with --monthly-row-h in style.css
   const MONTHLY_WEEKS_BEFORE = 6; // weeks rendered above today's week on first load
   const MONTHLY_WEEKS_AFTER = 8; // weeks rendered below today's week on first load
   const MONTHLY_EXTEND_WEEKS = 6; // weeks appended/prepended once the user scrolls near an edge
   const MONTHLY_EDGE_THRESHOLD = MONTHLY_ROW_H * 2; // how close to an edge triggers an extend
   const MONTHLY_MAX_WEEKS = 40; // cap on rendered weeks; the far edge is trimmed past this
-  const MONTH_CELL_MAX_EVENTS = 5;
+  const MONTH_CELL_MAX_EVENTS = 4;
 
   let monthlyWeeksStart = null; // Monday date string of the first rendered week row
   let monthlyWeeksEnd = null; // Monday date string of the last rendered week row
