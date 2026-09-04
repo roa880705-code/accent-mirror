@@ -322,7 +322,8 @@
   const calendarNextBtn = document.getElementById("calendarNextBtn");
   const monthlyLabel = document.getElementById("monthlyLabel");
   const monthlyWeekdayRow = document.getElementById("monthlyWeekdayRow");
-  const monthlyGrid = document.getElementById("monthlyGrid");
+  const monthlyWeeksScroll = document.getElementById("monthlyWeeksScroll");
+  const monthlyWeeks = document.getElementById("monthlyWeeks");
   const monthlyPrevBtn = document.getElementById("monthlyPrevBtn");
   const monthlyNextBtn = document.getElementById("monthlyNextBtn");
   const monthlyUnplannedList = document.getElementById("monthlyUnplannedList");
@@ -2159,7 +2160,7 @@
       });
     }
 
-    renderMonthly();
+    refreshAllMonthlyContent();
   }
 
   function tickCalendarLive() {
@@ -2195,16 +2196,33 @@
     });
   }
 
-  // --- monthly calendar page (Monday-start; tap a day to jump the daily
+  // --- monthly calendar page (Monday-start; weeks flow by on vertical
+  // scroll instead of paging month-to-month, tap a day to jump the daily
   // 3-day view to it) ---
 
   const MONTH_WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
+  const MONTHLY_ROW_H = 220; // px per week row; keep in sync with --monthly-row-h in style.css
+  const MONTHLY_WEEKS_BEFORE = 6; // weeks rendered above today's week on first load
+  const MONTHLY_WEEKS_AFTER = 8; // weeks rendered below today's week on first load
+  const MONTHLY_EXTEND_WEEKS = 6; // weeks appended/prepended once the user scrolls near an edge
+  const MONTHLY_EDGE_THRESHOLD = MONTHLY_ROW_H * 2; // how close to an edge triggers an extend
+  const MONTHLY_MAX_WEEKS = 40; // cap on rendered weeks; the far edge is trimmed past this
+  const MONTH_CELL_MAX_EVENTS = 5;
 
-  function shiftMonthlyMonth(delta) {
-    const d = parseDateStr(monthAnchor);
-    d.setMonth(d.getMonth() + delta, 1);
-    monthAnchor = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-    renderMonthly();
+  let monthlyWeeksStart = null; // Monday date string of the first rendered week row
+  let monthlyWeeksEnd = null; // Monday date string of the last rendered week row
+
+  function addDaysStr(dateStr, days) {
+    const d = parseDateStr(dateStr);
+    d.setDate(d.getDate() + days);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
+  function mondayOfWeek(dateStr) {
+    const d = parseDateStr(dateStr);
+    const lead = (d.getDay() + 6) % 7; // JS getDay() is 0=Sun..6=Sat; shift so weeks start Monday
+    d.setDate(d.getDate() - lead);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   }
 
   function jumpDailyToDate(dateStr) {
@@ -2223,71 +2241,165 @@
       .filter((label) => label);
   }
 
-  const MONTH_CELL_MAX_EVENTS = 3;
+  // (Re)builds one cell's date circle / month tag / event list in place —
+  // used both when a week row is first created and to refresh already-
+  // rendered cells (e.g. after a task is added) without touching which
+  // weeks are on screen or the scroll position.
+  function refreshMonthlyCellContent(cell, dateStr) {
+    cell.classList.toggle("today", dateStr === todayStr());
+    cell.querySelectorAll(".mc-date, .mc-month-tag, .mc-events").forEach((el) => el.remove());
 
-  function renderMonthly() {
-    const anchor = parseDateStr(monthAnchor);
-    const year = anchor.getFullYear();
-    const month = anchor.getMonth();
-    monthlyLabel.textContent = `${year}年${month + 1}月`;
+    const d = parseDateStr(dateStr);
+    const dateEl = document.createElement("span");
+    dateEl.className = "mc-date";
+    dateEl.textContent = String(d.getDate());
+    cell.appendChild(dateEl);
 
-    if (!monthlyWeekdayRow.childElementCount) {
-      MONTH_WEEKDAYS.forEach((w) => {
-        const span = document.createElement("span");
-        span.textContent = w;
-        monthlyWeekdayRow.appendChild(span);
-      });
+    if (d.getDate() === 1) {
+      const tag = document.createElement("span");
+      tag.className = "mc-month-tag";
+      tag.textContent = `${d.getMonth() + 1}月`;
+      cell.appendChild(tag);
     }
 
-    monthlyGrid.innerHTML = "";
-    const firstOfMonth = new Date(year, month, 1);
-    // JS getDay() is 0=Sun..6=Sat; shift so the grid starts on Monday.
-    const leadDays = (firstOfMonth.getDay() + 6) % 7;
-    const gridStart = new Date(year, month, 1 - leadDays);
-
-    for (let i = 0; i < 42; i++) {
-      const d = new Date(gridStart);
-      d.setDate(gridStart.getDate() + i);
-      const dateStr = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-
-      const cell = document.createElement("button");
-      cell.type = "button";
-      cell.className = "monthly-cell";
-      if (d.getMonth() !== month) cell.classList.add("other-month");
-      if (dateStr === todayStr()) cell.classList.add("today");
-
-      const dateEl = document.createElement("span");
-      dateEl.className = "mc-date";
-      dateEl.textContent = String(d.getDate());
-      cell.appendChild(dateEl);
-
-      const labels = labelsForDate(dateStr);
-      if (labels.length) {
-        const list = document.createElement("div");
-        list.className = "mc-events";
-        labels.slice(0, MONTH_CELL_MAX_EVENTS).forEach((label) => {
-          const row = document.createElement("span");
-          row.className = "mc-event";
-          row.textContent = label;
-          row.style.color = colorForLabel(label);
-          list.appendChild(row);
-        });
-        if (labels.length > MONTH_CELL_MAX_EVENTS) {
-          const more = document.createElement("span");
-          more.className = "mc-event mc-event-more";
-          more.textContent = `+${labels.length - MONTH_CELL_MAX_EVENTS}`;
-          list.appendChild(more);
-        }
-        cell.appendChild(list);
+    const labels = labelsForDate(dateStr);
+    if (labels.length) {
+      const list = document.createElement("div");
+      list.className = "mc-events";
+      labels.slice(0, MONTH_CELL_MAX_EVENTS).forEach((label) => {
+        const row = document.createElement("span");
+        row.className = "mc-event";
+        row.textContent = label;
+        row.style.color = colorForLabel(label);
+        list.appendChild(row);
+      });
+      if (labels.length > MONTH_CELL_MAX_EVENTS) {
+        const more = document.createElement("span");
+        more.className = "mc-event mc-event-more";
+        more.textContent = `+${labels.length - MONTH_CELL_MAX_EVENTS}`;
+        list.appendChild(more);
       }
-
-      cell.addEventListener("click", () => jumpDailyToDate(dateStr));
-      monthlyGrid.appendChild(cell);
+      cell.appendChild(list);
     }
   }
 
-  monthlyPrevBtn.addEventListener("click", () => shiftMonthlyMonth(-1));
-  monthlyNextBtn.addEventListener("click", () => shiftMonthlyMonth(1));
+  function buildMonthlyWeekRow(mondayStr) {
+    const rowEl = document.createElement("div");
+    rowEl.className = "monthly-week-row";
+    for (let i = 0; i < 7; i++) {
+      const dateStr = addDaysStr(mondayStr, i);
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "monthly-cell";
+      cell.dataset.date = dateStr;
+      refreshMonthlyCellContent(cell, dateStr);
+      cell.addEventListener("click", () => jumpDailyToDate(dateStr));
+      rowEl.appendChild(cell);
+    }
+    return rowEl;
+  }
+
+  // Refreshes every already-rendered cell's content (called whenever task/
+  // plan data changes) without rebuilding the week list or moving scroll.
+  function refreshAllMonthlyContent() {
+    Array.from(monthlyWeeks.children).forEach((rowEl) => {
+      Array.from(rowEl.children).forEach((cell) => {
+        refreshMonthlyCellContent(cell, cell.dataset.date);
+      });
+    });
+  }
+
+  function trimMonthlyWeeks(fromStart) {
+    const rows = Array.from(monthlyWeeks.children);
+    const excess = rows.length - MONTHLY_MAX_WEEKS;
+    if (excess <= 0) return;
+    if (fromStart) {
+      rows.slice(0, excess).forEach((r) => r.remove());
+      monthlyWeeksStart = addDaysStr(monthlyWeeksStart, 7 * excess);
+      monthlyWeeksScroll.scrollTop -= excess * MONTHLY_ROW_H;
+    } else {
+      rows.slice(rows.length - excess).forEach((r) => r.remove());
+      monthlyWeeksEnd = addDaysStr(monthlyWeeksEnd, -7 * excess);
+    }
+  }
+
+  function extendMonthlyWeeksBefore() {
+    const newStart = addDaysStr(monthlyWeeksStart, -7 * MONTHLY_EXTEND_WEEKS);
+    const rows = [];
+    for (let cursor = newStart; cursor < monthlyWeeksStart; cursor = addDaysStr(cursor, 7)) {
+      rows.push(buildMonthlyWeekRow(cursor));
+    }
+    const firstChild = monthlyWeeks.firstChild;
+    rows.forEach((row) => monthlyWeeks.insertBefore(row, firstChild));
+    monthlyWeeksStart = newStart;
+    // added above the viewport, so bump scrollTop by the same amount to
+    // keep whatever week the user was looking at visually in place
+    monthlyWeeksScroll.scrollTop += rows.length * MONTHLY_ROW_H;
+    trimMonthlyWeeks(false);
+  }
+
+  function extendMonthlyWeeksAfter() {
+    let cursor = monthlyWeeksEnd;
+    for (let i = 0; i < MONTHLY_EXTEND_WEEKS; i++) {
+      cursor = addDaysStr(cursor, 7);
+      monthlyWeeks.appendChild(buildMonthlyWeekRow(cursor));
+    }
+    monthlyWeeksEnd = cursor;
+    trimMonthlyWeeks(true);
+  }
+
+  function updateMonthlyLabelFromScroll() {
+    const idx = Math.max(0, Math.round(monthlyWeeksScroll.scrollTop / MONTHLY_ROW_H));
+    const mondayStr = addDaysStr(monthlyWeeksStart, 7 * idx);
+    const d = parseDateStr(mondayStr);
+    monthlyLabel.textContent = `${d.getFullYear()}年${d.getMonth() + 1}月`;
+  }
+
+  let monthlyScrollTicking = false;
+  function onMonthlyScroll() {
+    if (monthlyScrollTicking) return;
+    monthlyScrollTicking = true;
+    requestAnimationFrame(() => {
+      monthlyScrollTicking = false;
+      const { scrollTop, clientHeight, scrollHeight } = monthlyWeeksScroll;
+      if (scrollTop < MONTHLY_EDGE_THRESHOLD) extendMonthlyWeeksBefore();
+      if (scrollHeight - (scrollTop + clientHeight) < MONTHLY_EDGE_THRESHOLD) extendMonthlyWeeksAfter();
+      updateMonthlyLabelFromScroll();
+    });
+  }
+
+  // One-time setup: seeds the initial window of weeks around today and
+  // wires up the scroll-driven extend/trim behavior. Later data changes
+  // call refreshAllMonthlyContent() instead, which never touches this.
+  function initMonthlyWeeks() {
+    MONTH_WEEKDAYS.forEach((w) => {
+      const span = document.createElement("span");
+      span.textContent = w;
+      monthlyWeekdayRow.appendChild(span);
+    });
+
+    const centerMonday = mondayOfWeek(monthAnchor);
+    monthlyWeeksStart = addDaysStr(centerMonday, -7 * MONTHLY_WEEKS_BEFORE);
+    monthlyWeeksEnd = addDaysStr(centerMonday, 7 * MONTHLY_WEEKS_AFTER);
+    for (let cursor = monthlyWeeksStart; cursor <= monthlyWeeksEnd; cursor = addDaysStr(cursor, 7)) {
+      monthlyWeeks.appendChild(buildMonthlyWeekRow(cursor));
+    }
+    updateMonthlyLabelFromScroll();
+
+    monthlyWeeksScroll.addEventListener("scroll", onMonthlyScroll, { passive: true });
+
+    requestAnimationFrame(() => {
+      // today's week starts one row down from the top, not flush against it
+      monthlyWeeksScroll.scrollTop = Math.max(0, (MONTHLY_WEEKS_BEFORE - 1) * MONTHLY_ROW_H);
+    });
+  }
+
+  function scrollMonthlyByWeeks(deltaWeeks) {
+    monthlyWeeksScroll.scrollBy({ top: deltaWeeks * MONTHLY_ROW_H, behavior: "smooth" });
+  }
+
+  monthlyPrevBtn.addEventListener("click", () => scrollMonthlyByWeeks(-4));
+  monthlyNextBtn.addEventListener("click", () => scrollMonthlyByWeeks(4));
 
   calendarPrevBtn.addEventListener("click", () => shiftCalendarWeek(-1));
   calendarNextBtn.addEventListener("click", () => shiftCalendarWeek(1));
@@ -2295,6 +2407,7 @@
   monthlySomedayAddBtn.addEventListener("click", addSomedayTask);
 
   initCalendarHours();
+  initMonthlyWeeks();
 
   // --- tabs / paging ---
   // Page order: 0 マンスリーカレンダー, 1 デイリーカレンダー, 2 タスク.

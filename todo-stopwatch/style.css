@@ -838,6 +838,7 @@ body {
    3-day view to it) --- */
 
 .monthly-calendar {
+  --monthly-row-h: 220px;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -861,23 +862,34 @@ body {
   padding: 2px 0;
 }
 
-.monthly-grid {
+/* Weeks scroll by continuously (no month-page switching) — each row is a
+   fixed height so the list can be extended/trimmed at either end as the
+   user scrolls without any row resizing underneath them. */
+.monthly-weeks-scroll {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  grid-auto-rows: 1fr;
-  gap: 0;
-  /* Each cell draws its own right/bottom edge, and the grid draws the
-     remaining top/left edges, so every day reads as its own clearly
-     bounded box instead of blurring into its neighbors. */
+  overflow-y: auto;
+  overflow-x: hidden;
   border-top: 1px solid var(--line);
   border-left: 1px solid var(--line);
+}
+
+.monthly-weeks {
+  display: flex;
+  flex-direction: column;
+}
+
+.monthly-week-row {
+  flex: none;
+  height: var(--monthly-row-h);
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
 }
 
 .monthly-cell {
   all: unset;
   box-sizing: border-box;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -895,9 +907,13 @@ body {
   background: var(--panel);
 }
 
-.monthly-cell.other-month {
-  color: var(--muted);
-  opacity: 0.4;
+.mc-month-tag {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: 0.52rem;
+  font-weight: 700;
+  color: var(--tab-monthly);
 }
 
 .monthly-cell .mc-date {
