@@ -1160,6 +1160,15 @@ body {
   opacity: 0.5;
 }
 
+.cal-unscheduled-empty {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.58rem;
+  color: var(--muted);
+}
+
 .calendar-detail {
   flex: none;
   max-height: 28%;

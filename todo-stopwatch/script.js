@@ -1865,13 +1865,19 @@
     });
     const dayUnscheduled = {};
     let maxUnscheduled = 0;
+    let anyEligibleDay = false;
     dayDates.forEach((dateStr) => {
-      const unscheduled = dateStr >= state.day ? itemsArrayForDate(dateStr).filter((it) => !it.planId) : [];
+      const eligible = dateStr >= state.day;
+      if (eligible) anyEligibleDay = true;
+      const unscheduled = eligible ? itemsArrayForDate(dateStr).filter((it) => !it.planId) : [];
       dayUnscheduled[dateStr] = unscheduled;
       maxUnscheduled = Math.max(maxUnscheduled, unscheduled.length);
     });
-    const unschedExtraH = maxUnscheduled
-      ? maxUnscheduled * CAL_UNSCHEDULED_ROW_H + (maxUnscheduled - 1) * CAL_UNSCHEDULED_GAP + 16
+    // The zone is always shown (even with nothing in it) for any day that
+    // could have one, so always reserve at least one row of space for it.
+    const unschedRowCount = anyEligibleDay ? Math.max(maxUnscheduled, 1) : 0;
+    const unschedExtraH = unschedRowCount
+      ? unschedRowCount * CAL_UNSCHEDULED_ROW_H + (unschedRowCount - 1) * CAL_UNSCHEDULED_GAP + 16
       : 0;
     calendarWeekGrid.style.height = `${24 * CAL_HOUR_H + unschedExtraH}px`;
 
@@ -1981,17 +1987,26 @@
       }
 
       const unscheduledForDay = dayUnscheduled[dateStr];
-      if (unscheduledForDay.length) {
+      if (dateStr >= state.day) {
+        // Always shown for a day that could have one, so it's a
+        // discoverable, dependable drop target even with nothing in it yet.
         const zone = document.createElement("div");
         zone.className = "cal-unscheduled-day";
         zone.style.top = `${24 * CAL_HOUR_H}px`;
-        unscheduledForDay.forEach((item, idx) => {
-          const row = document.createElement("div");
-          row.className = "cal-unscheduled-row";
-          row.textContent = labelOf(item, `タスク${idx + 1}`);
-          row.addEventListener("pointerdown", (e) => startDayUnscheduledDrag(e, row, item, dateStr));
-          zone.appendChild(row);
-        });
+        if (unscheduledForDay.length) {
+          unscheduledForDay.forEach((item, idx) => {
+            const row = document.createElement("div");
+            row.className = "cal-unscheduled-row";
+            row.textContent = labelOf(item, `タスク${idx + 1}`);
+            row.addEventListener("pointerdown", (e) => startDayUnscheduledDrag(e, row, item, dateStr));
+            zone.appendChild(row);
+          });
+        } else {
+          const empty = document.createElement("span");
+          empty.className = "cal-unscheduled-empty";
+          empty.textContent = "時間未定のタスクなし";
+          zone.appendChild(empty);
+        }
         dayCol.appendChild(zone);
       }
 
