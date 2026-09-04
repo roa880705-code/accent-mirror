@@ -832,17 +832,17 @@
   // 学校の時限表示: 8-9時を0限、9-13時を1-4限、13-14時は昼休みで表示なし、
   // 14-20時を5-10限として、各時間枠の中央にマークする。
   const PERIOD_LABELS = [
-    { hour: 8, symbol: "⓪" },
-    { hour: 9, symbol: "①" },
-    { hour: 10, symbol: "②" },
-    { hour: 11, symbol: "③" },
-    { hour: 12, symbol: "④" },
-    { hour: 14, symbol: "⑤" },
-    { hour: 15, symbol: "⑥" },
-    { hour: 16, symbol: "⑦" },
-    { hour: 17, symbol: "⑧" },
-    { hour: 18, symbol: "⑨" },
-    { hour: 19, symbol: "⑩" },
+    { hour: 8, symbol: "0" },
+    { hour: 9, symbol: "1" },
+    { hour: 10, symbol: "2" },
+    { hour: 11, symbol: "3" },
+    { hour: 12, symbol: "4" },
+    { hour: 14, symbol: "5" },
+    { hour: 15, symbol: "6" },
+    { hour: 16, symbol: "7" },
+    { hour: 17, symbol: "8" },
+    { hour: 18, symbol: "9" },
+    { hour: 19, symbol: "10" },
   ];
 
   // Grid block positions are pixel-based (not %) because the grid's total
