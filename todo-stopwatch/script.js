@@ -118,7 +118,9 @@
       const raw = localStorage.getItem(SOMEDAY_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
+        // parentId links a subtask to its parent いつか task; older saves
+        // predate this and never set it, so normalize those to top-level.
+        if (Array.isArray(parsed)) return parsed.map((t) => ({ ...t, parentId: t.parentId || null }));
       }
     } catch (e) {
       // corrupt storage, fall through to empty
@@ -354,6 +356,9 @@
   const calendarUnplannedBox = document.getElementById("calendarUnplannedBox");
   const calendarUnplannedList = document.getElementById("calendarUnplannedList");
   const calendarSomedayAddBtn = document.getElementById("calendarSomedayAddBtn");
+  const calendarSubtaskBox = document.getElementById("calendarSubtaskBox");
+  const calendarSubtaskList = document.getElementById("calendarSubtaskList");
+  const calendarSubtaskAddBtn = document.getElementById("calendarSubtaskAddBtn");
   const calendarPrevBtn = document.getElementById("calendarPrevBtn");
   const calendarNextBtn = document.getElementById("calendarNextBtn");
   const monthlyLabel = document.getElementById("monthlyLabel");
@@ -364,6 +369,9 @@
   const monthlyNextBtn = document.getElementById("monthlyNextBtn");
   const monthlyUnplannedList = document.getElementById("monthlyUnplannedList");
   const monthlySomedayAddBtn = document.getElementById("monthlySomedayAddBtn");
+  const monthlySubtaskBox = document.getElementById("monthlySubtaskBox");
+  const monthlySubtaskList = document.getElementById("monthlySubtaskList");
+  const monthlySubtaskAddBtn = document.getElementById("monthlySubtaskAddBtn");
   const breakdownModal = document.getElementById("breakdownModal");
   const historyModal = document.getElementById("historyModal");
   const openBreakdownBtn = document.getElementById("openBreakdownBtn");
@@ -1718,21 +1726,55 @@
 
   const CHIP_REORDER_LONGPRESS_MS = 400;
 
-  // いつか is shown in two places (デイリー's tray and マンスリー's), both
-  // backed by the same someday array — this renders chips into one list.
-  function renderSomedayListInto(listEl) {
+  // いつか tasks can carry subtasks of their own: a task with parentId
+  // set is a child, living in the SAME someday array as top-level tasks;
+  // a top-level task with at least one child renders filled-in as a
+  // "parent" and, once tapped, shows its children in a second tray
+  // ("子タスク") instead of opening the rename/add-subtask choice.
+  let activeSomedayParentId = null;
+
+  function topLevelSomeday() {
+    return someday.filter((t) => !t.parentId);
+  }
+
+  function childrenOf(parentId) {
+    return someday.filter((t) => t.parentId === parentId);
+  }
+
+  function isParentTask(id) {
+    return someday.some((t) => t.parentId === id);
+  }
+
+  // Removes a task from someday; if it had subtasks of its own, they're
+  // promoted back to top-level instead of being orphaned under a parent
+  // that no longer exists (e.g. when the parent itself gets scheduled).
+  function removeSomedayTaskPromotingChildren(id) {
+    someday.forEach((t) => {
+      if (t.parentId === id) t.parentId = null;
+    });
+    someday = someday.filter((t) => t.id !== id);
+  }
+
+  // いつか is shown in two places (デイリー's tray and マンスリー's), and
+  // 子タスク likewise in two places — all four render from the same
+  // someday array, just filtered to a different subset of it.
+  function renderSomedayListInto(listEl, tasks) {
     listEl.innerHTML = "";
-    if (!someday.length) {
+    if (!tasks.length) {
       const empty = document.createElement("span");
       empty.className = "calendar-unplanned-empty";
       empty.textContent = "なし";
       listEl.appendChild(empty);
       return;
     }
-    someday.forEach((task) => {
+    tasks.forEach((task) => {
       const chip = document.createElement("button");
       chip.type = "button";
       chip.className = "cal-unplanned-chip";
+      if (!task.parentId && isParentTask(task.id)) {
+        chip.classList.add("parent");
+        if (task.id === activeSomedayParentId) chip.classList.add("active-parent");
+      }
       chip.textContent = task.label;
       chip.dataset.somedayId = task.id;
       chip.addEventListener("pointerdown", (e) => startSomedayChipDrag(e, chip, task));
@@ -1740,9 +1782,40 @@
     });
   }
 
+  function siblingSomedayList(listEl) {
+    if (listEl === calendarUnplannedList) return monthlyUnplannedList;
+    if (listEl === monthlyUnplannedList) return calendarUnplannedList;
+    if (listEl === calendarSubtaskList) return monthlySubtaskList;
+    if (listEl === monthlySubtaskList) return calendarSubtaskList;
+    return null;
+  }
+
+  function tasksForSomedayList(listEl) {
+    if (listEl === calendarSubtaskList || listEl === monthlySubtaskList) {
+      return activeSomedayParentId ? childrenOf(activeSomedayParentId) : [];
+    }
+    return topLevelSomeday();
+  }
+
+  function renderSubtaskTrays() {
+    const active = activeSomedayParentId && someday.find((t) => t.id === activeSomedayParentId && !t.parentId);
+    if (!active) {
+      activeSomedayParentId = null;
+      calendarSubtaskBox.hidden = true;
+      monthlySubtaskBox.hidden = true;
+      return;
+    }
+    calendarSubtaskBox.hidden = false;
+    monthlySubtaskBox.hidden = false;
+    const children = childrenOf(active.id);
+    renderSomedayListInto(calendarSubtaskList, children);
+    renderSomedayListInto(monthlySubtaskList, children);
+  }
+
   function renderSomedayList() {
-    renderSomedayListInto(calendarUnplannedList);
-    renderSomedayListInto(monthlyUnplannedList);
+    renderSomedayListInto(calendarUnplannedList, topLevelSomeday());
+    renderSomedayListInto(monthlyUnplannedList, topLevelSomeday());
+    renderSubtaskTrays();
   }
 
   async function addSomedayTask() {
@@ -1750,9 +1823,74 @@
     if (name === null) return;
     const label = name.trim();
     if (!label) return;
-    someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
+    someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId: null });
     saveSomeday();
     renderSomedayList();
+  }
+
+  async function addSubtaskToActiveParent() {
+    if (!activeSomedayParentId) return;
+    const name = await openNameModal("", "子タスク名を入力");
+    if (name === null) return;
+    const label = name.trim();
+    if (!label) return;
+    someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId: activeSomedayParentId });
+    saveSomeday();
+    renderSomedayList();
+  }
+
+  // --- choice modal: a leaf いつか task (no subtasks yet) opens this on a
+  // plain tap, to decide between renaming it and turning it into a parent
+  // by adding its first subtask ---
+
+  const somedayChoiceModal = document.getElementById("somedayChoiceModal");
+  const somedayChoiceTitle = document.getElementById("somedayChoiceTitle");
+  const somedayChoiceEditBtn = document.getElementById("somedayChoiceEditBtn");
+  const somedayChoiceAddChildBtn = document.getElementById("somedayChoiceAddChildBtn");
+  const somedayChoiceCancelBtn = document.getElementById("somedayChoiceCancelBtn");
+
+  function openSomedayChoiceModal(task) {
+    return new Promise((resolve) => {
+      somedayChoiceTitle.textContent = `「${task.label}」を編集`;
+      somedayChoiceModal.hidden = false;
+
+      function cleanup(result) {
+        somedayChoiceModal.hidden = true;
+        somedayChoiceEditBtn.removeEventListener("click", onEdit);
+        somedayChoiceAddChildBtn.removeEventListener("click", onAddChild);
+        somedayChoiceCancelBtn.removeEventListener("click", onCancel);
+        somedayChoiceModal.removeEventListener("mousedown", onBackdrop);
+        resolve(result);
+      }
+      function onEdit() {
+        cleanup("edit");
+      }
+      function onAddChild() {
+        cleanup("addChild");
+      }
+      function onCancel() {
+        cleanup(null);
+      }
+      function onBackdrop(e) {
+        if (e.target === somedayChoiceModal) onCancel();
+      }
+
+      somedayChoiceEditBtn.addEventListener("click", onEdit);
+      somedayChoiceAddChildBtn.addEventListener("click", onAddChild);
+      somedayChoiceCancelBtn.addEventListener("click", onCancel);
+      somedayChoiceModal.addEventListener("mousedown", onBackdrop);
+    });
+  }
+
+  function renameSomedayTask(task) {
+    openNameModal(task.label).then((name) => {
+      if (name === null) return;
+      const label = name.trim();
+      if (!label) return;
+      task.label = label;
+      saveSomeday();
+      renderSomedayList();
+    });
   }
 
   let somedayDragCtx = null;
@@ -1954,7 +2092,7 @@
         ensureItemsArrayForDate(dateStr).push(item);
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
-        someday = someday.filter((t) => t.id !== task.id);
+        removeSomedayTaskPromotingChildren(task.id);
         saveSomeday();
         vibrate(20);
         renderCalendar();
@@ -1970,7 +2108,7 @@
         ensureItemsArrayForDate(dateStr).push(item);
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
-        someday = someday.filter((t) => t.id !== task.id);
+        removeSomedayTaskPromotingChildren(task.id);
         saveSomeday();
         vibrate(20);
         renderCalendar();
@@ -1992,7 +2130,7 @@
       sortItemsByPlan(dateStr);
       persistItemsForDate(dateStr);
       refreshTimerIfShowing(dateStr);
-      someday = someday.filter((t) => t.id !== task.id);
+      removeSomedayTaskPromotingChildren(task.id);
       saveSomeday();
       vibrate(20);
       renderCalendar();
@@ -2005,31 +2143,61 @@
       ctx.chip.style.transform = "";
       const domOrder = Array.from(ctx.listEl.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
       const orderedIds = domOrder.map((n) => n.dataset.somedayId);
-      someday = orderedIds.map((id) => someday.find((t) => t.id === id));
+      // only the tasks actually shown in this scoped list (top-level, or one
+      // parent's children) get reordered — everything else keeps its slot
+      const reorderedSet = new Set(orderedIds);
+      const reorderedTasks = orderedIds.map((id) => someday.find((t) => t.id === id));
+      let ri = 0;
+      someday = someday.map((t) => (reorderedSet.has(t.id) ? reorderedTasks[ri++] : t));
       saveSomeday();
       vibrate(15);
       const chipRef = ctx.chip;
       setTimeout(() => {
         chipRef.style.transition = "";
       }, 160);
-      // the other いつか list wasn't touched by this drag, so sync it too —
-      // ctx.listEl's own DOM order is already correct and mid-settle-animation
-      renderSomedayListInto(ctx.listEl === calendarUnplannedList ? monthlyUnplannedList : calendarUnplannedList);
+      // the other list showing this same scope wasn't touched by this drag,
+      // so sync it too — ctx.listEl's own DOM order is already correct and
+      // mid-settle-animation
+      const sibling = siblingSomedayList(ctx.listEl);
+      if (sibling) renderSomedayListInto(sibling, tasksForSomedayList(sibling));
       somedayDragCtx = null;
       return;
     }
 
     if (ctx.phase === "pending") {
-      // a plain tap, with no drag ever starting: rename this いつか task
+      // a plain tap, with no drag ever starting
       const { task } = ctx;
       somedayDragCtx = null;
-      openNameModal(task.label).then((name) => {
-        if (name === null) return;
-        const label = name.trim();
-        if (!label) return;
-        task.label = label;
-        saveSomeday();
+
+      if (task.parentId) {
+        // a subtask: no further hierarchy, so a tap just renames it
+        renameSomedayTask(task);
+        return;
+      }
+
+      if (isParentTask(task.id)) {
+        // already a parent: tapping selects/deselects it as the active
+        // parent, showing (or hiding) its 子タスク tray instead of the
+        // rename/add-subtask choice
+        activeSomedayParentId = activeSomedayParentId === task.id ? null : task.id;
         renderSomedayList();
+        return;
+      }
+
+      openSomedayChoiceModal(task).then((choice) => {
+        if (choice === "edit") {
+          renameSomedayTask(task);
+        } else if (choice === "addChild") {
+          openNameModal("", "子タスク名を入力").then((name) => {
+            if (name === null) return;
+            const label = name.trim();
+            if (!label) return;
+            someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId: task.id });
+            saveSomeday();
+            activeSomedayParentId = task.id;
+            renderSomedayList();
+          });
+        }
       });
       return;
     }
@@ -2582,6 +2750,8 @@
   calendarNextBtn.addEventListener("click", () => shiftCalendarWeek(1));
   calendarSomedayAddBtn.addEventListener("click", addSomedayTask);
   monthlySomedayAddBtn.addEventListener("click", addSomedayTask);
+  calendarSubtaskAddBtn.addEventListener("click", addSubtaskToActiveParent);
+  monthlySubtaskAddBtn.addEventListener("click", addSubtaskToActiveParent);
 
   initCalendarHours();
   initMonthlyWeeks();

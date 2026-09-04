@@ -1340,6 +1340,10 @@ body {
   background: var(--accent-soft);
 }
 
+.calendar-unplanned[hidden] {
+  display: none;
+}
+
 .calendar-unplanned-title {
   flex: none;
   font-size: 0.62rem;
@@ -1396,6 +1400,18 @@ body {
 
 .cal-unplanned-chip.dragging {
   opacity: 0.5;
+}
+
+/* a いつか task with subtasks of its own — filled solid so it visibly reads
+   as a "parent," distinct from a plain leaf task's outlined chip */
+.cal-unplanned-chip.parent {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.cal-unplanned-chip.parent.active-parent {
+  box-shadow: 0 0 0 2px var(--ink) inset;
 }
 
 .cal-unplanned-chip.armed {
@@ -1619,6 +1635,14 @@ body {
 
 .modal-actions .btn {
   padding: 8px 16px;
+}
+
+.modal-actions-stack {
+  flex-direction: column;
+}
+
+.modal-actions-stack .btn {
+  width: 100%;
 }
 
 .btn-modal-cancel {
