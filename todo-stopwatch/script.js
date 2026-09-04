@@ -359,6 +359,9 @@
   const calendarSubtaskBox = document.getElementById("calendarSubtaskBox");
   const calendarSubtaskList = document.getElementById("calendarSubtaskList");
   const calendarSubtaskAddBtn = document.getElementById("calendarSubtaskAddBtn");
+  const calendarGrandchildBox = document.getElementById("calendarGrandchildBox");
+  const calendarGrandchildList = document.getElementById("calendarGrandchildList");
+  const calendarGrandchildAddBtn = document.getElementById("calendarGrandchildAddBtn");
   const calendarPrevBtn = document.getElementById("calendarPrevBtn");
   const calendarNextBtn = document.getElementById("calendarNextBtn");
   const monthlyLabel = document.getElementById("monthlyLabel");
@@ -372,6 +375,9 @@
   const monthlySubtaskBox = document.getElementById("monthlySubtaskBox");
   const monthlySubtaskList = document.getElementById("monthlySubtaskList");
   const monthlySubtaskAddBtn = document.getElementById("monthlySubtaskAddBtn");
+  const monthlyGrandchildBox = document.getElementById("monthlyGrandchildBox");
+  const monthlyGrandchildList = document.getElementById("monthlyGrandchildList");
+  const monthlyGrandchildAddBtn = document.getElementById("monthlyGrandchildAddBtn");
   const breakdownModal = document.getElementById("breakdownModal");
   const historyModal = document.getElementById("historyModal");
   const openBreakdownBtn = document.getElementById("openBreakdownBtn");
@@ -1731,7 +1737,18 @@
   // a top-level task with at least one child renders filled-in as a
   // "parent" and, once tapped, shows its children in a second tray
   // ("子タスク") instead of opening the rename/add-subtask choice.
-  let activeSomedayParentId = null;
+  let activeSomedayParentId = null; // top-level task whose children show in 子タスク
+  let activeSomedaySubParentId = null; // child (of the above) whose children show in 孫タスク
+
+  // 0 = top-level (いつか), 1 = child of a top-level task (子タスク),
+  // 2 = grandchild (孫タスク) — grandchildren are always leaves, matching
+  // what was asked for (no further nesting beyond 孫タスク).
+  function somedayTaskDepth(task) {
+    if (!task.parentId) return 0;
+    const parent = someday.find((t) => t.id === task.parentId);
+    if (parent && parent.parentId) return 2;
+    return 1;
+  }
 
   function topLevelSomeday() {
     return someday.filter((t) => !t.parentId);
@@ -1771,9 +1788,9 @@
       const chip = document.createElement("button");
       chip.type = "button";
       chip.className = "cal-unplanned-chip";
-      if (!task.parentId && isParentTask(task.id)) {
+      if (isParentTask(task.id)) {
         chip.classList.add("parent");
-        if (task.id === activeSomedayParentId) chip.classList.add("active-parent");
+        if (task.id === activeSomedayParentId || task.id === activeSomedaySubParentId) chip.classList.add("active-parent");
       }
       chip.textContent = task.label;
       chip.dataset.somedayId = task.id;
@@ -1787,12 +1804,17 @@
     if (listEl === monthlyUnplannedList) return calendarUnplannedList;
     if (listEl === calendarSubtaskList) return monthlySubtaskList;
     if (listEl === monthlySubtaskList) return calendarSubtaskList;
+    if (listEl === calendarGrandchildList) return monthlyGrandchildList;
+    if (listEl === monthlyGrandchildList) return calendarGrandchildList;
     return null;
   }
 
   function tasksForSomedayList(listEl) {
     if (listEl === calendarSubtaskList || listEl === monthlySubtaskList) {
       return activeSomedayParentId ? childrenOf(activeSomedayParentId) : [];
+    }
+    if (listEl === calendarGrandchildList || listEl === monthlyGrandchildList) {
+      return activeSomedaySubParentId ? childrenOf(activeSomedaySubParentId) : [];
     }
     return topLevelSomeday();
   }
@@ -1801,8 +1823,11 @@
     const active = activeSomedayParentId && someday.find((t) => t.id === activeSomedayParentId && !t.parentId);
     if (!active) {
       activeSomedayParentId = null;
+      activeSomedaySubParentId = null;
       calendarSubtaskBox.hidden = true;
       monthlySubtaskBox.hidden = true;
+      calendarGrandchildBox.hidden = true;
+      monthlyGrandchildBox.hidden = true;
       return;
     }
     calendarSubtaskBox.hidden = false;
@@ -1810,12 +1835,35 @@
     const children = childrenOf(active.id);
     renderSomedayListInto(calendarSubtaskList, children);
     renderSomedayListInto(monthlySubtaskList, children);
+
+    const activeSub = activeSomedaySubParentId && children.find((t) => t.id === activeSomedaySubParentId);
+    if (!activeSub) {
+      activeSomedaySubParentId = null;
+      calendarGrandchildBox.hidden = true;
+      monthlyGrandchildBox.hidden = true;
+      return;
+    }
+    calendarGrandchildBox.hidden = false;
+    monthlyGrandchildBox.hidden = false;
+    const grandchildren = childrenOf(activeSub.id);
+    renderSomedayListInto(calendarGrandchildList, grandchildren);
+    renderSomedayListInto(monthlyGrandchildList, grandchildren);
   }
 
   function renderSomedayList() {
     renderSomedayListInto(calendarUnplannedList, topLevelSomeday());
     renderSomedayListInto(monthlyUnplannedList, topLevelSomeday());
     renderSubtaskTrays();
+  }
+
+  // Hides the 子タスク/孫タスク layers, leaving just いつか — used whenever
+  // the user taps somewhere else (the grid, a day header, a plan block...)
+  // instead of continuing to drill into the いつか hierarchy.
+  function collapseSomedaySubtaskLayers() {
+    if (!activeSomedayParentId && !activeSomedaySubParentId) return;
+    activeSomedayParentId = null;
+    activeSomedaySubParentId = null;
+    renderSomedayList();
   }
 
   async function addSomedayTask() {
@@ -1835,6 +1883,17 @@
     const label = name.trim();
     if (!label) return;
     someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId: activeSomedayParentId });
+    saveSomeday();
+    renderSomedayList();
+  }
+
+  async function addSubtaskToActiveSubParent() {
+    if (!activeSomedaySubParentId) return;
+    const name = await openNameModal("", "孫タスク名を入力");
+    if (name === null) return;
+    const label = name.trim();
+    if (!label) return;
+    someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId: activeSomedaySubParentId });
     saveSomeday();
     renderSomedayList();
   }
@@ -2168,19 +2227,31 @@
       // a plain tap, with no drag ever starting
       const { task } = ctx;
       somedayDragCtx = null;
+      const depth = somedayTaskDepth(task);
 
-      if (task.parentId) {
-        // a subtask: no further hierarchy, so a tap just renames it
+      if (depth === 2) {
+        // a grandchild (孫タスク): always a leaf, a tap just renames it
         renameSomedayTask(task);
         return;
       }
 
       if (isParentTask(task.id)) {
-        // already a parent: tapping selects/deselects it as the active
-        // parent, showing (or hiding) its 子タスク tray instead of the
-        // rename/add-subtask choice
-        activeSomedayParentId = activeSomedayParentId === task.id ? null : task.id;
-        renderSomedayList();
+        // already has subtasks of its own: tapping it drills into its
+        // layer (子タスク for a top-level task, 孫タスク for a child) — but
+        // a SECOND tap on the SAME already-active one opens the rename
+        // modal directly instead of toggling the layer closed
+        const isTopLevel = depth === 0;
+        const alreadyActive = isTopLevel ? activeSomedayParentId === task.id : activeSomedaySubParentId === task.id;
+        if (alreadyActive) {
+          renameSomedayTask(task);
+        } else if (isTopLevel) {
+          activeSomedayParentId = task.id;
+          activeSomedaySubParentId = null;
+          renderSomedayList();
+        } else {
+          activeSomedaySubParentId = task.id;
+          renderSomedayList();
+        }
         return;
       }
 
@@ -2188,13 +2259,18 @@
         if (choice === "edit") {
           renameSomedayTask(task);
         } else if (choice === "addChild") {
-          openNameModal("", "子タスク名を入力").then((name) => {
+          openNameModal("", depth === 0 ? "子タスク名を入力" : "孫タスク名を入力").then((name) => {
             if (name === null) return;
             const label = name.trim();
             if (!label) return;
             someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId: task.id });
             saveSomeday();
-            activeSomedayParentId = task.id;
+            if (depth === 0) {
+              activeSomedayParentId = task.id;
+              activeSomedaySubParentId = null;
+            } else {
+              activeSomedaySubParentId = task.id;
+            }
             renderSomedayList();
           });
         }
@@ -2752,6 +2828,20 @@
   monthlySomedayAddBtn.addEventListener("click", addSomedayTask);
   calendarSubtaskAddBtn.addEventListener("click", addSubtaskToActiveParent);
   monthlySubtaskAddBtn.addEventListener("click", addSubtaskToActiveParent);
+  calendarGrandchildAddBtn.addEventListener("click", addSubtaskToActiveSubParent);
+  monthlyGrandchildAddBtn.addEventListener("click", addSubtaskToActiveSubParent);
+
+  // tapping anywhere outside the いつか/子タスク/孫タスク trays (the grid, a
+  // day header, a plan block, ...) collapses back to just いつか — but not
+  // a tab switch (state should still carry over between デイリー/マンスリー)
+  // or a modal click (those already manage this state deliberately).
+  document.addEventListener("click", (e) => {
+    if (!document.contains(e.target)) return; // stale target from a chip rebuilt this same tap
+    if (e.target.closest(".calendar-unplanned")) return;
+    if (e.target.closest(".modal-backdrop")) return;
+    if (e.target.closest(".tabs")) return;
+    collapseSomedaySubtaskLayers();
+  });
 
   initCalendarHours();
   initMonthlyWeeks();
