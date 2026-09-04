@@ -1544,10 +1544,21 @@
   }
 
   // --- いつか tray: tasks with no day or time yet, draggable onto any visible
-  // day's grid to schedule them (or add new ones directly here) ---
+  // day's grid to schedule them (or add new ones directly here). A chip's
+  // gesture is one of three things, disambiguated in onSomedayChipDragMove:
+  //   - a quick mostly-horizontal swipe: scroll the tray (native, we bail)
+  //   - a quick mostly-vertical drag up: schedule it onto the grid
+  //   - a still, held press (CHIP_REORDER_LONGPRESS_MS) then a drag:
+  //     reorder the chip within the tray
+  // ---
+
+  const CHIP_REORDER_LONGPRESS_MS = 400;
+
+  let somedayChipEls = []; // [{ chip, task }], in current DOM order
 
   function renderSomedayList() {
     calendarUnplannedList.innerHTML = "";
+    somedayChipEls = [];
     if (!someday.length) {
       const empty = document.createElement("span");
       empty.className = "calendar-unplanned-empty";
@@ -1562,6 +1573,7 @@
       chip.textContent = task.label;
       chip.addEventListener("pointerdown", (e) => startSomedayChipDrag(e, chip, task));
       calendarUnplannedList.appendChild(chip);
+      somedayChipEls.push({ chip, task });
     });
   }
 
@@ -1570,7 +1582,25 @@
   function startSomedayChipDrag(e, chip, task) {
     if (e.button !== undefined && e.button !== 0) return;
     e.stopPropagation();
-    somedayDragCtx = { chip, task, moved: false, startClientX: e.clientX, startClientY: e.clientY, targetCol: null, clientY: e.clientY };
+    somedayDragCtx = {
+      chip,
+      task,
+      phase: "pending", // "pending" -> "schedule" | "reorder" (or bails out to let native scroll take over)
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startLeft: chip.offsetLeft,
+      targetCol: null,
+      clientY: e.clientY,
+      longPressTimer: null,
+    };
+    somedayDragCtx.longPressTimer = setTimeout(() => {
+      if (!somedayDragCtx || somedayDragCtx.phase !== "pending") return;
+      somedayDragCtx.longPressTimer = null;
+      somedayDragCtx.phase = "reorder";
+      somedayDragCtx.chip.classList.add("reordering");
+      somedayDragCtx.chip.style.transition = "none";
+      vibrate(15);
+    }, CHIP_REORDER_LONGPRESS_MS);
     document.addEventListener("pointermove", onSomedayChipDragMove);
     document.addEventListener("pointerup", onSomedayChipDragEnd);
     document.addEventListener("pointercancel", onSomedayChipDragEnd);
@@ -1578,85 +1608,143 @@
 
   function onSomedayChipDragMove(e) {
     if (!somedayDragCtx) return;
-    const dx = e.clientX - somedayDragCtx.startClientX;
-    const dy = e.clientY - somedayDragCtx.startClientY;
-    if (!somedayDragCtx.moved) {
+    const ctx = somedayDragCtx;
+
+    if (ctx.phase === "pending") {
+      const dx = e.clientX - ctx.startClientX;
+      const dy = e.clientY - ctx.startClientY;
       if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
+      // real movement arrived before the long-press fired: cancel it and
+      // decide between scheduling (mostly vertical) and a scroll swipe
+      // (mostly horizontal) — reordering only starts via the long-press.
+      clearTimeout(ctx.longPressTimer);
+      ctx.longPressTimer = null;
       if (Math.abs(dx) > Math.abs(dy)) {
-        // a mostly-horizontal gesture is a swipe to scroll the tray, not a
-        // drag — bail out and let the browser's own touch-panning take over
         onSomedayChipDragEnd();
         return;
       }
-      somedayDragCtx.moved = true;
-      somedayDragCtx.chip.classList.add("dragging");
+      ctx.phase = "schedule";
+      ctx.chip.classList.add("dragging");
       vibrate(15);
     }
-    e.preventDefault();
 
-    const cols = Array.from(calendarWeekGrid.children);
-    let targetCol = null;
-    for (const col of cols) {
-      const rect = col.getBoundingClientRect();
-      if (
-        e.clientX >= rect.left &&
-        e.clientX <= rect.right &&
-        e.clientY >= rect.top &&
-        e.clientY <= rect.top + 24 * CAL_HOUR_H
-      ) {
-        targetCol = col;
-        break;
+    if (ctx.phase === "schedule") {
+      e.preventDefault();
+      const cols = Array.from(calendarWeekGrid.children);
+      let targetCol = null;
+      for (const col of cols) {
+        const rect = col.getBoundingClientRect();
+        if (
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= rect.top &&
+          e.clientY <= rect.top + 24 * CAL_HOUR_H
+        ) {
+          targetCol = col;
+          break;
+        }
       }
-    }
-    cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
-    somedayDragCtx.targetCol = targetCol;
-    somedayDragCtx.clientY = e.clientY;
+      cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
+      ctx.targetCol = targetCol;
+      ctx.clientY = e.clientY;
 
-    if (targetCol) {
-      const colRect = targetCol.getBoundingClientRect();
-      const relY = e.clientY - colRect.top;
-      const rawMin = pxToMin(relY);
-      let startMin = Math.round(rawMin / 15) * 15;
-      startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
-      showDragPreview(targetCol, somedayDragCtx.task.label, startMin, PLAN_DEFAULT_MIN);
-    } else {
-      clearDragPreview();
+      if (targetCol) {
+        const colRect = targetCol.getBoundingClientRect();
+        const relY = e.clientY - colRect.top;
+        const rawMin = pxToMin(relY);
+        let startMin = Math.round(rawMin / 15) * 15;
+        startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+        showDragPreview(targetCol, ctx.task.label, startMin, PLAN_DEFAULT_MIN);
+      } else {
+        clearDragPreview();
+      }
+      return;
+    }
+
+    if (ctx.phase === "reorder") {
+      e.preventDefault();
+      const desiredLeft = ctx.startLeft + (e.clientX - ctx.startClientX);
+      const currentLeft = ctx.chip.offsetLeft;
+      ctx.chip.style.transform = `translateX(${desiredLeft - currentLeft}px)`;
+
+      const chipRect = ctx.chip.getBoundingClientRect();
+      const chipCenter = chipRect.left + chipRect.width / 2;
+      const siblings = Array.from(calendarUnplannedList.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
+      const draggedIndex = siblings.indexOf(ctx.chip);
+      for (let j = 0; j < siblings.length; j++) {
+        const sib = siblings[j];
+        if (sib === ctx.chip) continue;
+        const sibRect = sib.getBoundingClientRect();
+        if (chipCenter > sibRect.left && chipCenter < sibRect.right) {
+          if (j < draggedIndex) {
+            calendarUnplannedList.insertBefore(ctx.chip, sib);
+          } else {
+            calendarUnplannedList.insertBefore(ctx.chip, sib.nextSibling);
+          }
+          break;
+        }
+      }
     }
   }
 
   function onSomedayChipDragEnd() {
     if (!somedayDragCtx) return;
-    const { chip, task, moved, targetCol, clientY } = somedayDragCtx;
+    const ctx = somedayDragCtx;
     document.removeEventListener("pointermove", onSomedayChipDragMove);
     document.removeEventListener("pointerup", onSomedayChipDragEnd);
     document.removeEventListener("pointercancel", onSomedayChipDragEnd);
-    chip.classList.remove("dragging");
+    if (ctx.longPressTimer) clearTimeout(ctx.longPressTimer);
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
     clearDragPreview();
+
+    if (ctx.phase === "schedule") {
+      ctx.chip.classList.remove("dragging");
+      somedayDragCtx = null;
+      const { task, targetCol, clientY } = ctx;
+      if (!targetCol) return;
+
+      const dateStr = targetCol.dataset.date;
+      const rect = targetCol.getBoundingClientRect();
+      const relY = clientY - rect.top;
+      const rawMin = pxToMin(relY);
+      let startMin = Math.round(rawMin / 15) * 15;
+      startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+      const endMin = startMin + PLAN_DEFAULT_MIN;
+      const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+      addPlan(dateStr, { id, label: task.label, startMin, endMin });
+      const item = freshItem(task.label);
+      item.planId = id;
+      ensureItemsArrayForDate(dateStr).push(item);
+      sortItemsByPlan(dateStr);
+      persistItemsForDate(dateStr);
+      refreshTimerIfShowing(dateStr);
+      someday = someday.filter((t) => t.id !== task.id);
+      saveSomeday();
+      vibrate(20);
+      renderCalendar();
+      return;
+    }
+
+    if (ctx.phase === "reorder") {
+      ctx.chip.classList.remove("reordering");
+      ctx.chip.style.transition = "transform 0.15s ease";
+      ctx.chip.style.transform = "";
+      const domOrder = Array.from(calendarUnplannedList.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
+      somedayChipEls = domOrder.map((n) => somedayChipEls.find((r) => r.chip === n));
+      someday = somedayChipEls.map((r) => r.task);
+      saveSomeday();
+      vibrate(15);
+      const chipRef = ctx.chip;
+      setTimeout(() => {
+        chipRef.style.transition = "";
+      }, 160);
+      somedayDragCtx = null;
+      return;
+    }
+
+    // phase === "pending": a tap, or a gesture that bailed out early — nothing to do
     somedayDragCtx = null;
-
-    if (!moved || !targetCol) return;
-
-    const dateStr = targetCol.dataset.date;
-    const rect = targetCol.getBoundingClientRect();
-    const relY = clientY - rect.top;
-    const rawMin = pxToMin(relY);
-    let startMin = Math.round(rawMin / 15) * 15;
-    startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
-    const endMin = startMin + PLAN_DEFAULT_MIN;
-    const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-
-    addPlan(dateStr, { id, label: task.label, startMin, endMin });
-    const item = freshItem(task.label);
-    item.planId = id;
-    ensureItemsArrayForDate(dateStr).push(item);
-    sortItemsByPlan(dateStr);
-    persistItemsForDate(dateStr);
-    refreshTimerIfShowing(dateStr);
-    someday = someday.filter((t) => t.id !== task.id);
-    saveSomeday();
-    vibrate(20);
-    renderCalendar();
   }
 
   // Lays same-day overlapping segments (e.g. a task plus a concurrent 別件
