@@ -325,6 +325,8 @@
   const monthlyGrid = document.getElementById("monthlyGrid");
   const monthlyPrevBtn = document.getElementById("monthlyPrevBtn");
   const monthlyNextBtn = document.getElementById("monthlyNextBtn");
+  const monthlyUnplannedList = document.getElementById("monthlyUnplannedList");
+  const monthlySomedayAddBtn = document.getElementById("monthlySomedayAddBtn");
   const breakdownModal = document.getElementById("breakdownModal");
   const historyModal = document.getElementById("historyModal");
   const openBreakdownBtn = document.getElementById("openBreakdownBtn");
@@ -1590,16 +1592,15 @@
 
   const CHIP_REORDER_LONGPRESS_MS = 400;
 
-  let somedayChipEls = []; // [{ chip, task }], in current DOM order
-
-  function renderSomedayList() {
-    calendarUnplannedList.innerHTML = "";
-    somedayChipEls = [];
+  // いつか is shown in two places (デイリー's tray and マンスリー's), both
+  // backed by the same someday array — this renders chips into one list.
+  function renderSomedayListInto(listEl) {
+    listEl.innerHTML = "";
     if (!someday.length) {
       const empty = document.createElement("span");
       empty.className = "calendar-unplanned-empty";
       empty.textContent = "なし";
-      calendarUnplannedList.appendChild(empty);
+      listEl.appendChild(empty);
       return;
     }
     someday.forEach((task) => {
@@ -1607,10 +1608,25 @@
       chip.type = "button";
       chip.className = "cal-unplanned-chip";
       chip.textContent = task.label;
+      chip.dataset.somedayId = task.id;
       chip.addEventListener("pointerdown", (e) => startSomedayChipDrag(e, chip, task));
-      calendarUnplannedList.appendChild(chip);
-      somedayChipEls.push({ chip, task });
+      listEl.appendChild(chip);
     });
+  }
+
+  function renderSomedayList() {
+    renderSomedayListInto(calendarUnplannedList);
+    renderSomedayListInto(monthlyUnplannedList);
+  }
+
+  async function addSomedayTask() {
+    const name = await openNameModal("");
+    if (name === null) return;
+    const label = name.trim();
+    if (!label) return;
+    someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
+    saveSomeday();
+    renderSomedayList();
   }
 
   let somedayDragCtx = null;
@@ -1618,15 +1634,17 @@
   function startSomedayChipDrag(e, chip, task) {
     if (e.button !== undefined && e.button !== 0) return;
     e.stopPropagation();
+    const listEl = chip.parentElement;
     somedayDragCtx = {
       chip,
       task,
+      listEl,
       phase: "pending", // "pending" -> "schedule" | "reorder" | "scroll"
       heldLongEnough: false, // long-press fired while still stationary
       startClientX: e.clientX,
       startClientY: e.clientY,
       startLeft: chip.offsetLeft,
-      startScrollLeft: calendarUnplannedList.scrollLeft,
+      startScrollLeft: listEl.scrollLeft,
       targetCol: null,
       clientY: e.clientY,
       longPressTimer: null,
@@ -1679,7 +1697,7 @@
 
     if (ctx.phase === "scroll") {
       e.preventDefault();
-      calendarUnplannedList.scrollLeft = ctx.startScrollLeft - (e.clientX - ctx.startClientX);
+      ctx.listEl.scrollLeft = ctx.startScrollLeft - (e.clientX - ctx.startClientX);
       return;
     }
 
@@ -1739,7 +1757,7 @@
 
       const chipRect = ctx.chip.getBoundingClientRect();
       const chipCenter = chipRect.left + chipRect.width / 2;
-      const siblings = Array.from(calendarUnplannedList.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
+      const siblings = Array.from(ctx.listEl.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
       const draggedIndex = siblings.indexOf(ctx.chip);
       for (let j = 0; j < siblings.length; j++) {
         const sib = siblings[j];
@@ -1747,9 +1765,9 @@
         const sibRect = sib.getBoundingClientRect();
         if (chipCenter > sibRect.left && chipCenter < sibRect.right) {
           if (j < draggedIndex) {
-            calendarUnplannedList.insertBefore(ctx.chip, sib);
+            ctx.listEl.insertBefore(ctx.chip, sib);
           } else {
-            calendarUnplannedList.insertBefore(ctx.chip, sib.nextSibling);
+            ctx.listEl.insertBefore(ctx.chip, sib.nextSibling);
           }
           break;
         }
@@ -1820,15 +1838,18 @@
       ctx.chip.classList.remove("reordering");
       ctx.chip.style.transition = "transform 0.15s ease";
       ctx.chip.style.transform = "";
-      const domOrder = Array.from(calendarUnplannedList.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
-      somedayChipEls = domOrder.map((n) => somedayChipEls.find((r) => r.chip === n));
-      someday = somedayChipEls.map((r) => r.task);
+      const domOrder = Array.from(ctx.listEl.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
+      const orderedIds = domOrder.map((n) => n.dataset.somedayId);
+      someday = orderedIds.map((id) => someday.find((t) => t.id === id));
       saveSomeday();
       vibrate(15);
       const chipRef = ctx.chip;
       setTimeout(() => {
         chipRef.style.transition = "";
       }, 160);
+      // the other いつか list wasn't touched by this drag, so sync it too —
+      // ctx.listEl's own DOM order is already correct and mid-settle-animation
+      renderSomedayListInto(ctx.listEl === calendarUnplannedList ? monthlyUnplannedList : calendarUnplannedList);
       somedayDragCtx = null;
       return;
     }
@@ -2171,10 +2192,16 @@
     goToPage(1);
   }
 
-  function dateHasContent(dateStr) {
-    if (plans[dateStr] && plans[dateStr].length) return true;
-    return itemsArrayForDate(dateStr).some((it) => it.label && it.label.trim());
+  // Tasks already placed on a specific date, in time order (plans first,
+  // then time-undetermined ones) — shown right in the monthly cell so a
+  // scheduled day is readable without drilling into デイリー.
+  function labelsForDate(dateStr) {
+    return itemsArrayForDate(dateStr)
+      .map((it) => labelOf(it, ""))
+      .filter((label) => label);
   }
+
+  const MONTH_CELL_MAX_EVENTS = 3;
 
   function renderMonthly() {
     const anchor = parseDateStr(monthAnchor);
@@ -2212,10 +2239,24 @@
       dateEl.textContent = String(d.getDate());
       cell.appendChild(dateEl);
 
-      if (dateHasContent(dateStr)) {
-        const dot = document.createElement("span");
-        dot.className = "mc-dot";
-        cell.appendChild(dot);
+      const labels = labelsForDate(dateStr);
+      if (labels.length) {
+        const list = document.createElement("div");
+        list.className = "mc-events";
+        labels.slice(0, MONTH_CELL_MAX_EVENTS).forEach((label) => {
+          const row = document.createElement("span");
+          row.className = "mc-event";
+          row.textContent = label;
+          row.style.color = colorForLabel(label);
+          list.appendChild(row);
+        });
+        if (labels.length > MONTH_CELL_MAX_EVENTS) {
+          const more = document.createElement("span");
+          more.className = "mc-event mc-event-more";
+          more.textContent = `+${labels.length - MONTH_CELL_MAX_EVENTS}`;
+          list.appendChild(more);
+        }
+        cell.appendChild(list);
       }
 
       cell.addEventListener("click", () => jumpDailyToDate(dateStr));
@@ -2228,15 +2269,8 @@
 
   calendarPrevBtn.addEventListener("click", () => shiftCalendarWeek(-1));
   calendarNextBtn.addEventListener("click", () => shiftCalendarWeek(1));
-  calendarSomedayAddBtn.addEventListener("click", async () => {
-    const name = await openNameModal("");
-    if (name === null) return;
-    const label = name.trim();
-    if (!label) return;
-    someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
-    saveSomeday();
-    renderSomedayList();
-  });
+  calendarSomedayAddBtn.addEventListener("click", addSomedayTask);
+  monthlySomedayAddBtn.addEventListener("click", addSomedayTask);
 
   initCalendarHours();
 
