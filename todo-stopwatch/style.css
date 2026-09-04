@@ -907,6 +907,10 @@ body {
   background: var(--panel);
 }
 
+.monthly-cell.drop-target {
+  background: var(--accent-soft);
+}
+
 .mc-month-tag {
   position: absolute;
   top: 3px;

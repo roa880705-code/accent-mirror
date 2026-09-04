@@ -1742,6 +1742,8 @@
       ctx.clientY = e.clientY;
 
       if (targetCol) {
+        document.querySelectorAll(".monthly-cell.drop-target").forEach((c) => c.classList.remove("drop-target"));
+        ctx.targetMonthlyCell = null;
         const colRect = targetCol.getBoundingClientRect();
         const relY = e.clientY - colRect.top;
         // dropping below the 24-hour line sends it to that day's own "time
@@ -1758,10 +1760,31 @@
           startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
           showDragPreview(targetCol, ctx.task.label, startMin, PLAN_DEFAULT_MIN);
         }
-      } else {
-        ctx.overZone = false;
-        clearDragPreview();
+        return;
       }
+
+      // No day-column target — we may be on the マンスリー page instead,
+      // where a chip has no specific time slot to land on, only a date: it
+      // always goes into that date's own "time undetermined" list.
+      ctx.overZone = false;
+      clearDragPreview();
+      let targetMonthlyCell = null;
+      const monthlyCells = Array.from(document.querySelectorAll(".monthly-cell"));
+      for (const cell of monthlyCells) {
+        if (cell.dataset.date < state.day) continue;
+        const rect = cell.getBoundingClientRect();
+        if (
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= rect.top &&
+          e.clientY <= rect.bottom
+        ) {
+          targetMonthlyCell = cell;
+          break;
+        }
+      }
+      monthlyCells.forEach((c) => c.classList.toggle("drop-target", c === targetMonthlyCell));
+      ctx.targetMonthlyCell = targetMonthlyCell;
       return;
     }
 
@@ -1801,6 +1824,7 @@
     ctx.chip.classList.remove("armed");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
     Array.from(document.querySelectorAll(".cal-unscheduled-day.drop-target")).forEach((z) => z.classList.remove("drop-target"));
+    Array.from(document.querySelectorAll(".monthly-cell.drop-target")).forEach((c) => c.classList.remove("drop-target"));
     clearDragPreview();
 
     if (ctx.phase === "scroll") {
@@ -1811,7 +1835,22 @@
     if (ctx.phase === "schedule") {
       ctx.chip.classList.remove("dragging");
       somedayDragCtx = null;
-      const { task, targetCol, clientY, overZone } = ctx;
+      const { task, targetCol, targetMonthlyCell, clientY, overZone } = ctx;
+
+      if (targetMonthlyCell) {
+        // マンスリーには時間軸がないので、常にその日の「時間未定」リストへ
+        const dateStr = targetMonthlyCell.dataset.date;
+        const item = freshItem(task.label);
+        ensureItemsArrayForDate(dateStr).push(item);
+        persistItemsForDate(dateStr);
+        refreshTimerIfShowing(dateStr);
+        someday = someday.filter((t) => t.id !== task.id);
+        saveSomeday();
+        vibrate(20);
+        renderCalendar();
+        return;
+      }
+
       if (!targetCol) return;
 
       const dateStr = targetCol.dataset.date;
