@@ -56,9 +56,9 @@
     return {
       day: todayStr(),
       items: [], // items are now meant to come from calendar plans (or the manual + button)
-      sidework: freshItem("別件"),
+      sidework: freshItem("割込"),
       interrupt: freshItem("割込対応"),
-      chore: freshItem("雑務"),
+      chore: freshItem("予定外タスク"),
       segments: [],
     };
   }
@@ -151,7 +151,7 @@
     localStorage.setItem(SOMEDAY_KEY, JSON.stringify(someday));
   }
 
-  // viewingDate is the date currently shown in the タイマー list. It usually
+  // viewingDate is the date currently shown in the タスク list. It usually
   // tracks state.day, but the day picker can point it at a future date to
   // edit that date's task list without touching today's live tracking.
   let viewingDate = state.day;
@@ -221,9 +221,9 @@
   function allTrackedEntries() {
     return [
       ...state.items.map((it, i) => ({ item: it, fallback: `タスク${i + 1}` })),
-      { item: state.sidework, fallback: "別件" },
+      { item: state.sidework, fallback: "割込" },
       { item: state.interrupt, fallback: "割込対応" },
-      { item: state.chore, fallback: "雑務" },
+      { item: state.chore, fallback: "予定外タスク" },
     ];
   }
 
@@ -366,7 +366,7 @@
     const addRow = document.createElement("button");
     addRow.type = "button";
     addRow.className = "add-row";
-    addRow.textContent = "＋ ウォッチの追加";
+    addRow.textContent = "＋ タスクの追加";
     addRow.addEventListener("click", addWatch);
     list.appendChild(addRow);
   }
@@ -384,8 +384,8 @@
   }
 
   function fallbackLabelFor(item) {
-    if (item === state.sidework) return "別件";
-    if (item === state.chore) return "雑務";
+    if (item === state.sidework) return "割込";
+    if (item === state.chore) return "予定外タスク";
     if (item === state.interrupt) return "割込対応";
     const idx = state.items.indexOf(item);
     return idx >= 0 ? `タスク${idx + 1}` : "無題";
@@ -454,13 +454,12 @@
     render();
   }
 
-  // --- sidework (別件) widget ---
+  // --- sidework (割込) widget ---
 
   const sideworkInput = document.getElementById("sideworkInput");
   const sideworkCircle = document.getElementById("sideworkCircle");
   const sideworkTime = document.getElementById("sideworkTime");
   const sideworkWidget = document.getElementById("sideworkWidget");
-  const foldInterruptBtn = document.getElementById("foldInterruptBtn");
   const deductPrevBtn = document.getElementById("deductPrevBtn");
 
   sideworkInput.value = state.sidework.label;
@@ -477,20 +476,6 @@
       state.sidework.running = true;
       state.sidework.startedAt = Date.now();
     }
-    saveState();
-    render();
-  });
-
-  foldInterruptBtn.addEventListener("click", () => {
-    stopIfRunning(state.sidework);
-    const elapsed = state.sidework.elapsedMs;
-    if (elapsed <= 0) return;
-    const prev = exclusiveGroup().find((it) => it.running);
-    if (prev) {
-      subtractElapsed(prev, elapsed);
-    }
-    state.interrupt.elapsedMs += elapsed;
-    state.sidework.elapsedMs = 0;
     saveState();
     render();
   });
@@ -619,7 +604,7 @@
     render();
   });
 
-  // --- chore (雑務) widget: joins the exclusive group, unlike sidework ---
+  // --- chore (予定外タスク) widget: joins the exclusive group, unlike sidework ---
 
   const choreInput = document.getElementById("choreInput");
   const choreCircle = document.getElementById("choreCircle");
@@ -738,7 +723,7 @@
     if (rows.length === 0) {
       const empty = document.createElement("div");
       empty.className = "breakdown-empty";
-      empty.textContent = "まだ記録がありません。タイマーを開始してみましょう。";
+      empty.textContent = "まだ記録がありません。タスクを開始してみましょう。";
       breakdownEl.appendChild(empty);
       return;
     }
@@ -1771,7 +1756,7 @@
     somedayDragCtx = null;
   }
 
-  // Lays same-day overlapping segments (e.g. a task plus a concurrent 別件
+  // Lays same-day overlapping segments (e.g. a task plus a concurrent 割込
   // run) out side by side instead of stacking them on top of one another,
   // the way Google Calendar handles overlapping events.
   function layoutSegments(segments) {
@@ -2110,7 +2095,7 @@
 
   const dayPicker = document.getElementById("dayPicker");
   const draftBadge = document.getElementById("draftBadge");
-  const liveOnlyControls = [sideworkCircle, choreCircle, foldInterruptBtn, deductPrevBtn, newTaskBtn, resetAllBtn];
+  const liveOnlyControls = [sideworkCircle, choreCircle, deductPrevBtn, newTaskBtn, resetAllBtn];
 
   function applyModeUI() {
     const live = isLive();

@@ -251,30 +251,30 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(8px, 2.5vw, 16px);
-  padding: clamp(6px, 1.4vh, 12px) 2px clamp(10px, 1.8vh, 16px);
+  gap: clamp(6px, 2vw, 14px);
+  padding: clamp(2px, 0.5vh, 4px) 2px clamp(3px, 0.6vh, 5px);
   border-bottom: 1px solid var(--line);
-  margin-bottom: clamp(4px, 1vh, 8px);
+  margin-bottom: clamp(2px, 0.5vh, 4px);
 }
 
 .side-btn-stack {
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: clamp(5px, 1vh, 9px);
+  gap: clamp(3px, 0.5vh, 4px);
 }
 
 .side-btn {
   all: unset;
   box-sizing: border-box;
   flex: none;
-  width: clamp(72px, 19vw, 100px);
+  width: clamp(76px, 20vw, 106px);
   text-align: center;
-  line-height: 1.25;
-  padding: clamp(6px, 1.2vh, 9px) clamp(4px, 1vw, 8px);
-  border-radius: 10px;
+  line-height: 1.15;
+  padding: clamp(3px, 0.6vh, 4px) clamp(4px, 1vw, 8px);
+  border-radius: 9px;
   font-weight: 700;
-  font-size: clamp(0.6rem, 1.4vw, 0.74rem);
+  font-size: clamp(0.58rem, 1.3vw, 0.7rem);
   background: var(--panel);
   color: var(--ink);
   border: 1px solid var(--panel-line);
@@ -290,12 +290,6 @@ body {
   outline-offset: 1px;
 }
 
-.side-btn.fold {
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-color: transparent;
-}
-
 .side-btn:disabled,
 .sidework-circle:disabled {
   opacity: 0.4;
@@ -307,11 +301,11 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(3px, 0.8vh, 6px);
+  gap: clamp(2px, 0.5vh, 4px);
 }
 
 .sidework-input {
-  width: clamp(72px, 20vw, 110px);
+  width: clamp(70px, 26vw, 104px);
   border: none;
   background: transparent;
   color: var(--ink);
@@ -334,10 +328,10 @@ body {
 .sidework-circle {
   all: unset;
   box-sizing: border-box;
-  width: clamp(68px, 18vw, 96px);
-  height: clamp(68px, 18vw, 96px);
+  width: clamp(42px, 11vw, 56px);
+  height: clamp(42px, 11vw, 56px);
   border-radius: 50%;
-  border: 2.5px solid var(--line);
+  border: 2px solid var(--line);
   background: var(--card-bg);
   display: flex;
   align-items: center;
@@ -359,7 +353,7 @@ body {
 .sidework-time {
   font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", "Courier New", monospace;
   font-variant-numeric: tabular-nums;
-  font-size: clamp(0.66rem, 1.7vw, 0.86rem);
+  font-size: clamp(0.46rem, 1.15vw, 0.6rem);
   font-weight: 700;
 }
 

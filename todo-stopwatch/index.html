@@ -24,7 +24,7 @@
   </header>
 
   <nav class="tabs" id="tabs">
-    <button class="tab-btn active" data-page="0" type="button">タイマー</button>
+    <button class="tab-btn active" data-page="0" type="button">タスク</button>
     <button class="tab-btn" data-page="1" type="button">内訳</button>
     <button class="tab-btn" data-page="2" type="button">履歴</button>
     <button class="tab-btn" data-page="3" type="button">カレンダー</button>
@@ -40,9 +40,8 @@
           </button>
         </div>
         <div class="side-btn-stack">
-          <button id="foldInterruptBtn" class="side-btn fold" type="button" title="別件の時間を、進行中のウォッチから差し引いたうえで「割込対応」として保存します">割込対応</button>
-          <button id="deductPrevBtn" class="side-btn" type="button" title="別件の時間分を、進行中のウォッチから差し引きます(どこにも保存しません)">進行中<br>から差引</button>
-          <button id="newTaskBtn" class="side-btn" type="button" title="別件の時間を、進行中のウォッチから差し引いたうえで、名前をつけて新しいタスクとしてリストの先頭に追加します">新規タスク<br>として追加</button>
+          <button id="deductPrevBtn" class="side-btn" type="button" title="割込の時間分を、進行中のタスクから差し引きます(どこにも保存しません)">進行中<br>から差引</button>
+          <button id="newTaskBtn" class="side-btn" type="button" title="割込の時間を、進行中のタスクから差し引いたうえで、名前をつけて新しいタスクとしてリストの先頭に追加します">新規タスク<br>として追加</button>
         </div>
         <div class="sidework-widget" id="choreWidget">
           <input class="sidework-input" id="choreInput" type="text" maxlength="16">
