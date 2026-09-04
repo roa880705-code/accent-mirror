@@ -1585,10 +1585,12 @@
     somedayDragCtx = {
       chip,
       task,
-      phase: "pending", // "pending" -> "schedule" | "reorder" (or bails out to let native scroll take over)
+      phase: "pending", // "pending" -> "schedule" | "reorder" | "scroll"
+      heldLongEnough: false, // long-press fired while still stationary
       startClientX: e.clientX,
       startClientY: e.clientY,
       startLeft: chip.offsetLeft,
+      startScrollLeft: calendarUnplannedList.scrollLeft,
       targetCol: null,
       clientY: e.clientY,
       longPressTimer: null,
@@ -1596,10 +1598,9 @@
     somedayDragCtx.longPressTimer = setTimeout(() => {
       if (!somedayDragCtx || somedayDragCtx.phase !== "pending") return;
       somedayDragCtx.longPressTimer = null;
-      somedayDragCtx.phase = "reorder";
-      somedayDragCtx.chip.classList.add("reordering");
-      somedayDragCtx.chip.style.transition = "none";
-      vibrate(15);
+      somedayDragCtx.heldLongEnough = true;
+      somedayDragCtx.chip.classList.add("armed");
+      vibrate(10);
     }, CHIP_REORDER_LONGPRESS_MS);
     document.addEventListener("pointermove", onSomedayChipDragMove);
     document.addEventListener("pointerup", onSomedayChipDragEnd);
@@ -1614,18 +1615,36 @@
       const dx = e.clientX - ctx.startClientX;
       const dy = e.clientY - ctx.startClientY;
       if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
-      // real movement arrived before the long-press fired: cancel it and
-      // decide between scheduling (mostly vertical) and a scroll swipe
-      // (mostly horizontal) — reordering only starts via the long-press.
-      clearTimeout(ctx.longPressTimer);
-      ctx.longPressTimer = null;
-      if (Math.abs(dx) > Math.abs(dy)) {
-        onSomedayChipDragEnd();
-        return;
+      if (ctx.longPressTimer) {
+        clearTimeout(ctx.longPressTimer);
+        ctx.longPressTimer = null;
       }
-      ctx.phase = "schedule";
-      ctx.chip.classList.add("dragging");
-      vibrate(15);
+      // A clearly vertical movement always means "lift this into the grid,"
+      // whether or not the long-press already fired — only an ambiguous
+      // horizontal movement needs the long-press to tell a scroll swipe
+      // apart from "pick this chip up to reorder it."
+      if (Math.abs(dx) > Math.abs(dy)) {
+        ctx.chip.classList.remove("armed");
+        if (ctx.heldLongEnough) {
+          ctx.phase = "reorder";
+          ctx.chip.classList.add("reordering");
+          ctx.chip.style.transition = "none";
+          vibrate(15);
+        } else {
+          ctx.phase = "scroll";
+        }
+      } else {
+        ctx.chip.classList.remove("armed");
+        ctx.phase = "schedule";
+        ctx.chip.classList.add("dragging");
+        vibrate(15);
+      }
+    }
+
+    if (ctx.phase === "scroll") {
+      e.preventDefault();
+      calendarUnplannedList.scrollLeft = ctx.startScrollLeft - (e.clientX - ctx.startClientX);
+      return;
     }
 
     if (ctx.phase === "schedule") {
@@ -1694,8 +1713,14 @@
     document.removeEventListener("pointerup", onSomedayChipDragEnd);
     document.removeEventListener("pointercancel", onSomedayChipDragEnd);
     if (ctx.longPressTimer) clearTimeout(ctx.longPressTimer);
+    ctx.chip.classList.remove("armed");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
     clearDragPreview();
+
+    if (ctx.phase === "scroll") {
+      somedayDragCtx = null;
+      return;
+    }
 
     if (ctx.phase === "schedule") {
       ctx.chip.classList.remove("dragging");

@@ -1069,10 +1069,13 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: grab;
-  /* Horizontal swipes on a chip should scroll this row natively (smoother
-     than anything hand-rolled); only a mostly-vertical drag (lifting the
-     chip up into the grid) is handled by JS — see startSomedayChipDrag. */
-  touch-action: pan-x;
+  /* touch-action: pan-x (native horizontal panning) was tried here, but the
+     browser can claim a touch as a pan too eagerly — before our own JS ever
+     sees enough movement to tell a scroll swipe apart from a vertical
+     schedule-drag or a long-press reorder — which made both unreliable.
+     JS now owns the whole gesture (see onSomedayChipDragMove) and scrolls
+     the tray itself, so no native panning here at all. */
+  touch-action: none;
   -webkit-touch-callout: none;
   user-select: none;
   border: 1.5px solid var(--line);
@@ -1082,6 +1085,10 @@ body {
 
 .cal-unplanned-chip.dragging {
   opacity: 0.5;
+}
+
+.cal-unplanned-chip.armed {
+  box-shadow: 0 0 0 2px var(--accent) inset;
 }
 
 .cal-unplanned-chip.reordering {
