@@ -305,6 +305,7 @@
   const template = document.getElementById("rowTemplate");
   const totalTimeEl = document.getElementById("totalTime");
   const resetAllBtn = document.getElementById("resetAllBtn");
+  const totalPanelEl = document.getElementById("totalPanel");
   const breakdownEl = document.getElementById("breakdown");
   const historyEl = document.getElementById("history");
   const listWrap = document.querySelector(".list-wrap");
@@ -2226,9 +2227,20 @@
   // transform instead of relying on native horizontal scrolling.
 
   const DAILY_PAGE = 1;
+  const TASK_PAGE = 2;
   const pagesTrack = document.getElementById("pagesTrack");
   const tabBtns = Array.from(document.querySelectorAll(".tab-btn"));
   let activePage = 0;
+
+  // 日付・合計・全リセットはタスクタブでしか意味を持たないので、他のタブでは
+  // 隠して画面を広く使う。
+  function updateHeaderForTab() {
+    const onTask = activePage === TASK_PAGE;
+    dayPicker.hidden = !onTask;
+    totalPanelEl.hidden = !onTask;
+    resetAllBtn.hidden = !onTask;
+    draftBadge.hidden = !onTask || isLive();
+  }
 
   function setActiveTab(i) {
     if (i !== DAILY_PAGE && activePage === DAILY_PAGE && selectedPlanId) {
@@ -2240,6 +2252,7 @@
     }
     activePage = i;
     tabBtns.forEach((b, idx) => b.classList.toggle("active", idx === i));
+    updateHeaderForTab();
   }
 
   function goToPage(i) {
@@ -2279,11 +2292,11 @@
 
   function applyModeUI() {
     const live = isLive();
-    draftBadge.hidden = live;
     dayPicker.classList.toggle("is-draft", !live);
     liveOnlyControls.forEach((btn) => {
       btn.disabled = !live;
     });
+    updateHeaderForTab();
   }
 
   dayPicker.addEventListener("change", () => {

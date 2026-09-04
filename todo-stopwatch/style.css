@@ -179,6 +179,10 @@ body {
   gap: 10px;
 }
 
+.total-panel[hidden] {
+  display: none;
+}
+
 .total-panel {
   display: flex;
   align-items: baseline;
@@ -246,7 +250,8 @@ body {
   font-weight: 600;
   color: var(--muted);
   cursor: pointer;
-  border: 1.5px solid transparent;
+  background: var(--panel);
+  border: 1.5px solid var(--panel-line);
 }
 
 .tab-btn.tab-monthly.active {
