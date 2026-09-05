@@ -2042,45 +2042,80 @@
   // for ログ (which has no such wrapper of its own)
   const somedayConnectorRoots = somedayLevelEls[0].lists.map((listEl) => listEl.closest(".calendar, .monthly-calendar, .page"));
 
-  function positionSomedayConnector(connectorEl, rootEl, chipEl, sourceListEl, destEl) {
-    if (!chipEl || !destEl) {
-      connectorEl.hidden = true;
+  function addSomedayBranchLine(containerEl, x, y, w, h) {
+    const line = document.createElement("div");
+    line.className = "someday-branch-line";
+    line.style.left = `${x}px`;
+    line.style.top = `${y}px`;
+    line.style.width = `${Math.max(0, w)}px`;
+    line.style.height = `${Math.max(0, h)}px`;
+    containerEl.appendChild(line);
+  }
+
+  const SOMEDAY_BRANCH_LINE_W = 2;
+  const SOMEDAY_BRANCH_GAP = 6; // how far above the nearest child the branch point sits
+
+  // Draws a small org-chart: a stem down from the active parent chip to a
+  // shared branch point, then a horizontal spine across to every one of its
+  // children, each with its own short drop to that child's chip — a real
+  // fan-out instead of a single line implying just one connection.
+  function positionSomedayConnector(containerEl, rootEl, chipEl, sourceListEl, destListEl) {
+    containerEl.innerHTML = "";
+    const childChips = destListEl ? Array.from(destListEl.querySelectorAll(".cal-unplanned-chip")) : [];
+    if (!chipEl || !childChips.length) {
+      containerEl.hidden = true;
       return;
     }
+
     const rootRect = rootEl.getBoundingClientRect();
     const chipRect = chipEl.getBoundingClientRect();
     const listRect = sourceListEl.getBoundingClientRect();
-    const destRect = destEl.getBoundingClientRect();
+    const destListRect = destListEl.getBoundingClientRect();
 
-    // clamp to the source tray's own visible width so a chip scrolled out of
-    // view doesn't drag the line off to some point outside the tray
-    const chipCenter = Math.max(listRect.left, Math.min(listRect.right, chipRect.left + chipRect.width / 2));
+    // clamp each anchor to its own tray's visible width so a chip scrolled
+    // out of view doesn't drag its line off to some point outside the tray
+    const parentX = Math.max(listRect.left, Math.min(listRect.right, chipRect.left + chipRect.width / 2)) - rootRect.left;
+    const stemTop = chipRect.bottom - rootRect.top;
 
-    const top = chipRect.bottom - rootRect.top;
-    const bottom = destRect.top - rootRect.top;
-    connectorEl.style.left = `${chipCenter - rootRect.left}px`;
-    connectorEl.style.top = `${top}px`;
-    connectorEl.style.height = `${Math.max(0, bottom - top)}px`;
-    connectorEl.hidden = false;
+    const childAnchors = childChips.map((c) => {
+      const r = c.getBoundingClientRect();
+      const x = Math.max(destListRect.left, Math.min(destListRect.right, r.left + r.width / 2)) - rootRect.left;
+      return { x, top: r.top - rootRect.top };
+    });
+
+    const branchY = Math.max(stemTop + 2, Math.min(...childAnchors.map((a) => a.top)) - SOMEDAY_BRANCH_GAP);
+    const allX = [parentX, ...childAnchors.map((a) => a.x)];
+    const minX = Math.min(...allX);
+    const maxX = Math.max(...allX);
+    const half = SOMEDAY_BRANCH_LINE_W / 2;
+
+    addSomedayBranchLine(containerEl, parentX - half, stemTop, SOMEDAY_BRANCH_LINE_W, branchY - stemTop);
+    addSomedayBranchLine(containerEl, minX, branchY - half, maxX - minX, SOMEDAY_BRANCH_LINE_W);
+    childAnchors.forEach((a) => {
+      addSomedayBranchLine(containerEl, a.x - half, branchY, SOMEDAY_BRANCH_LINE_W, a.top - branchY);
+    });
+
+    containerEl.hidden = false;
   }
 
-  // Redraws every currently-visible parent-to-child connector line. Cheap
-  // enough (a handful of getBoundingClientRect calls) to run on every
-  // someday render, plus on scroll/resize since a chip's on-screen position
-  // shifts independently of any data change.
+  // Redraws every currently-visible parent-to-children branch. Cheap enough
+  // (a handful of getBoundingClientRect calls) to run on every someday
+  // render, plus on scroll/resize since a chip's on-screen position shifts
+  // independently of any data change.
   function repositionSomedayConnectors() {
     for (let depth = 0; depth < somedayConnectorEls.length; depth++) {
       const parentId = activeSomedayIds[depth];
       const parentTask = parentId ? someday.find((t) => t.id === parentId) : null;
       somedayConnectorEls[depth].forEach((connectorEl, pageIdx) => {
         if (!parentTask) {
+          connectorEl.innerHTML = "";
           connectorEl.hidden = true;
           return;
         }
         const sourceListEl = somedayLevelEls[depth].lists[pageIdx];
         const chipEl = sourceListEl.querySelector(`[data-someday-id="${parentTask.id}"]`);
-        const destEl = somedayLevelEls[depth + 1].lists[pageIdx];
-        positionSomedayConnector(connectorEl, somedayConnectorRoots[pageIdx], chipEl, sourceListEl, destEl);
+        const destListEl = somedayLevelEls[depth + 1].lists[pageIdx];
+        positionSomedayConnector(connectorEl, somedayConnectorRoots[pageIdx], chipEl, sourceListEl, destListEl);
       });
     }
   }

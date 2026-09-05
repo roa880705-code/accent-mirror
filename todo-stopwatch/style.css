@@ -1418,22 +1418,24 @@ body {
   color: var(--muted);
 }
 
-/* a thin line from the currently active parent chip down to the tray of
-   its own children just below, so the parent/child relationship reads at
-   a glance instead of only being inferable from the active-parent ring.
-   Position (left/top/height) is computed in JS from the two elements'
-   real on-screen positions, since the parent chip can sit anywhere along
-   its horizontally-scrolling tray. */
-.someday-connector {
+/* a small org-chart from the currently active parent chip down to its own
+   children just below — a stem, a horizontal spine, and one drop per child
+   — so the family relationship reads as an actual branching tree instead
+   of only being inferable from the active-parent ring. Just a positioning
+   root; the visible lines are .someday-branch-line children generated in
+   JS, since their count depends on how many children there are. Position
+   is computed from the real on-screen positions of the parent chip and
+   every child chip, since any of them can sit anywhere along their own
+   horizontally-scrolling tray. */
+.someday-branch[hidden] {
+  display: none;
+}
+
+.someday-branch-line {
   position: absolute;
-  width: 2px;
   background: var(--accent);
   pointer-events: none;
   z-index: 1;
-}
-
-.someday-connector[hidden] {
-  display: none;
 }
 
 .cal-unplanned-chip {
