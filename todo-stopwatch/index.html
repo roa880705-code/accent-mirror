@@ -104,14 +104,18 @@
       <section class="page">
         <div class="calendar">
           <div class="calendar-header">
-            <button id="calendarPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の日">&#8249;</button>
-            <span id="calendarWeekLabel" class="calendar-month-label"></span>
-            <button id="calendarNextBtn" class="calendar-nav-btn" type="button" aria-label="次の日">&#8250;</button>
+            <div class="calendar-header-nav">
+              <button id="calendarPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の日">&#8249;</button>
+              <span id="calendarWeekLabel" class="calendar-month-label"></span>
+              <button id="calendarNextBtn" class="calendar-nav-btn" type="button" aria-label="次の日">&#8250;</button>
+            </div>
+            <input type="text" id="briefingMemoInput" class="briefing-memo-input" placeholder="ブリーフィングメモ" maxlength="200">
           </div>
           <div class="calendar-week-header" id="calendarWeekHeader"></div>
           <div class="calendar-week-body" id="calendarWeekBody">
             <div class="calendar-hours" id="calendarHours"></div>
             <div class="calendar-week-grid" id="calendarWeekGrid"></div>
+            <textarea id="dailyNotesInput" class="daily-notes-input" placeholder="メモ"></textarea>
           </div>
           <div class="calendar-unplanned" id="calendarUnplannedBox">
             <span class="calendar-unplanned-title">いつか</span>

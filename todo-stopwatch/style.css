@@ -1134,6 +1134,30 @@ body {
   outline-offset: 1px;
 }
 
+.calendar-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.briefing-memo-input {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 0.72rem;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 7px;
+  padding: 5px 10px;
+}
+
+.briefing-memo-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .calendar-week-header {
   flex: none;
   display: flex;
@@ -1327,6 +1351,26 @@ body {
   background-size: 100% 100%, 100% calc(var(--hour-h) * 24);
   background-repeat: repeat, no-repeat;
   background-position: top, top;
+}
+
+.daily-notes-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  box-sizing: border-box;
+  border: none;
+  border-left: 1px solid var(--line);
+  background: var(--card-bg);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  padding: 8px 10px;
+}
+
+.daily-notes-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .calendar-day-col {

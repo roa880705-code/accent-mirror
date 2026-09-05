@@ -11,6 +11,8 @@
   const PLANS_KEY = "todoStopwatch:plans:v1";
   const SOMEDAY_KEY = "todoStopwatch:someday:v1";
   const DAY_TITLES_KEY = "todoStopwatch:dayTitles:v1";
+  const BRIEFING_MEMO_KEY = "todoStopwatch:briefingMemo:v1";
+  const DAILY_NOTES_KEY = "todoStopwatch:dailyNotes:v1";
   const MAX_HISTORY = 60;
   const MAX_COUNT = 40;
   const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
@@ -147,6 +149,32 @@
     return {};
   }
 
+  function loadBriefingMemos() {
+    try {
+      const raw = localStorage.getItem(BRIEFING_MEMO_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      // corrupt storage, fall through to empty
+    }
+    return {};
+  }
+
+  function loadDailyNotes() {
+    try {
+      const raw = localStorage.getItem(DAILY_NOTES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      // corrupt storage, fall through to empty
+    }
+    return {};
+  }
+
   let state = loadState();
   let history = loadHistory();
   let drafts = loadDrafts();
@@ -155,6 +183,10 @@
   // day titles are a label on the DATE itself (e.g. "旅行"), distinct from
   // any plan or task placed on that date — keyed by date string.
   let dayTitles = loadDayTitles();
+  // デイリーページ上部のブリーフィングメモ、およびスケジュール欄右半分の
+  // 自由記述メモ。どちらも表示中の日付(dateStr)をキーに持つ。
+  let briefingMemos = loadBriefingMemos();
+  let dailyNotes = loadDailyNotes();
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -184,6 +216,16 @@
   function saveDayTitles() {
     localStorage.setItem(DAY_TITLES_KEY, JSON.stringify(dayTitles));
     window.AppSync?.markDirty("dayTitles:v1", dayTitles);
+  }
+
+  function saveBriefingMemos() {
+    localStorage.setItem(BRIEFING_MEMO_KEY, JSON.stringify(briefingMemos));
+    window.AppSync?.markDirty("briefingMemo:v1", briefingMemos);
+  }
+
+  function saveDailyNotes() {
+    localStorage.setItem(DAILY_NOTES_KEY, JSON.stringify(dailyNotes));
+    window.AppSync?.markDirty("dailyNotes:v1", dailyNotes);
   }
 
   function dayTitleFor(dateStr) {
@@ -373,6 +415,8 @@
   const dailyHoursEl = document.getElementById("calendarHours");
   const dailyWeekGridEl = document.getElementById("calendarWeekGrid");
   const dailyDetailEl = document.getElementById("calendarDetail");
+  const briefingMemoInput = document.getElementById("briefingMemoInput");
+  const dailyNotesInput = document.getElementById("dailyNotesInput");
   const weeklyWeekLabelEl = document.getElementById("weeklyWeekLabel");
   const weeklyWeekHeaderEl = document.getElementById("weeklyWeekHeader");
   const weeklyWeekBodyEl = document.getElementById("weeklyWeekBody");
@@ -630,6 +674,20 @@
   sideworkInput.addEventListener("input", () => {
     state.sidework.label = sideworkInput.value;
     saveState();
+  });
+
+  briefingMemoInput.addEventListener("input", () => {
+    const value = briefingMemoInput.value;
+    if (value) briefingMemos[weekAnchor] = value;
+    else delete briefingMemos[weekAnchor];
+    saveBriefingMemos();
+  });
+
+  dailyNotesInput.addEventListener("input", () => {
+    const value = dailyNotesInput.value;
+    if (value) dailyNotes[weekAnchor] = value;
+    else delete dailyNotes[weekAnchor];
+    saveDailyNotes();
   });
 
   sideworkCircle.addEventListener("click", () => {
@@ -3073,7 +3131,13 @@
     const start = parseDateStr(weekAnchor);
     const end = new Date(start);
     end.setDate(end.getDate() + CAL_DAYS - 1);
-    calendarWeekLabel.textContent = `${start.getMonth() + 1}/${start.getDate()} 〜 ${end.getMonth() + 1}/${end.getDate()}`;
+    if (CAL_DAYS === 1) {
+      calendarWeekLabel.textContent = `${start.getMonth() + 1}/${start.getDate()}(${WEEKDAYS[start.getDay()]})`;
+      briefingMemoInput.value = briefingMemos[weekAnchor] || "";
+      dailyNotesInput.value = dailyNotes[weekAnchor] || "";
+    } else {
+      calendarWeekLabel.textContent = `${start.getMonth() + 1}/${start.getDate()} 〜 ${end.getMonth() + 1}/${end.getDate()}`;
+    }
 
     calendarWeekHeader.innerHTML = "";
     const spacer = document.createElement("div");

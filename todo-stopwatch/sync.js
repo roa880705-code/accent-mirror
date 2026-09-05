@@ -19,6 +19,8 @@
     "plans:v1": "todoStopwatch:plans:v1",
     "someday:v1": "todoStopwatch:someday:v1",
     "dayTitles:v1": "todoStopwatch:dayTitles:v1",
+    "briefingMemo:v1": "todoStopwatch:briefingMemo:v1",
+    "dailyNotes:v1": "todoStopwatch:dailyNotes:v1",
   };
 
   // A running timer calls its save function once a second regardless of
