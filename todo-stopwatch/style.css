@@ -17,6 +17,8 @@
   --tab-monthly-soft: #dde6ee;
   --tab-daily: #3f7a75;
   --tab-daily-soft: #dbeae7;
+  --tab-weekly: #a3651f;
+  --tab-weekly-soft: #f2e0c8;
   --tab-breakdown: #7a6ba8;
   --tab-breakdown-soft: #e6e1f2;
   --tab-history: #62744c;
@@ -46,6 +48,8 @@
   --tab-monthly-soft: #223040;
   --tab-daily: #6fbdb2;
   --tab-daily-soft: #163330;
+  --tab-weekly: #d9974f;
+  --tab-weekly-soft: #3a2c17;
   --tab-breakdown: #b3a2e0;
   --tab-breakdown-soft: #2c2540;
   --tab-history: #a3c07f;
@@ -76,6 +80,8 @@
     --tab-monthly-soft: #223040;
     --tab-daily: #6fbdb2;
     --tab-daily-soft: #163330;
+    --tab-weekly: #d9974f;
+    --tab-weekly-soft: #3a2c17;
     --tab-breakdown: #b3a2e0;
     --tab-breakdown-soft: #2c2540;
     --tab-history: #a3c07f;
@@ -250,6 +256,12 @@ body {
   background: var(--tab-monthly-soft);
   color: var(--tab-monthly);
   border-color: var(--tab-monthly);
+}
+
+.tab-btn.tab-weekly.active {
+  background: var(--tab-weekly-soft);
+  color: var(--tab-weekly);
+  border-color: var(--tab-weekly);
 }
 
 .tab-btn.tab-daily.active {

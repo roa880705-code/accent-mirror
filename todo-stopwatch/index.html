@@ -24,6 +24,7 @@
 
   <nav class="tabs" id="tabs">
     <button class="tab-btn tab-monthly" type="button">マンスリー</button>
+    <button class="tab-btn tab-weekly" type="button">ウィークリー</button>
     <button class="tab-btn tab-daily" type="button">デイリー</button>
     <div class="tab-btn tab-task" id="taskTabBtn">
       <span class="tab-task-label">ログ</span>
@@ -70,9 +71,44 @@
       <section class="page">
         <div class="calendar">
           <div class="calendar-header">
-            <button id="calendarPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の週">&#8249;</button>
+            <button id="weeklyPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の週">&#8249;</button>
+            <span id="weeklyWeekLabel" class="calendar-month-label"></span>
+            <button id="weeklyNextBtn" class="calendar-nav-btn" type="button" aria-label="次の週">&#8250;</button>
+          </div>
+          <div class="calendar-week-header" id="weeklyWeekHeader"></div>
+          <div class="calendar-week-body" id="weeklyWeekBody">
+            <div class="calendar-hours" id="weeklyHours"></div>
+            <div class="calendar-week-grid" id="weeklyWeekGrid"></div>
+          </div>
+          <div class="calendar-unplanned" id="weeklyUnplannedBox">
+            <span class="calendar-unplanned-title">いつか</span>
+            <div class="calendar-unplanned-list" id="weeklyUnplannedList"></div>
+            <button type="button" class="calendar-someday-add" id="weeklySomedayAddBtn" aria-label="いつかタスクを追加">＋</button>
+          </div>
+          <div class="calendar-unplanned calendar-subtask-row" id="weeklySubtaskBox" hidden>
+            <span class="calendar-unplanned-title">子タスク</span>
+            <div class="calendar-unplanned-list" id="weeklySubtaskList"></div>
+            <button type="button" class="calendar-someday-add" id="weeklySubtaskAddBtn" aria-label="子タスクを追加">＋</button>
+          </div>
+          <div class="calendar-unplanned calendar-subtask-row" id="weeklyGrandchildBox" hidden>
+            <span class="calendar-unplanned-title">孫タスク</span>
+            <div class="calendar-unplanned-list" id="weeklyGrandchildList"></div>
+            <button type="button" class="calendar-someday-add" id="weeklyGrandchildAddBtn" aria-label="孫タスクを追加">＋</button>
+          </div>
+          <div class="calendar-unplanned calendar-subtask-row" id="weeklyGreatGrandchildBox" hidden>
+            <span class="calendar-unplanned-title">ひ孫タスク</span>
+            <div class="calendar-unplanned-list" id="weeklyGreatGrandchildList"></div>
+            <button type="button" class="calendar-someday-add" id="weeklyGreatGrandchildAddBtn" aria-label="ひ孫タスクを追加">＋</button>
+          </div>
+          <div id="weeklyDetail" class="calendar-detail" hidden></div>
+        </div>
+      </section>
+      <section class="page">
+        <div class="calendar">
+          <div class="calendar-header">
+            <button id="calendarPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の日">&#8249;</button>
             <span id="calendarWeekLabel" class="calendar-month-label"></span>
-            <button id="calendarNextBtn" class="calendar-nav-btn" type="button" aria-label="次の週">&#8250;</button>
+            <button id="calendarNextBtn" class="calendar-nav-btn" type="button" aria-label="次の日">&#8250;</button>
           </div>
           <div class="calendar-week-header" id="calendarWeekHeader"></div>
           <div class="calendar-week-body" id="calendarWeekBody">

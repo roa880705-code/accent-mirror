@@ -347,12 +347,31 @@
   const breakdownEl = document.getElementById("breakdown");
   const historyEl = document.getElementById("history");
   const listWrap = document.querySelector(".list-wrap");
-  const calendarWeekLabel = document.getElementById("calendarWeekLabel");
-  const calendarWeekHeader = document.getElementById("calendarWeekHeader");
-  const calendarWeekBody = document.getElementById("calendarWeekBody");
-  const calendarHours = document.getElementById("calendarHours");
-  const calendarWeekGrid = document.getElementById("calendarWeekGrid");
-  const calendarDetail = document.getElementById("calendarDetail");
+  // デイリー(1日だけ)とウィークリー(7日間)は同じ時間軸グリッドUIを共有する。
+  // DOMは2ページ分(id違い)存在するが、レンダリング関数群は今まで通り
+  // calendarWeekGrid 等の単一の名前を参照し続けられるよう、それらを
+  // "現在アクティブなページの実体を指すポインタ" にしている ―
+  // enterCalendarPage() がタブ切り替え時にこのポインタの向き先と
+  // CAL_DAYS/weekAnchor を差し替える。dailyXxxEl/weeklyXxxEl は
+  // 差し替えられない、各ページ固有の実体そのもの。
+  const dailyWeekLabelEl = document.getElementById("calendarWeekLabel");
+  const dailyWeekHeaderEl = document.getElementById("calendarWeekHeader");
+  const dailyWeekBodyEl = document.getElementById("calendarWeekBody");
+  const dailyHoursEl = document.getElementById("calendarHours");
+  const dailyWeekGridEl = document.getElementById("calendarWeekGrid");
+  const dailyDetailEl = document.getElementById("calendarDetail");
+  const weeklyWeekLabelEl = document.getElementById("weeklyWeekLabel");
+  const weeklyWeekHeaderEl = document.getElementById("weeklyWeekHeader");
+  const weeklyWeekBodyEl = document.getElementById("weeklyWeekBody");
+  const weeklyHoursEl = document.getElementById("weeklyHours");
+  const weeklyWeekGridEl = document.getElementById("weeklyWeekGrid");
+  const weeklyDetailEl = document.getElementById("weeklyDetail");
+  let calendarWeekLabel = dailyWeekLabelEl;
+  let calendarWeekHeader = dailyWeekHeaderEl;
+  let calendarWeekBody = dailyWeekBodyEl;
+  let calendarHours = dailyHoursEl;
+  let calendarWeekGrid = dailyWeekGridEl;
+  let calendarDetail = dailyDetailEl;
   const calendarUnplannedBox = document.getElementById("calendarUnplannedBox");
   const calendarUnplannedList = document.getElementById("calendarUnplannedList");
   const calendarSomedayAddBtn = document.getElementById("calendarSomedayAddBtn");
@@ -367,6 +386,20 @@
   const calendarGreatGrandchildAddBtn = document.getElementById("calendarGreatGrandchildAddBtn");
   const calendarPrevBtn = document.getElementById("calendarPrevBtn");
   const calendarNextBtn = document.getElementById("calendarNextBtn");
+  const weeklyUnplannedBox = document.getElementById("weeklyUnplannedBox");
+  const weeklyUnplannedList = document.getElementById("weeklyUnplannedList");
+  const weeklySomedayAddBtn = document.getElementById("weeklySomedayAddBtn");
+  const weeklySubtaskBox = document.getElementById("weeklySubtaskBox");
+  const weeklySubtaskList = document.getElementById("weeklySubtaskList");
+  const weeklySubtaskAddBtn = document.getElementById("weeklySubtaskAddBtn");
+  const weeklyGrandchildBox = document.getElementById("weeklyGrandchildBox");
+  const weeklyGrandchildList = document.getElementById("weeklyGrandchildList");
+  const weeklyGrandchildAddBtn = document.getElementById("weeklyGrandchildAddBtn");
+  const weeklyGreatGrandchildBox = document.getElementById("weeklyGreatGrandchildBox");
+  const weeklyGreatGrandchildList = document.getElementById("weeklyGreatGrandchildList");
+  const weeklyGreatGrandchildAddBtn = document.getElementById("weeklyGreatGrandchildAddBtn");
+  const weeklyPrevBtn = document.getElementById("weeklyPrevBtn");
+  const weeklyNextBtn = document.getElementById("weeklyNextBtn");
   const monthlyLabel = document.getElementById("monthlyLabel");
   const monthlyWeekdayRow = document.getElementById("monthlyWeekdayRow");
   const monthlyWeeksScroll = document.getElementById("monthlyWeeksScroll");
@@ -934,7 +967,11 @@
   // --- calendar page (weekly, vertical) ---
 
   const CAL_HOUR_H = 40; // px per hour row; keep in sync with --hour-h in style.css
-  const CAL_DAYS = 3; // days shown at once; narrower than a full week so columns stay usable on a phone
+  // days shown at once — 1 on デイリー, 7 on ウィークリー. Swapped by
+  // enterCalendarPage() alongside the calendarWeekGrid-etc. pointers above,
+  // so renderCalendar()/shiftCalendarWeek() always operate on whichever
+  // page is currently active without needing to know which one that is.
+  let CAL_DAYS = 1;
   const CAL_PALETTE = ["#b8672a", "#3e8c4e", "#5b7596", "#a3651f", "#7a6ba8", "#3f7a75", "#ab3d3d", "#62744c"];
   const CAL_UNSCHEDULED_ROW_H = 34; // px per row in today's "unscheduled but today" list
   const CAL_UNSCHEDULED_GAP = 4;
@@ -965,7 +1002,13 @@
     return (px / CAL_HOUR_H) * 60;
   }
 
-  let weekAnchor = state.day; // any date string within the displayed week
+  // any date string within the currently-displayed window — this always
+  // tracks whichever of デイリー/ウィークリー is currently active (see
+  // enterCalendarPage()); each page's own position is remembered
+  // separately in dailyWeekAnchor/weeklyWeekAnchor while the other is active.
+  let weekAnchor = state.day;
+  let dailyWeekAnchor = state.day;
+  let weeklyWeekAnchor = state.day;
   let monthAnchor = state.day; // any date string within the displayed month (マンスリーカレンダー)
   let selectedDayDetail = null; // date string whose textual summary is shown below the grid
   let selectedPlanId = null; // plan currently tapped; shows a resize handle on its block
@@ -1106,7 +1149,7 @@
   function onCalendarHeaderClick(dateStr) {
     if (dateStr >= state.day) {
       goToDate(dateStr);
-      goToPage(2); // タスク tab
+      goToPage(TASK_PAGE);
       return;
     }
     selectedDayDetail = selectedDayDetail === dateStr ? null : dateStr;
@@ -1828,17 +1871,23 @@
   // depth-(i+1) tray; e.g. activeSomedayIds[0] drives 子タスク's contents.
   let activeSomedayIds = [null, null, null];
 
-  // Every tray level, across all three pages it's duplicated onto — used to
+  // Every tray level, across all four pages it's duplicated onto — used to
   // drive rendering/visibility generically instead of hand-listing every
   // list/box combination at each call site. Index 0 is いつか itself
   // (always visible, no box to show/hide).
   const somedayLevelEls = [
-    { lists: [calendarUnplannedList, monthlyUnplannedList, taskUnplannedList], boxes: null },
-    { lists: [calendarSubtaskList, monthlySubtaskList, taskSubtaskList], boxes: [calendarSubtaskBox, monthlySubtaskBox, taskSubtaskBox] },
-    { lists: [calendarGrandchildList, monthlyGrandchildList, taskGrandchildList], boxes: [calendarGrandchildBox, monthlyGrandchildBox, taskGrandchildBox] },
+    { lists: [calendarUnplannedList, weeklyUnplannedList, monthlyUnplannedList, taskUnplannedList], boxes: null },
     {
-      lists: [calendarGreatGrandchildList, monthlyGreatGrandchildList, taskGreatGrandchildList],
-      boxes: [calendarGreatGrandchildBox, monthlyGreatGrandchildBox, taskGreatGrandchildBox],
+      lists: [calendarSubtaskList, weeklySubtaskList, monthlySubtaskList, taskSubtaskList],
+      boxes: [calendarSubtaskBox, weeklySubtaskBox, monthlySubtaskBox, taskSubtaskBox],
+    },
+    {
+      lists: [calendarGrandchildList, weeklyGrandchildList, monthlyGrandchildList, taskGrandchildList],
+      boxes: [calendarGrandchildBox, weeklyGrandchildBox, monthlyGrandchildBox, taskGrandchildBox],
+    },
+    {
+      lists: [calendarGreatGrandchildList, weeklyGreatGrandchildList, monthlyGreatGrandchildList, taskGreatGrandchildList],
+      boxes: [calendarGreatGrandchildBox, weeklyGreatGrandchildBox, monthlyGreatGrandchildBox, taskGreatGrandchildBox],
     },
   ];
 
@@ -2793,21 +2842,24 @@
     });
   }
 
-  function initCalendarHours() {
-    calendarHours.innerHTML = "";
+  // Takes an explicit target (rather than reading the swappable calendarHours
+  // pointer) since both デイリー's and ウィークリー's hour-label columns need
+  // seeding once at boot, regardless of which page happens to be active then.
+  function initCalendarHours(hoursEl) {
+    hoursEl.innerHTML = "";
     for (let h = 0; h < 24; h++) {
       const label = document.createElement("div");
       label.className = "cal-hour-label";
       label.style.top = `${h * CAL_HOUR_H}px`;
       label.textContent = `${h}:00`;
-      calendarHours.appendChild(label);
+      hoursEl.appendChild(label);
     }
     PERIOD_LABELS.forEach(({ hour, symbol }) => {
       const label = document.createElement("div");
       label.className = "cal-period-label";
       label.style.top = `${(hour + 0.5) * CAL_HOUR_H}px`;
       label.textContent = symbol;
-      calendarHours.appendChild(label);
+      hoursEl.appendChild(label);
     });
   }
 
@@ -2862,10 +2914,8 @@
   }
 
   function jumpDailyToDate(dateStr) {
-    weekAnchor = dateStr;
-    calendarAutoScrollPending = true;
-    renderCalendar();
-    goToPage(1);
+    dailyWeekAnchor = dateStr;
+    goToPage(DAILY_PAGE);
   }
 
   // Tasks already placed on a specific date, in time order (plans first,
@@ -3064,16 +3114,22 @@
 
   calendarPrevBtn.addEventListener("click", () => shiftCalendarWeek(-1));
   calendarNextBtn.addEventListener("click", () => shiftCalendarWeek(1));
+  weeklyPrevBtn.addEventListener("click", () => shiftCalendarWeek(-1));
+  weeklyNextBtn.addEventListener("click", () => shiftCalendarWeek(1));
   calendarSomedayAddBtn.addEventListener("click", addSomedayTask);
+  weeklySomedayAddBtn.addEventListener("click", addSomedayTask);
   monthlySomedayAddBtn.addEventListener("click", addSomedayTask);
   taskSomedayAddBtn.addEventListener("click", addSomedayTask);
   calendarSubtaskAddBtn.addEventListener("click", () => addSubtaskAtLevel(0));
+  weeklySubtaskAddBtn.addEventListener("click", () => addSubtaskAtLevel(0));
   monthlySubtaskAddBtn.addEventListener("click", () => addSubtaskAtLevel(0));
   taskSubtaskAddBtn.addEventListener("click", () => addSubtaskAtLevel(0));
   calendarGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(1));
+  weeklyGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(1));
   monthlyGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(1));
   taskGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(1));
   calendarGreatGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(2));
+  weeklyGreatGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(2));
   monthlyGreatGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(2));
   taskGreatGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(2));
 
@@ -3089,19 +3145,57 @@
     collapseSomedaySubtaskLayers();
   });
 
-  initCalendarHours();
+  initCalendarHours(dailyHoursEl);
+  initCalendarHours(weeklyHoursEl);
   initMonthlyWeeks();
 
   // --- tabs / paging ---
-  // Page order: 0 マンスリーカレンダー, 1 デイリーカレンダー, 2 タスク.
+  // Page order: 0 マンスリー, 1 ウィークリー, 2 デイリー, 3 タスク.
   // Switching is tap-only (no swipe): goToPage() slides pagesTrack via a CSS
   // transform instead of relying on native horizontal scrolling.
 
-  const DAILY_PAGE = 1;
-  const TASK_PAGE = 2;
+  const WEEKLY_PAGE = 1;
+  const DAILY_PAGE = 2;
+  const TASK_PAGE = 3;
   const pagesTrack = document.getElementById("pagesTrack");
   const tabBtns = Array.from(document.querySelectorAll(".tab-btn"));
   let activePage = 0;
+
+  function isCalendarPage(i) {
+    return i === WEEKLY_PAGE || i === DAILY_PAGE;
+  }
+
+  // Swaps the calendarWeekGrid-etc. pointers (see their declaration above)
+  // and CAL_DAYS/weekAnchor to represent whichever of ウィークリー/デイリー
+  // is being entered, saving the page being left behind's own position
+  // first so switching back to it later resumes where it was. Called
+  // whenever entering either page, even if that page was already active
+  // (harmless resync), so callers like jumpDailyToDate can rely on it
+  // unconditionally rather than tracking activePage transitions themselves.
+  function enterCalendarPage(target) {
+    if (activePage === WEEKLY_PAGE) weeklyWeekAnchor = weekAnchor;
+    else if (activePage === DAILY_PAGE) dailyWeekAnchor = weekAnchor;
+
+    if (target === WEEKLY_PAGE) {
+      CAL_DAYS = 7;
+      calendarWeekLabel = weeklyWeekLabelEl;
+      calendarWeekHeader = weeklyWeekHeaderEl;
+      calendarWeekBody = weeklyWeekBodyEl;
+      calendarHours = weeklyHoursEl;
+      calendarWeekGrid = weeklyWeekGridEl;
+      calendarDetail = weeklyDetailEl;
+      weekAnchor = weeklyWeekAnchor;
+    } else {
+      CAL_DAYS = 1;
+      calendarWeekLabel = dailyWeekLabelEl;
+      calendarWeekHeader = dailyWeekHeaderEl;
+      calendarWeekBody = dailyWeekBodyEl;
+      calendarHours = dailyHoursEl;
+      calendarWeekGrid = dailyWeekGridEl;
+      calendarDetail = dailyDetailEl;
+      weekAnchor = dailyWeekAnchor;
+    }
+  }
 
   // 日付・合計・全リセットはタスクタブでしか意味を持たないので、他のタブでは
   // 隠して画面を広く使う。
@@ -3111,13 +3205,23 @@
     draftBadge.hidden = isLive();
   }
 
+  let weeklyEverShown = false; // so ウィークリー auto-scrolls to "now" on its first visit only, like デイリー already does at boot
+
   function setActiveTab(i) {
-    if (i !== DAILY_PAGE && activePage === DAILY_PAGE && selectedPlanId) {
+    if (isCalendarPage(activePage) && !isCalendarPage(i) && selectedPlanId) {
       selectedPlanId = null;
       renderCalendar();
     }
-    if (i === DAILY_PAGE && activePage !== DAILY_PAGE) {
-      renderCalendar(); // pick up any plan/label changes made from the timer tab
+    if (isCalendarPage(i)) {
+      const firstWeeklyVisit = i === WEEKLY_PAGE && !weeklyEverShown;
+      enterCalendarPage(i);
+      if (firstWeeklyVisit) {
+        weeklyEverShown = true;
+        calendarAutoScrollPending = true;
+      }
+      if (i !== activePage) {
+        renderCalendar(); // pick up any plan/label changes made elsewhere
+      }
     }
     activePage = i;
     tabBtns.forEach((b, idx) => b.classList.toggle("active", idx === i));
@@ -3228,7 +3332,7 @@
   buildRows();
   render();
   renderHistory();
-  goToPage(2); // default to タスク on launch
+  goToPage(TASK_PAGE); // default to タスク on launch
 
   setInterval(() => {
     const rolled = rolloverIfNeeded();
