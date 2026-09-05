@@ -138,7 +138,11 @@
     },
     async signIn() {
       if (!client) return;
-      await client.auth.signInWithOAuth({ provider: "google" });
+      // without this, Supabase falls back to the bare origin (no path) as
+      // the post-login redirect target, landing on a 404 for a project
+      // page like this one (served from /accent-mirror/todo-stopwatch/,
+      // not the domain root)
+      await client.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href } });
     },
     async signOut() {
       if (!client) return;
