@@ -1369,7 +1369,9 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 2px;
+  /* extra top padding gives the child-count badge (which pokes up past its
+     own chip's corner) guaranteed clearance from this row's own top edge */
+  padding: 10px 2px 6px;
   border-top: 1px solid var(--line);
   transition: background 0.15s ease;
   /* Chips already block iOS's text-selection callout, but the title label
@@ -1501,7 +1503,7 @@ body {
    glance says whether there's more to drill into without tapping in */
 .cal-child-count-badge {
   position: absolute;
-  top: -6px;
+  top: -3px;
   right: -6px;
   min-width: 15px;
   height: 15px;
