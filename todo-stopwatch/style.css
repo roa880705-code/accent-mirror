@@ -1438,15 +1438,13 @@ body {
   all: unset;
   position: relative;
   box-sizing: border-box;
+  display: inline-block;
   flex: none;
   max-width: 120px;
   padding: 5px 10px;
   border-radius: 999px;
   font-size: 0.65rem;
   font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   cursor: grab;
   /* touch-action: pan-x (native horizontal panning) was tried here, but the
      browser can claim a touch as a pan too eagerly — before our own JS ever
@@ -1488,8 +1486,14 @@ body {
   cursor: grabbing;
 }
 
+/* the chip itself no longer clips its own overflow (the child-count badge
+   below needs to spill past its corner), so truncation for a long label
+   lives here instead */
 .cal-unplanned-chip-label {
-  display: inline;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* small corner badge on every いつか/子/孫 task (not ひ孫, always a leaf)
