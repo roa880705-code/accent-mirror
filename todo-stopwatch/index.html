@@ -104,17 +104,19 @@
       <section class="page">
         <div class="calendar">
           <div class="calendar-header">
-            <div class="calendar-header-nav">
-              <button id="calendarPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の日">&#8249;</button>
-              <span id="calendarWeekLabel" class="calendar-month-label"></span>
-              <button id="calendarNextBtn" class="calendar-nav-btn" type="button" aria-label="次の日">&#8250;</button>
-            </div>
+            <button id="calendarPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の日">&#8249;</button>
+            <span id="calendarWeekLabel" class="calendar-month-label"></span>
+            <button id="calendarNextBtn" class="calendar-nav-btn" type="button" aria-label="次の日">&#8250;</button>
+          </div>
+          <div class="daily-header-row">
+            <div class="calendar-week-header" id="calendarWeekHeader"></div>
             <input type="text" id="briefingMemoInput" class="briefing-memo-input" placeholder="ブリーフィングメモ" maxlength="200">
           </div>
-          <div class="calendar-week-header" id="calendarWeekHeader"></div>
-          <div class="calendar-week-body" id="calendarWeekBody">
-            <div class="calendar-hours" id="calendarHours"></div>
-            <div class="calendar-week-grid" id="calendarWeekGrid"></div>
+          <div class="calendar-schedule-row">
+            <div class="calendar-week-body" id="calendarWeekBody">
+              <div class="calendar-hours" id="calendarHours"></div>
+              <div class="calendar-week-grid" id="calendarWeekGrid"></div>
+            </div>
             <textarea id="dailyNotesInput" class="daily-notes-input" placeholder="メモ"></textarea>
           </div>
           <div class="calendar-unplanned" id="calendarUnplannedBox">

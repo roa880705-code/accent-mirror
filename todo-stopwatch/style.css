@@ -1134,16 +1134,32 @@ body {
   outline-offset: 1px;
 }
 
-.calendar-header-nav {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* --- デイリーページ専用: 「土/日付/タイトル」表示(#calendarWeekHeader、
+   ウィークリーの1日ぶんと同じ .calendar-day-header を使い回す)を左寄せの
+   自然幅にし、空いた右側をブリーフィングメモ欄にする。ID指定なので
+   ウィークリー側(#weeklyWeekHeader、7日分を均等幅で並べる)には影響しない。 */
+.daily-header-row {
   flex: none;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+#calendarWeekHeader {
+  flex: none;
+}
+
+#calendarWeekHeader .calendar-day-header {
+  flex: none;
+  min-width: 64px;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 .briefing-memo-input {
   flex: 1;
   min-width: 0;
+  align-self: stretch;
   font-family: inherit;
   font-size: 0.72rem;
   color: var(--ink);
@@ -1353,6 +1369,16 @@ body {
   background-position: top, top;
 }
 
+/* デイリーの時間軸グリッド(#calendarWeekBody、スクロールする)と、その
+   右のメモ欄をこの行で横に並べる。メモ欄はこの行の外にある
+   calendar-week-body の内部スクロールに巻き込まれず、画面に見えている
+   範囲の高さで固定される。 */
+.calendar-schedule-row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
 .daily-notes-input {
   flex: 1;
   min-width: 0;
@@ -1364,7 +1390,7 @@ body {
   color: var(--ink);
   font-family: inherit;
   font-size: 0.72rem;
-  line-height: 1.5;
+  line-height: 1.2;
   padding: 8px 10px;
 }
 
