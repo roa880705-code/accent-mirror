@@ -1342,13 +1342,21 @@
     };
   }
 
-  function onPlanBlockClick(e, dateStr, plan) {
-    if (e) {
-      e.stopPropagation();
-      vibrate(10);
+  async function renamePlan(dateStr, plan) {
+    const name = await openNameModal(plan.label);
+    if (name === null) return;
+    plan.label = name.trim() || plan.label;
+    savePlans();
+    const items = itemsArrayForDate(dateStr);
+    const item = items.find((it) => it.planId === plan.id);
+    if (item) {
+      item.label = plan.label;
+      persistItemsForDate(dateStr);
+      refreshTimerIfShowing(dateStr);
     }
-    selectedPlanId = plan.id;
-    renderCalendar();
+  }
+
+  function showPlanDetail(dateStr, plan) {
     calendarDetail.hidden = false;
     calendarDetail.innerHTML = "";
     const line = document.createElement("div");
@@ -1362,19 +1370,8 @@
     editBtn.type = "button";
     editBtn.className = "btn btn-modal-ok cal-plan-edit";
     editBtn.textContent = "編集";
-    editBtn.addEventListener("click", async () => {
-      const name = await openNameModal(plan.label);
-      if (name === null) return;
-      plan.label = name.trim() || plan.label;
-      savePlans();
-      const items = itemsArrayForDate(dateStr);
-      const item = items.find((it) => it.planId === plan.id);
-      if (item) {
-        item.label = plan.label;
-        persistItemsForDate(dateStr);
-        refreshTimerIfShowing(dateStr);
-      }
-      onPlanBlockClick(null, dateStr, plan);
+    editBtn.addEventListener("click", () => {
+      renamePlan(dateStr, plan).then(() => showPlanDetail(dateStr, plan));
     });
 
     const delBtn = document.createElement("button");
@@ -1403,6 +1400,19 @@
 
     actions.append(editBtn, delBtn);
     calendarDetail.append(line, actions);
+  }
+
+  // タップ(=ドラッグせずに指を離した)は、そのまま名前編集画面を開く。
+  // 時間帯の移動は長押しの後にドラッグして行う(startPlanDrag/onPlanDragMove
+  // 側の処理)ので、こちらはタップの場合にしか呼ばれない。
+  function onPlanBlockClick(e, dateStr, plan) {
+    if (e) {
+      e.stopPropagation();
+      vibrate(10);
+    }
+    selectedPlanId = plan.id;
+    renderCalendar();
+    renamePlan(dateStr, plan).then(() => showPlanDetail(dateStr, plan));
   }
 
   // --- plan creation (long-press on empty grid space) ---
@@ -1610,10 +1620,11 @@
     finalizePlanRangeDraw(dateStr, startMin, endMin);
   }
 
-  async function finalizePlanRangeDraw(dateStr, startMin, endMin) {
-    const name = await openNameModal("");
-    if (name === null) return;
-    const label = name.trim() || "予定";
+  function finalizePlanRangeDraw(dateStr, startMin, endMin) {
+    // 名前入力ダイアログは挟まず、まず仮の名前「予定」で即登録する。あとで
+    // ブロックをタップすれば名前編集画面が開く(onPlanBlockClick参照)し、
+    // 長押しすれば名前が仮のままでも普通に時間帯を移動できる。
+    const label = "予定";
     const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
     addPlan(dateStr, { id, label, startMin, endMin });
@@ -1946,7 +1957,8 @@
       plan.endMin = previewEndMin;
       savePlans();
     }
-    onPlanBlockClick(null, dateStr, plan);
+    renderCalendar();
+    showPlanDetail(dateStr, plan);
   }
 
   // --- a "ghost" preview block shown while dragging a いつか chip or a
