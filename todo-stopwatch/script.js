@@ -2057,20 +2057,30 @@
       e.preventDefault();
       const cols = Array.from(calendarWeekGrid.children);
       let targetCol = null;
-      for (const col of cols) {
-        // a past day can't be a drop target: いつか has no linked timer item
-        // once its date has passed, so anything dropped there would just
-        // vanish into an unreachable past-day draft
-        if (col.dataset.date < state.day) continue;
-        const rect = col.getBoundingClientRect();
-        if (
-          e.clientX >= rect.left &&
-          e.clientX <= rect.right &&
-          e.clientY >= rect.top &&
-          e.clientY <= rect.bottom
-        ) {
-          targetCol = col;
-          break;
+      // .calendar-day-col is often much taller than what's actually visible
+      // (24h plus the "time undetermined" zone, while calendarWeekBody only
+      // shows a scrolled slice of it) — a column's own rect still reports
+      // that full, unclipped height, so without also checking the visible
+      // viewport, dragging back down past the calendar (e.g. toward the
+      // いつか tray below it, to abort the schedule) would still register as
+      // hovering the column instead of finding no target at all.
+      const bodyRect = calendarWeekBody.getBoundingClientRect();
+      if (e.clientY >= bodyRect.top && e.clientY <= bodyRect.bottom) {
+        for (const col of cols) {
+          // a past day can't be a drop target: いつか has no linked timer item
+          // once its date has passed, so anything dropped there would just
+          // vanish into an unreachable past-day draft
+          if (col.dataset.date < state.day) continue;
+          const rect = col.getBoundingClientRect();
+          if (
+            e.clientX >= rect.left &&
+            e.clientX <= rect.right &&
+            e.clientY >= rect.top &&
+            e.clientY <= rect.bottom
+          ) {
+            targetCol = col;
+            break;
+          }
         }
       }
       cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
@@ -2121,6 +2131,25 @@
       }
       monthlyCells.forEach((c) => c.classList.toggle("drop-target", c === targetMonthlyCell));
       ctx.targetMonthlyCell = targetMonthlyCell;
+      if (targetMonthlyCell) return;
+
+      // Still nothing — we may be on the ログ page instead, where dropping
+      // onto the task list adds it as a plain task with no time set, same
+      // as a day's own "time undetermined" zone. Same past-day protection
+      // as everywhere else: a date already gone can't be a drop target.
+      let targetTaskList = null;
+      const listWrapRect = listWrap.getBoundingClientRect();
+      if (
+        viewingDate >= state.day &&
+        e.clientX >= listWrapRect.left &&
+        e.clientX <= listWrapRect.right &&
+        e.clientY >= listWrapRect.top &&
+        e.clientY <= listWrapRect.bottom
+      ) {
+        targetTaskList = listWrap;
+      }
+      listWrap.classList.toggle("drop-target", !!targetTaskList);
+      ctx.targetTaskList = targetTaskList;
       return;
     }
 
@@ -2161,6 +2190,7 @@
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
     Array.from(document.querySelectorAll(".cal-unscheduled-day.drop-target")).forEach((z) => z.classList.remove("drop-target"));
     Array.from(document.querySelectorAll(".monthly-cell.drop-target")).forEach((c) => c.classList.remove("drop-target"));
+    listWrap.classList.remove("drop-target");
     clearDragPreview();
 
     if (ctx.phase === "scroll" || ctx.phase === "blocked") {
@@ -2171,11 +2201,26 @@
     if (ctx.phase === "schedule") {
       ctx.chip.classList.remove("dragging");
       somedayDragCtx = null;
-      const { task, targetCol, targetMonthlyCell, clientY, overZone } = ctx;
+      const { task, targetCol, targetMonthlyCell, targetTaskList, clientY, overZone } = ctx;
 
       if (targetMonthlyCell) {
         // マンスリーには時間軸がないので、常にその日の「時間未定」リストへ
         const dateStr = targetMonthlyCell.dataset.date;
+        const item = freshItem(task.label);
+        ensureItemsArrayForDate(dateStr).push(item);
+        persistItemsForDate(dateStr);
+        refreshTimerIfShowing(dateStr);
+        removeSomedayTaskPromotingChildren(task.id);
+        saveSomeday();
+        vibrate(20);
+        renderCalendar();
+        return;
+      }
+
+      if (targetTaskList) {
+        // ログのタスク一覧に落とした場合も、時間は決めず現在表示中の日付の
+        // タスクとして追加する
+        const dateStr = viewingDate;
         const item = freshItem(task.label);
         ensureItemsArrayForDate(dateStr).push(item);
         persistItemsForDate(dateStr);

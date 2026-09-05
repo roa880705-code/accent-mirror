@@ -462,6 +462,11 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  transition: background 0.15s ease;
+}
+
+.list-wrap.drop-target {
+  background: var(--accent-soft);
 }
 
 .list {
