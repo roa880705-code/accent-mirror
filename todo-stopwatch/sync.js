@@ -38,10 +38,7 @@
     console.log("[AppSync]", ...args);
   }
 
-  async function pushKey(syncKey) {
-    const value = pending[syncKey];
-    delete pending[syncKey];
-    delete timers[syncKey];
+  async function upsertKey(syncKey, value) {
     if (!client || !session || value === undefined) return;
     try {
       await client.from("app_data").upsert({
@@ -53,6 +50,13 @@
     } catch (err) {
       log("push failed for", syncKey, err);
     }
+  }
+
+  async function pushKey(syncKey) {
+    const value = pending[syncKey];
+    delete pending[syncKey];
+    delete timers[syncKey];
+    await upsertKey(syncKey, value);
   }
 
   function schedulePush(syncKey) {
@@ -90,15 +94,28 @@
   // sitting in THIS browser's localStorage — the common case is signing in
   // on a second/new device that has no meaningful local data yet. If the
   // cloud has nothing for a given key (first time this account has ever
-  // synced), local data is left alone; the app's own next save call pushes
-  // it up and seeds the cloud copy from there.
+  // synced), the current local value is pushed up immediately so signing in
+  // alone — with no further edit — is enough to seed the cloud (several of
+  // these keys are only ever saved on an explicit user edit, so waiting for
+  // "the next save call" could mean waiting forever).
   async function initialSync() {
     const remote = await pullAll();
+    const seeds = [];
     Object.entries(LOCAL_KEY_MAP).forEach(([syncKey, localKey]) => {
       if (Object.prototype.hasOwnProperty.call(remote, syncKey)) {
         localStorage.setItem(localKey, JSON.stringify(remote[syncKey]));
+      } else {
+        const raw = localStorage.getItem(localKey);
+        if (raw !== null) {
+          try {
+            seeds.push(upsertKey(syncKey, JSON.parse(raw)));
+          } catch (err) {
+            log("seed parse failed for", syncKey, err);
+          }
+        }
       }
     });
+    await Promise.all(seeds);
   }
 
   async function init() {
