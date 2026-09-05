@@ -1159,9 +1159,12 @@ body {
 .briefing-memo-input {
   flex: 1;
   min-width: 0;
-  align-self: stretch;
+  height: 76px;
+  resize: none;
+  text-align: left;
   font-family: inherit;
   font-size: 0.72rem;
+  line-height: 1.3;
   color: var(--ink);
   background: var(--panel);
   border: 1px solid var(--panel-line);
@@ -1390,7 +1393,7 @@ body {
   color: var(--ink);
   font-family: inherit;
   font-size: 0.72rem;
-  line-height: 1.2;
+  line-height: 1.05;
   padding: 8px 10px;
 }
 
@@ -1731,12 +1734,22 @@ body {
   outline-offset: 1px;
 }
 
+/* 「時間未定」タスクの常時表示行: 時間軸グリッドとは別の、スクロールし
+   ない領域に置く(存在する数だけ常に見えることで、放置するほど画面を
+   占領して「早く時間帯を決めよう」という圧になる、という狙い)。
+   gutter+day-col と同じ横幅構成を再利用して、上の日付列と揃える。 */
+.unscheduled-week-row {
+  flex: none;
+  display: flex;
+  border-top: 1px solid var(--line);
+  padding: 4px 0;
+}
+
 .cal-unscheduled-day {
-  position: absolute;
-  left: 0;
-  right: 0;
-  border-top: 2px solid var(--line);
-  padding: 8px 3px 2px;
+  box-sizing: border-box;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 3px;
   display: flex;
   flex-direction: column;
   gap: 4px;

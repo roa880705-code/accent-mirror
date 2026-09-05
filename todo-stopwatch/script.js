@@ -415,6 +415,7 @@
   const dailyHoursEl = document.getElementById("calendarHours");
   const dailyWeekGridEl = document.getElementById("calendarWeekGrid");
   const dailyDetailEl = document.getElementById("calendarDetail");
+  const dailyUnscheduledRowEl = document.getElementById("calendarUnscheduledRow");
   const briefingMemoInput = document.getElementById("briefingMemoInput");
   const dailyNotesInput = document.getElementById("dailyNotesInput");
   const weeklyWeekLabelEl = document.getElementById("weeklyWeekLabel");
@@ -423,12 +424,14 @@
   const weeklyHoursEl = document.getElementById("weeklyHours");
   const weeklyWeekGridEl = document.getElementById("weeklyWeekGrid");
   const weeklyDetailEl = document.getElementById("weeklyDetail");
+  const weeklyUnscheduledRowEl = document.getElementById("weeklyUnscheduledRow");
   let calendarWeekLabel = dailyWeekLabelEl;
   let calendarWeekHeader = dailyWeekHeaderEl;
   let calendarWeekBody = dailyWeekBodyEl;
   let calendarHours = dailyHoursEl;
   let calendarWeekGrid = dailyWeekGridEl;
   let calendarDetail = dailyDetailEl;
+  let calendarUnscheduledRow = dailyUnscheduledRowEl;
   const calendarUnplannedBox = document.getElementById("calendarUnplannedBox");
   const calendarUnplannedList = document.getElementById("calendarUnplannedList");
   const calendarSomedayAddBtn = document.getElementById("calendarSomedayAddBtn");
@@ -1098,8 +1101,6 @@
   // page is currently active without needing to know which one that is.
   let CAL_DAYS = 1;
   const CAL_PALETTE = ["#b8672a", "#3e8c4e", "#5b7596", "#a3651f", "#7a6ba8", "#3f7a75", "#ab3d3d", "#62744c"];
-  const CAL_UNSCHEDULED_ROW_H = 34; // px per row in today's "unscheduled but today" list
-  const CAL_UNSCHEDULED_GAP = 4;
   // 学校の時限表示: 8-9時を0限、9-13時を1-4限、13-14時は昼休みで表示なし、
   // 14-20時を5-10限として、各時間枠の中央にマークする。
   const PERIOD_LABELS = [
@@ -1920,18 +1921,16 @@
       dateStr,
       startClientX: e.clientX,
       startClientY: e.clientY,
-      startScrollTop: calendarWeekBody.scrollTop,
       // see startPlanDrag: only a genuine long-press arms this row for
-      // dragging, so a quick move (e.g. to scroll past it) doesn't grab it
+      // dragging, so a quick move doesn't grab it
       armed: false,
-      scrolling: false,
       moved: false,
       targetCol: null,
       clientY: e.clientY,
       timer: null,
     };
     dayUnschedDragCtx.timer = setTimeout(() => {
-      if (!dayUnschedDragCtx || dayUnschedDragCtx.scrolling) return;
+      if (!dayUnschedDragCtx) return;
       dayUnschedDragCtx.timer = null;
       dayUnschedDragCtx.armed = true;
       dayUnschedDragCtx.row.classList.add("armed");
@@ -1947,18 +1946,17 @@
     const dx = e.clientX - dayUnschedDragCtx.startClientX;
     const dy = e.clientY - dayUnschedDragCtx.startClientY;
 
-    if (!dayUnschedDragCtx.armed && !dayUnschedDragCtx.scrolling) {
+    if (!dayUnschedDragCtx.armed) {
+      // this row now lives in the always-visible unscheduled row rather
+      // than inside a scrollable area, so a quick pre-arm move (which used
+      // to fall back to scrolling the grid past it) simply cancels the
+      // gesture instead.
       if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
-      dayUnschedDragCtx.scrolling = true;
-      if (dayUnschedDragCtx.timer) {
-        clearTimeout(dayUnschedDragCtx.timer);
-        dayUnschedDragCtx.timer = null;
-      }
-    }
-
-    if (dayUnschedDragCtx.scrolling) {
-      e.preventDefault();
-      calendarWeekBody.scrollTop = dayUnschedDragCtx.startScrollTop - dy;
+      if (dayUnschedDragCtx.timer) clearTimeout(dayUnschedDragCtx.timer);
+      document.removeEventListener("pointermove", onDayUnscheduledDragMove);
+      document.removeEventListener("pointerup", onDayUnscheduledDragEnd);
+      document.removeEventListener("pointercancel", onDayUnscheduledDragEnd);
+      dayUnschedDragCtx = null;
       return;
     }
 
@@ -2022,7 +2020,7 @@
 
   function onDayUnscheduledDragEnd() {
     if (!dayUnschedDragCtx) return;
-    const { row, item, dateStr, moved, scrolling, timer, targetCol, clientY, overUnplannedBox } = dayUnschedDragCtx;
+    const { row, item, dateStr, moved, timer, targetCol, clientY, overUnplannedBox } = dayUnschedDragCtx;
     if (timer) clearTimeout(timer);
     document.removeEventListener("pointermove", onDayUnscheduledDragMove);
     document.removeEventListener("pointerup", onDayUnscheduledDragEnd);
@@ -2033,8 +2031,6 @@
     clearDragPreview();
     clearDragGhost();
     dayUnschedDragCtx = null;
-
-    if (scrolling) return; // was just scrolling the grid past this row
 
     if (!moved) {
       // a plain tap (no drag): 時間未定のタスク gets the same 変更修正/削除
@@ -2749,13 +2745,12 @@
       showDragGhost(e.clientX, e.clientY, ctx.task.label);
       const cols = Array.from(calendarWeekGrid.children);
       let targetCol = null;
-      // .calendar-day-col is often much taller than what's actually visible
-      // (24h plus the "time undetermined" zone, while calendarWeekBody only
-      // shows a scrolled slice of it) — a column's own rect still reports
-      // that full, unclipped height, so without also checking the visible
-      // viewport, dragging back down past the calendar (e.g. toward the
-      // いつか tray below it, to abort the schedule) would still register as
-      // hovering the column instead of finding no target at all.
+      let overZone = false;
+      // a column's own rect can be taller than what's actually visible,
+      // while calendarWeekBody only shows a scrolled slice of it — without
+      // also checking the visible viewport, dragging back down past the
+      // calendar would still register as hovering the column instead of
+      // finding no target at all.
       const bodyRect = calendarWeekBody.getBoundingClientRect();
       if (e.clientY >= bodyRect.top && e.clientY <= bodyRect.bottom) {
         for (const col of cols) {
@@ -2775,24 +2770,45 @@
           }
         }
       }
-      cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
+
+      // 「時間未定」への割り当て判定: 時間軸グリッドとは別の、常時表示の
+      // 専用行(calendarUnscheduledRow)の各列を独立してチェックする
+      if (!targetCol) {
+        const unschedCols = Array.from(calendarUnscheduledRow.children).filter((c) =>
+          c.classList.contains("cal-unscheduled-day")
+        );
+        for (const col of unschedCols) {
+          if (col.dataset.date < state.day) continue;
+          const rect = col.getBoundingClientRect();
+          if (
+            e.clientX >= rect.left &&
+            e.clientX <= rect.right &&
+            e.clientY >= rect.top &&
+            e.clientY <= rect.bottom
+          ) {
+            targetCol = col;
+            overZone = true;
+            break;
+          }
+        }
+      }
+
+      cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol && !overZone));
+      Array.from(calendarUnscheduledRow.children).forEach((c) =>
+        c.classList.toggle("drop-target", c === targetCol && overZone)
+      );
       ctx.targetCol = targetCol;
+      ctx.overZone = overZone;
       ctx.clientY = e.clientY;
 
       if (targetCol) {
         document.querySelectorAll(".monthly-cell.drop-target").forEach((c) => c.classList.remove("drop-target"));
         ctx.targetMonthlyCell = null;
-        const colRect = targetCol.getBoundingClientRect();
-        const relY = e.clientY - colRect.top;
-        // dropping below the 24-hour line sends it to that day's own "time
-        // undetermined" list instead of a specific timed slot
-        const overZone = relY > 24 * CAL_HOUR_H;
-        ctx.overZone = overZone;
-        const zoneEl = targetCol.querySelector(".cal-unscheduled-day");
-        if (zoneEl) zoneEl.classList.toggle("drop-target", overZone);
         if (overZone) {
           clearDragPreview();
         } else {
+          const colRect = targetCol.getBoundingClientRect();
+          const relY = e.clientY - colRect.top;
           const rawMin = pxToMin(relY);
           let startMin = Math.round(rawMin / 15) * 15;
           startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
@@ -3154,22 +3170,13 @@
       return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
     });
     const dayUnscheduled = {};
-    let maxUnscheduled = 0;
-    let anyEligibleDay = false;
     dayDates.forEach((dateStr) => {
       const eligible = dateStr >= state.day;
-      if (eligible) anyEligibleDay = true;
-      const unscheduled = eligible ? itemsArrayForDate(dateStr).filter((it) => !it.planId) : [];
-      dayUnscheduled[dateStr] = unscheduled;
-      maxUnscheduled = Math.max(maxUnscheduled, unscheduled.length);
+      dayUnscheduled[dateStr] = eligible ? itemsArrayForDate(dateStr).filter((it) => !it.planId) : [];
     });
-    // The zone is always shown (even with nothing in it) for any day that
-    // could have one, so always reserve at least one row of space for it.
-    const unschedRowCount = anyEligibleDay ? Math.max(maxUnscheduled, 1) : 0;
-    const unschedExtraH = unschedRowCount
-      ? unschedRowCount * CAL_UNSCHEDULED_ROW_H + (unschedRowCount - 1) * CAL_UNSCHEDULED_GAP + 16
-      : 0;
-    calendarWeekGrid.style.height = `${24 * CAL_HOUR_H + unschedExtraH}px`;
+    // 「時間未定」タスクはスクロール不要な常時表示の専用行(下記)にすべて
+    // 表示するので、時間軸グリッド自体は24時間ぶんの高さで固定でよい。
+    calendarWeekGrid.style.height = `${24 * CAL_HOUR_H}px`;
 
     for (let i = 0; i < CAL_DAYS; i++) {
       const dateStr = dayDates[i];
@@ -3297,32 +3304,42 @@
       // days only.
       dayCol.addEventListener("pointerdown", (e) => onDayColPointerDown(e, dayCol, dateStr));
 
-      const unscheduledForDay = dayUnscheduled[dateStr];
+      calendarWeekGrid.appendChild(dayCol);
+    }
+
+    // 「時間未定」タスク(日付は決まっているが時刻は未定)の一覧: 存在する
+    // 数だけ常に見えていてほしい(スクロールで隠れると「未定のまま」に
+    // 気づけないので、放置するほど邪魔になって早く時間帯を決めたくなる、
+    // というのが狙い) ため、時間軸グリッドの中(スクロール領域)ではなく、
+    // その下の常時表示の行にまとめて描画する。列の横幅は各日の
+    // calendar-day-col と揃うよう、同じ gutter+flex 構成を使う。
+    calendarUnscheduledRow.innerHTML = "";
+    const unschedGutter = document.createElement("div");
+    unschedGutter.className = "cal-gutter-spacer";
+    calendarUnscheduledRow.appendChild(unschedGutter);
+    dayDates.forEach((dateStr) => {
+      const col = document.createElement("div");
+      col.className = "cal-unscheduled-day";
+      col.dataset.date = dateStr;
       if (dateStr >= state.day) {
-        // Always shown for a day that could have one, so it's a
-        // discoverable, dependable drop target even with nothing in it yet.
-        const zone = document.createElement("div");
-        zone.className = "cal-unscheduled-day";
-        zone.style.top = `${24 * CAL_HOUR_H}px`;
+        const unscheduledForDay = dayUnscheduled[dateStr];
         if (unscheduledForDay.length) {
           unscheduledForDay.forEach((item, idx) => {
             const row = document.createElement("div");
             row.className = "cal-unscheduled-row";
             row.textContent = labelOf(item, `タスク${idx + 1}`);
             row.addEventListener("pointerdown", (e) => startDayUnscheduledDrag(e, row, item, dateStr));
-            zone.appendChild(row);
+            col.appendChild(row);
           });
         } else {
           const empty = document.createElement("span");
           empty.className = "cal-unscheduled-empty";
           empty.textContent = "時間未定のタスクなし";
-          zone.appendChild(empty);
+          col.appendChild(empty);
         }
-        dayCol.appendChild(zone);
       }
-
-      calendarWeekGrid.appendChild(dayCol);
-    }
+      calendarUnscheduledRow.appendChild(col);
+    });
 
     tickCalendarLive();
 
@@ -3691,6 +3708,7 @@
       calendarHours = weeklyHoursEl;
       calendarWeekGrid = weeklyWeekGridEl;
       calendarDetail = weeklyDetailEl;
+      calendarUnscheduledRow = weeklyUnscheduledRowEl;
       weekAnchor = weeklyWeekAnchor;
     } else {
       CAL_DAYS = 1;
@@ -3700,6 +3718,7 @@
       calendarHours = dailyHoursEl;
       calendarWeekGrid = dailyWeekGridEl;
       calendarDetail = dailyDetailEl;
+      calendarUnscheduledRow = dailyUnscheduledRowEl;
       weekAnchor = dailyWeekAnchor;
     }
   }
