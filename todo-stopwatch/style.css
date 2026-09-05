@@ -23,6 +23,8 @@
   --tab-breakdown-soft: #e6e1f2;
   --tab-history: #62744c;
   --tab-history-soft: #e3e9da;
+  --tab-tasklist: #a24b6f;
+  --tab-tasklist-soft: #f1dde6;
   --daycycle-night: #d8d8dd;
   --daycycle-morning: #f7ddc0;
   --daycycle-day: #f8f0bf;
@@ -54,6 +56,8 @@
   --tab-breakdown-soft: #2c2540;
   --tab-history: #a3c07f;
   --tab-history-soft: #262f1c;
+  --tab-tasklist: #d98fb0;
+  --tab-tasklist-soft: #3a2230;
   --daycycle-night: #191f1a;
   --daycycle-morning: #3a2c1c;
   --daycycle-day: #38381d;
@@ -86,6 +90,8 @@
     --tab-breakdown-soft: #2c2540;
     --tab-history: #a3c07f;
     --tab-history-soft: #262f1c;
+    --tab-tasklist: #d98fb0;
+    --tab-tasklist-soft: #3a2230;
     --daycycle-night: #191f1a;
     --daycycle-morning: #3a2c1c;
     --daycycle-day: #38381d;
@@ -311,6 +317,12 @@ body {
   background: var(--accent-soft);
   color: var(--accent);
   border-color: var(--accent);
+}
+
+.tab-btn.tab-tasklist.active {
+  background: var(--tab-tasklist-soft);
+  color: var(--tab-tasklist);
+  border-color: var(--tab-tasklist);
 }
 
 .tab-btn:focus-visible {
@@ -1735,6 +1747,63 @@ body {
 .calendar-someday-add:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* --- タスク一覧ページ(設定とマンスリーの間のタブ): 他のページの
+   横スクロールのチップトレイと同じ「いつか/子/孫/ひ孫」データを、
+   横一列ではなく縦一列に並べて表示する専用ページ。ドラッグでの並べ替え
+   やスケジュールへのドラッグは意味がないので持たず、タップで変更/削除/
+   子タスク追加・掘り下げができるだけ(script.js の handleSomedayChipTap
+   と VERTICAL_SOMEDAY_LISTS を参照)。 --- */
+
+.tasklist-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(4px, 1vh, 8px);
+  padding: 2px 2px 4px;
+  overflow: hidden;
+}
+
+.tasklist-box {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 2px 6px;
+}
+
+.tasklist-box-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tasklist-list {
+  flex-direction: column;
+  align-items: stretch;
+  overflow-x: visible;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.tasklist-list .cal-unplanned-chip {
+  max-width: none;
+  width: 100%;
+  text-align: left;
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.tasklist-list .cal-unplanned-chip-label {
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 /* 「時間未定」タスクの常時表示行: 時間軸グリッドとは別の、スクロールし

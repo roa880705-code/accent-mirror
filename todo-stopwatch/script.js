@@ -480,6 +480,14 @@
   const taskGrandchildList = document.getElementById("taskGrandchildList");
   const taskGreatGrandchildBox = document.getElementById("taskGreatGrandchildBox");
   const taskGreatGrandchildList = document.getElementById("taskGreatGrandchildList");
+  const tasklistUnplannedList = document.getElementById("tasklistUnplannedList");
+  const tasklistSomedayAddBtn = document.getElementById("tasklistSomedayAddBtn");
+  const tasklistSubtaskBox = document.getElementById("tasklistSubtaskBox");
+  const tasklistSubtaskList = document.getElementById("tasklistSubtaskList");
+  const tasklistGrandchildBox = document.getElementById("tasklistGrandchildBox");
+  const tasklistGrandchildList = document.getElementById("tasklistGrandchildList");
+  const tasklistGreatGrandchildBox = document.getElementById("tasklistGreatGrandchildBox");
+  const tasklistGreatGrandchildList = document.getElementById("tasklistGreatGrandchildList");
   const calendarSubtaskConnector = document.getElementById("calendarSubtaskConnector");
   const calendarGrandchildConnector = document.getElementById("calendarGrandchildConnector");
   const calendarGreatGrandchildConnector = document.getElementById("calendarGreatGrandchildConnector");
@@ -492,6 +500,9 @@
   const taskSubtaskConnector = document.getElementById("taskSubtaskConnector");
   const taskGrandchildConnector = document.getElementById("taskGrandchildConnector");
   const taskGreatGrandchildConnector = document.getElementById("taskGreatGrandchildConnector");
+  const tasklistSubtaskConnector = document.getElementById("tasklistSubtaskConnector");
+  const tasklistGrandchildConnector = document.getElementById("tasklistGrandchildConnector");
+  const tasklistGreatGrandchildConnector = document.getElementById("tasklistGreatGrandchildConnector");
   const breakdownModal = document.getElementById("breakdownModal");
   const historyModal = document.getElementById("historyModal");
   const openBreakdownBtn = document.getElementById("openBreakdownBtn");
@@ -2213,33 +2224,43 @@
   // list/box combination at each call site. Index 0 is いつか itself
   // (always visible, no box to show/hide).
   const somedayLevelEls = [
-    { lists: [calendarUnplannedList, weeklyUnplannedList, monthlyUnplannedList, taskUnplannedList], boxes: null },
+    { lists: [calendarUnplannedList, weeklyUnplannedList, monthlyUnplannedList, taskUnplannedList, tasklistUnplannedList], boxes: null },
     {
-      lists: [calendarSubtaskList, weeklySubtaskList, monthlySubtaskList, taskSubtaskList],
-      boxes: [calendarSubtaskBox, weeklySubtaskBox, monthlySubtaskBox, taskSubtaskBox],
+      lists: [calendarSubtaskList, weeklySubtaskList, monthlySubtaskList, taskSubtaskList, tasklistSubtaskList],
+      boxes: [calendarSubtaskBox, weeklySubtaskBox, monthlySubtaskBox, taskSubtaskBox, tasklistSubtaskBox],
     },
     {
-      lists: [calendarGrandchildList, weeklyGrandchildList, monthlyGrandchildList, taskGrandchildList],
-      boxes: [calendarGrandchildBox, weeklyGrandchildBox, monthlyGrandchildBox, taskGrandchildBox],
+      lists: [calendarGrandchildList, weeklyGrandchildList, monthlyGrandchildList, taskGrandchildList, tasklistGrandchildList],
+      boxes: [calendarGrandchildBox, weeklyGrandchildBox, monthlyGrandchildBox, taskGrandchildBox, tasklistGrandchildBox],
     },
     {
-      lists: [calendarGreatGrandchildList, weeklyGreatGrandchildList, monthlyGreatGrandchildList, taskGreatGrandchildList],
-      boxes: [calendarGreatGrandchildBox, weeklyGreatGrandchildBox, monthlyGreatGrandchildBox, taskGreatGrandchildBox],
+      lists: [calendarGreatGrandchildList, weeklyGreatGrandchildList, monthlyGreatGrandchildList, taskGreatGrandchildList, tasklistGreatGrandchildList],
+      boxes: [calendarGreatGrandchildBox, weeklyGreatGrandchildBox, monthlyGreatGrandchildBox, taskGreatGrandchildBox, tasklistGreatGrandchildBox],
     },
   ];
 
+  // 縦一覧のタスクページのリスト要素だけ、横スクロール用のドラッグ操作
+  // (並べ替え/横スクロール/スケジュールへのドラッグ)を持たない — タップだけ
+  // で用が足りるし、フルwidthの行をX座標基準で並べ替え判定すると壊れるため。
+  const VERTICAL_SOMEDAY_LISTS = new Set([
+    tasklistUnplannedList,
+    tasklistSubtaskList,
+    tasklistGrandchildList,
+    tasklistGreatGrandchildList,
+  ]);
+
   // connectorEls[d][pageIdx] draws the line from the active parent at depth
   // d down to the tray holding its children (somedayLevelEls[d + 1]) — same
-  // page order as somedayLevelEls (calendar/weekly/monthly/task).
+  // page order as somedayLevelEls (calendar/weekly/monthly/task/tasklist).
   const somedayConnectorEls = [
-    [calendarSubtaskConnector, weeklySubtaskConnector, monthlySubtaskConnector, taskSubtaskConnector],
-    [calendarGrandchildConnector, weeklyGrandchildConnector, monthlyGrandchildConnector, taskGrandchildConnector],
-    [calendarGreatGrandchildConnector, weeklyGreatGrandchildConnector, monthlyGreatGrandchildConnector, taskGreatGrandchildConnector],
+    [calendarSubtaskConnector, weeklySubtaskConnector, monthlySubtaskConnector, taskSubtaskConnector, tasklistSubtaskConnector],
+    [calendarGrandchildConnector, weeklyGrandchildConnector, monthlyGrandchildConnector, taskGrandchildConnector, tasklistGrandchildConnector],
+    [calendarGreatGrandchildConnector, weeklyGreatGrandchildConnector, monthlyGreatGrandchildConnector, taskGreatGrandchildConnector, tasklistGreatGrandchildConnector],
   ];
 
   // the containing block each page's connectors are positioned absolutely
   // against — .calendar/.monthly-calendar for those pages, or .page itself
-  // for ログ (which has no such wrapper of its own)
+  // for ログ・タスク(縦一覧)(どちらも専用ラッパーを持たない)
   const somedayConnectorRoots = somedayLevelEls[0].lists.map((listEl) => listEl.closest(".calendar, .monthly-calendar, .page"));
 
   function addSomedayBranchLine(containerEl, x, y, w, h) {
@@ -2471,7 +2492,11 @@
       }
 
       chip.dataset.somedayId = task.id;
-      chip.addEventListener("pointerdown", (e) => startSomedayChipDrag(e, chip, task));
+      if (VERTICAL_SOMEDAY_LISTS.has(listEl)) {
+        chip.addEventListener("click", () => handleSomedayChipTap(task));
+      } else {
+        chip.addEventListener("pointerdown", (e) => startSomedayChipDrag(e, chip, task));
+      }
       listEl.appendChild(chip);
     });
   }
@@ -3154,46 +3179,54 @@
       // a plain tap, with no drag ever starting
       const { task } = ctx;
       somedayDragCtx = null;
-      const depth = somedayTaskDepth(task);
-
-      if (depth >= SOMEDAY_MAX_DEPTH) {
-        // the deepest level (ひ孫タスク): always a leaf, so no 子タスク追加
-        // option, but 変更修正/削除 is still offered like every other level
-        promptSomedayEditOrAddChild(task, depth);
-        return;
-      }
-
-      if (isParentTask(task.id)) {
-        // already has subtasks of its own: tapping it drills into the next
-        // layer down — but a SECOND tap on the SAME already-active one
-        // opens the same 変更修正/子タスク追加 choice as a leaf task, instead
-        // of always renaming — otherwise there was no way to add ANOTHER
-        // child from an already-expanded parent without first collapsing
-        // and re-tapping it
-        if (activeSomedayIds[depth] === task.id) {
-          promptSomedayEditOrAddChild(task, depth);
-        } else {
-          activateSomedayChain(depth, task.id);
-          renderSomedayList();
-        }
-        return;
-      }
-
-      if (depth === 0 && activeSomedayIds.some((id) => id)) {
-        // an unrelated childless いつか task, tapped while some other
-        // family's 子/孫/ひ孫 trays are expanded below — just close that
-        // expansion (like tapping outside does) instead of also popping
-        // open this task's own edit choice on top of it
-        collapseSomedaySubtaskLayers();
-        return;
-      }
-
-      promptSomedayEditOrAddChild(task, depth);
+      handleSomedayChipTap(task);
       return;
     }
 
     // a gesture that bailed out early some other way — nothing to do
     somedayDragCtx = null;
+  }
+
+  // タップした際の挙動(変更修正/子タスク追加/削除の選択、または子タスク層
+  // への掘り下げ)。横スクロールのトレイでは長押しドラッグが絡まない
+  // プレーンなタップからも、縦一覧のタスクページのクリックからも、ここに
+  // たどり着く。
+  function handleSomedayChipTap(task) {
+    const depth = somedayTaskDepth(task);
+
+    if (depth >= SOMEDAY_MAX_DEPTH) {
+      // the deepest level (ひ孫タスク): always a leaf, so no 子タスク追加
+      // option, but 変更修正/削除 is still offered like every other level
+      promptSomedayEditOrAddChild(task, depth);
+      return;
+    }
+
+    if (isParentTask(task.id)) {
+      // already has subtasks of its own: tapping it drills into the next
+      // layer down — but a SECOND tap on the SAME already-active one
+      // opens the same 変更修正/子タスク追加 choice as a leaf task, instead
+      // of always renaming — otherwise there was no way to add ANOTHER
+      // child from an already-expanded parent without first collapsing
+      // and re-tapping it
+      if (activeSomedayIds[depth] === task.id) {
+        promptSomedayEditOrAddChild(task, depth);
+      } else {
+        activateSomedayChain(depth, task.id);
+        renderSomedayList();
+      }
+      return;
+    }
+
+    if (depth === 0 && activeSomedayIds.some((id) => id)) {
+      // an unrelated childless いつか task, tapped while some other
+      // family's 子/孫/ひ孫 trays are expanded below — just close that
+      // expansion (like tapping outside does) instead of also popping
+      // open this task's own edit choice on top of it
+      collapseSomedaySubtaskLayers();
+      return;
+    }
+
+    promptSomedayEditOrAddChild(task, depth);
   }
 
   // Lays same-day overlapping segments (e.g. a task plus a concurrent 割込
@@ -3784,6 +3817,7 @@
   weeklySomedayAddBtn.addEventListener("click", addSomedayTask);
   monthlySomedayAddBtn.addEventListener("click", addSomedayTask);
   taskSomedayAddBtn.addEventListener("click", addSomedayTask);
+  tasklistSomedayAddBtn.addEventListener("click", addSomedayTask);
 
   // a connector line tracks its parent chip's real on-screen position, so
   // it needs to move along whenever the tray holding that chip is scrolled
@@ -3811,16 +3845,18 @@
   initMonthlyCalendar();
 
   // --- tabs / paging ---
-  // Page order: 0 マンスリー, 1 ウィークリー, 2 デイリー, 3 タスク.
+  // Page order: 0 タスク(縦一覧), 1 マンスリー, 2 ウィークリー, 3 デイリー,
+  // 4 ログ(タブ名は「ログ」、内部の命名は昔ながらの TASK_PAGE のまま)。
   // Switching PAGES (tabs) is tap-only: goToPage() slides pagesTrack via a
   // CSS transform instead of relying on native horizontal scrolling. Swiping
   // left/right instead advances the content WITHIN whichever page is active
   // (next/prev month/week/day) — see the swipe-navigation block below.
 
-  const MONTHLY_PAGE = 0;
-  const WEEKLY_PAGE = 1;
-  const DAILY_PAGE = 2;
-  const TASK_PAGE = 3;
+  const TASKLIST_PAGE = 0;
+  const MONTHLY_PAGE = 1;
+  const WEEKLY_PAGE = 2;
+  const DAILY_PAGE = 3;
+  const TASK_PAGE = 4;
   const pagesTrack = document.getElementById("pagesTrack");
   const tabBtns = Array.from(document.querySelectorAll(".tab-btn"));
   let activePage = 0;

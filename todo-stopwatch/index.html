@@ -10,6 +10,7 @@
 <div class="wrap">
   <nav class="tabs" id="tabs">
     <button class="settings-btn" type="button" id="settingsTabBtn">設定</button>
+    <button class="tab-btn tab-tasklist" type="button">タスク</button>
     <button class="tab-btn tab-monthly" type="button">マンスリー</button>
     <button class="tab-btn tab-weekly" type="button">ウィークリー</button>
     <button class="tab-btn tab-daily" type="button">デイリー</button>
@@ -33,6 +34,32 @@
 
   <div class="pages" id="pages">
     <div class="pages-track" id="pagesTrack">
+      <section class="page">
+        <div class="tasklist-page">
+          <div class="calendar-unplanned tasklist-box" id="tasklistUnplannedBox">
+            <div class="tasklist-box-header">
+              <span class="calendar-unplanned-title">タスク</span>
+              <button type="button" class="calendar-someday-add" id="tasklistSomedayAddBtn" aria-label="タスクを追加">＋</button>
+            </div>
+            <div class="calendar-unplanned-list tasklist-list" id="tasklistUnplannedList"></div>
+          </div>
+          <div class="someday-branch" id="tasklistSubtaskConnector" hidden></div>
+          <div class="calendar-unplanned calendar-subtask-row tasklist-box" id="tasklistSubtaskBox" hidden>
+            <span class="calendar-unplanned-title">子タスク</span>
+            <div class="calendar-unplanned-list tasklist-list" id="tasklistSubtaskList"></div>
+          </div>
+          <div class="someday-branch" id="tasklistGrandchildConnector" hidden></div>
+          <div class="calendar-unplanned calendar-subtask-row tasklist-box" id="tasklistGrandchildBox" hidden>
+            <span class="calendar-unplanned-title">孫タスク</span>
+            <div class="calendar-unplanned-list tasklist-list" id="tasklistGrandchildList"></div>
+          </div>
+          <div class="someday-branch" id="tasklistGreatGrandchildConnector" hidden></div>
+          <div class="calendar-unplanned calendar-subtask-row tasklist-box" id="tasklistGreatGrandchildBox" hidden>
+            <span class="calendar-unplanned-title">ひ孫タスク</span>
+            <div class="calendar-unplanned-list tasklist-list" id="tasklistGreatGrandchildList"></div>
+          </div>
+        </div>
+      </section>
       <section class="page">
         <div class="monthly-calendar" id="monthlyCalendar">
           <div class="calendar-header">
