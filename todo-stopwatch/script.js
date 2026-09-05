@@ -474,6 +474,7 @@
         timeDisplay.textContent = "--:--:--";
       }
       handle.addEventListener("pointerdown", (e) => startDrag(e, node, item));
+      node.addEventListener("pointerdown", (e) => onRowPointerDown(e, node, input, item));
 
       rowEls.push({ node, input, timeDisplay, toggleBtn, item });
       list.appendChild(node);
@@ -485,6 +486,41 @@
     addRow.textContent = "＋ タスクの追加";
     addRow.addEventListener("click", addWatch);
     list.appendChild(addRow);
+  }
+
+  // Long-press anywhere on a row except its dedicated buttons (which already
+  // have their own tap behavior) opens the 変更修正/削除 choice, the same
+  // pattern used for いつかタスク — a plain tap still just focuses the name
+  // field for live inline editing, unchanged.
+  function onRowPointerDown(e, node, input, item) {
+    if (e.target.closest(".row-time, .row-toggle, .row-reset, .row-handle")) return;
+    if (e.button !== undefined && e.button !== 0) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let timer = setTimeout(() => {
+      timer = null;
+      cleanup();
+      input.blur();
+      vibrate(10);
+      promptRegularTaskEdit(viewingDate, item);
+    }, PLAN_LONGPRESS_MS);
+
+    function onMove(ev) {
+      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > PLAN_MOVE_TOLERANCE) cleanup();
+    }
+    function cleanup() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", cleanup);
+      document.removeEventListener("pointercancel", cleanup);
+    }
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", cleanup);
+    document.addEventListener("pointercancel", cleanup);
   }
 
   function addWatch() {
@@ -1828,7 +1864,12 @@
     clearDragGhost();
     dayUnschedDragCtx = null;
 
-    if (!moved) return;
+    if (!moved) {
+      // a plain tap (no drag): 時間未定のタスク gets the same 変更修正/削除
+      // choice as a regular ログ行, instead of doing nothing as before
+      promptRegularTaskEdit(dateStr, item);
+      return;
+    }
 
     if (overUnplannedBox) {
       if (item.elapsedMs > 0 || item.running) {
@@ -2118,25 +2159,30 @@
     renderSomedayList();
   }
 
-  // --- choice modal: a leaf いつか task (no subtasks yet) opens this on a
-  // plain tap, to decide between renaming it and turning it into a parent
-  // by adding its first subtask ---
+  // --- choice modal: tapping any task (いつか/子/孫/ひ孫タスク, a regular
+  // ログ行, or a 時間未定のタスク) opens this to decide between renaming it,
+  // deleting it, or (いつか系のみ、まだ最下層でなければ) turning it into a
+  // parent by adding its first subtask ---
 
   const somedayChoiceModal = document.getElementById("somedayChoiceModal");
   const somedayChoiceTitle = document.getElementById("somedayChoiceTitle");
   const somedayChoiceEditBtn = document.getElementById("somedayChoiceEditBtn");
   const somedayChoiceAddChildBtn = document.getElementById("somedayChoiceAddChildBtn");
+  const somedayChoiceDeleteBtn = document.getElementById("somedayChoiceDeleteBtn");
   const somedayChoiceCancelBtn = document.getElementById("somedayChoiceCancelBtn");
 
-  function openSomedayChoiceModal(task) {
+  function openTaskChoiceModal(task, opts) {
+    const showAddChild = !!(opts && opts.showAddChild);
     return new Promise((resolve) => {
       somedayChoiceTitle.textContent = `「${task.label}」を編集`;
+      somedayChoiceAddChildBtn.hidden = !showAddChild;
       somedayChoiceModal.hidden = false;
 
       function cleanup(result) {
         somedayChoiceModal.hidden = true;
         somedayChoiceEditBtn.removeEventListener("click", onEdit);
         somedayChoiceAddChildBtn.removeEventListener("click", onAddChild);
+        somedayChoiceDeleteBtn.removeEventListener("click", onDelete);
         somedayChoiceCancelBtn.removeEventListener("click", onCancel);
         somedayChoiceModal.removeEventListener("mousedown", onBackdrop);
         resolve(result);
@@ -2147,6 +2193,9 @@
       function onAddChild() {
         cleanup("addChild");
       }
+      function onDelete() {
+        cleanup("delete");
+      }
       function onCancel() {
         cleanup(null);
       }
@@ -2156,6 +2205,7 @@
 
       somedayChoiceEditBtn.addEventListener("click", onEdit);
       somedayChoiceAddChildBtn.addEventListener("click", onAddChild);
+      somedayChoiceDeleteBtn.addEventListener("click", onDelete);
       somedayChoiceCancelBtn.addEventListener("click", onCancel);
       somedayChoiceModal.addEventListener("mousedown", onBackdrop);
     });
@@ -2172,11 +2222,89 @@
     });
   }
 
+  // Removes a task and every descendant beneath it (子/孫/ひ孫), unlike
+  // removeSomedayTaskPromotingChildren which detaches them to survive as
+  // new top-level tasks instead.
+  function removeSomedayTaskAndDescendants(id) {
+    const idsToRemove = new Set([id]);
+    let added = true;
+    while (added) {
+      added = false;
+      someday.forEach((t) => {
+        if (t.parentId && idsToRemove.has(t.parentId) && !idsToRemove.has(t.id)) {
+          idsToRemove.add(t.id);
+          added = true;
+        }
+      });
+    }
+    someday = someday.filter((t) => !idsToRemove.has(t.id));
+  }
+
+  const somedayDeleteChildrenModal = document.getElementById("somedayDeleteChildrenModal");
+  const somedayDeleteKeepChildrenBtn = document.getElementById("somedayDeleteKeepChildrenBtn");
+  const somedayDeleteAllBtn = document.getElementById("somedayDeleteAllBtn");
+  const somedayDeleteChildrenCancelBtn = document.getElementById("somedayDeleteChildrenCancelBtn");
+
+  function openSomedayDeleteChildrenModal() {
+    return new Promise((resolve) => {
+      somedayDeleteChildrenModal.hidden = false;
+
+      function cleanup(result) {
+        somedayDeleteChildrenModal.hidden = true;
+        somedayDeleteKeepChildrenBtn.removeEventListener("click", onKeep);
+        somedayDeleteAllBtn.removeEventListener("click", onAll);
+        somedayDeleteChildrenCancelBtn.removeEventListener("click", onCancel);
+        somedayDeleteChildrenModal.removeEventListener("mousedown", onBackdrop);
+        resolve(result);
+      }
+      function onKeep() {
+        cleanup("keep");
+      }
+      function onAll() {
+        cleanup("all");
+      }
+      function onCancel() {
+        cleanup(null);
+      }
+      function onBackdrop(e) {
+        if (e.target === somedayDeleteChildrenModal) onCancel();
+      }
+
+      somedayDeleteKeepChildrenBtn.addEventListener("click", onKeep);
+      somedayDeleteAllBtn.addEventListener("click", onAll);
+      somedayDeleteChildrenCancelBtn.addEventListener("click", onCancel);
+      somedayDeleteChildrenModal.addEventListener("mousedown", onBackdrop);
+    });
+  }
+
+  // A leaf task deletes outright. A parent task (has its own subtasks) asks
+  // first whether to keep the subtree (detached to top-level) or drop the
+  // whole branch.
+  function confirmDeleteSomedayTask(task) {
+    if (!isParentTask(task.id)) {
+      removeSomedayTaskPromotingChildren(task.id);
+      saveSomeday();
+      renderSomedayList();
+      return;
+    }
+    openSomedayDeleteChildrenModal().then((choice) => {
+      if (choice === "keep") {
+        removeSomedayTaskPromotingChildren(task.id);
+      } else if (choice === "all") {
+        removeSomedayTaskAndDescendants(task.id);
+      } else {
+        return;
+      }
+      saveSomeday();
+      renderSomedayList();
+    });
+  }
+
   // Shared by a leaf task's tap and an already-expanded parent's tap alike,
-  // so either one offers the same 変更修正/子タスク追加 choice instead of a
-  // parent tap ever forcing straight into rename.
+  // so either one offers the same 変更修正/子タスク追加/削除 choice instead
+  // of a parent tap ever forcing straight into rename.
   function promptSomedayEditOrAddChild(task, depth) {
-    openSomedayChoiceModal(task).then((choice) => {
+    openTaskChoiceModal(task, { showAddChild: depth < SOMEDAY_MAX_DEPTH }).then((choice) => {
       if (choice === "edit") {
         renameSomedayTask(task);
       } else if (choice === "addChild") {
@@ -2189,8 +2317,51 @@
           activateSomedayChain(depth, task.id);
           renderSomedayList();
         });
+      } else if (choice === "delete") {
+        confirmDeleteSomedayTask(task);
       }
     });
+  }
+
+  // Regular tasks (ログ行/時間未定のタスク) never have subtasks of their
+  // own, so this is always a plain 変更修正/削除 choice — no addChild, no
+  // keep-vs-delete-all follow-up.
+  function promptRegularTaskEdit(dateStr, item) {
+    openTaskChoiceModal(item, { showAddChild: false }).then((choice) => {
+      if (choice === "edit") {
+        openNameModal(item.label).then((name) => {
+          if (name === null) return;
+          const label = name.trim();
+          if (!label) return;
+          item.label = label;
+          if (item.planId) {
+            const plan = plansForDate(dateStr).find((p) => p.id === item.planId);
+            if (plan) {
+              plan.label = label;
+              savePlans();
+            }
+          }
+          persistItemsForDate(dateStr);
+          refreshTimerIfShowing(dateStr);
+          renderCalendar();
+        });
+      } else if (choice === "delete") {
+        deleteTaskItem(dateStr, item);
+      }
+    });
+  }
+
+  // Deletes a regular task outright: drops its plan block (if any) along
+  // with the item itself, rather than the more conservative "unschedule"
+  // flow elsewhere that keeps the item when it already has recorded time.
+  function deleteTaskItem(dateStr, item) {
+    if (item.planId) removePlan(dateStr, item.planId);
+    const items = itemsArrayForDate(dateStr);
+    const idx = items.indexOf(item);
+    if (idx >= 0) items.splice(idx, 1);
+    persistItemsForDate(dateStr);
+    refreshTimerIfShowing(dateStr);
+    renderCalendar();
   }
 
   let somedayDragCtx = null;
@@ -2530,8 +2701,9 @@
       const depth = somedayTaskDepth(task);
 
       if (depth >= SOMEDAY_MAX_DEPTH) {
-        // the deepest level (ひ孫タスク): always a leaf, a tap just renames it
-        renameSomedayTask(task);
+        // the deepest level (ひ孫タスク): always a leaf, so no 子タスク追加
+        // option, but 変更修正/削除 is still offered like every other level
+        promptSomedayEditOrAddChild(task, depth);
         return;
       }
 

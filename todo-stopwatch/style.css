@@ -1745,6 +1745,11 @@ body {
   color: #fff;
 }
 
+.btn-modal-delete {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 /* --- 内訳 / 履歴 panels: opened as modals from the round buttons on the
    タスク tab, since they're no longer top-level swipeable pages --- */
 

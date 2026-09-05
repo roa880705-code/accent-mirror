@@ -212,9 +212,23 @@
     <div class="modal-actions modal-actions-stack">
       <button class="btn btn-modal-ok" id="somedayChoiceEditBtn" type="button">変更修正</button>
       <button class="btn btn-modal-ok" id="somedayChoiceAddChildBtn" type="button">子タスク追加</button>
+      <button class="btn btn-modal-delete" id="somedayChoiceDeleteBtn" type="button">削除</button>
     </div>
     <div class="modal-actions">
       <button class="btn btn-modal-cancel" id="somedayChoiceCancelBtn" type="button">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="somedayDeleteChildrenModal" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="somedayDeleteChildrenTitle">
+    <h2 id="somedayDeleteChildrenTitle">子タスクの扱いを選択</h2>
+    <div class="modal-actions modal-actions-stack">
+      <button class="btn btn-modal-ok" id="somedayDeleteKeepChildrenBtn" type="button">子タスク以下を残す</button>
+      <button class="btn btn-modal-delete" id="somedayDeleteAllBtn" type="button">全て削除</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-modal-cancel" id="somedayDeleteChildrenCancelBtn" type="button">キャンセル</button>
     </div>
   </div>
 </div>
