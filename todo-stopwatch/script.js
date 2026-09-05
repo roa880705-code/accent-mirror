@@ -1486,11 +1486,26 @@
       duration: plan.endMin - plan.startMin,
       startClientX: e.clientX,
       startClientY: e.clientY,
+      startScrollTop: calendarWeekBody.scrollTop,
+      // only a genuine long-press arms the block for moving — a quick move
+      // before then is read as "scroll past this block", not "drag it",
+      // since without this a scroll attempt that happens to start on a
+      // block would immediately move it instead
+      armed: false,
+      scrolling: false,
       moved: false,
       hoverDate: dateStr,
       previewStartMin: plan.startMin,
       lastVibrateMin: plan.startMin,
+      timer: null,
     };
+    planDragCtx.timer = setTimeout(() => {
+      if (!planDragCtx || planDragCtx.scrolling) return;
+      planDragCtx.timer = null;
+      planDragCtx.armed = true;
+      planDragCtx.block.classList.add("armed");
+      vibrate(15);
+    }, PLAN_LONGPRESS_MS);
     document.addEventListener("pointermove", onPlanDragMove);
     document.addEventListener("pointerup", onPlanDragEnd);
     document.addEventListener("pointercancel", onPlanDragEnd);
@@ -1499,12 +1514,29 @@
 
   function onPlanDragMove(e) {
     if (!planDragCtx) return;
-    e.preventDefault();
     const dx = e.clientX - planDragCtx.startClientX;
     const dy = e.clientY - planDragCtx.startClientY;
+
+    if (!planDragCtx.armed && !planDragCtx.scrolling) {
+      if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
+      planDragCtx.scrolling = true;
+      if (planDragCtx.timer) {
+        clearTimeout(planDragCtx.timer);
+        planDragCtx.timer = null;
+      }
+    }
+
+    if (planDragCtx.scrolling) {
+      e.preventDefault();
+      calendarWeekBody.scrollTop = planDragCtx.startScrollTop - dy;
+      return;
+    }
+
+    e.preventDefault();
     if (!planDragCtx.moved) {
       if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
       planDragCtx.moved = true;
+      planDragCtx.block.classList.remove("armed");
       planDragCtx.block.classList.add("dragging");
       vibrate(15);
     }
@@ -1568,14 +1600,17 @@
 
   function onPlanDragEnd(e) {
     if (!planDragCtx) return;
-    const { block, dateStr, plan, duration, moved, hoverDate, previewStartMin, overUnplannedBox, overDayUnscheduled } = planDragCtx;
+    const { block, dateStr, plan, duration, moved, scrolling, timer, hoverDate, previewStartMin, overUnplannedBox, overDayUnscheduled } = planDragCtx;
+    if (timer) clearTimeout(timer);
     document.removeEventListener("pointermove", onPlanDragMove);
     document.removeEventListener("pointerup", onPlanDragEnd);
     document.removeEventListener("pointercancel", onPlanDragEnd);
-    block.classList.remove("dragging");
+    block.classList.remove("dragging", "armed");
     calendarUnplannedBox.classList.remove("drop-target");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
     planDragCtx = null;
+
+    if (scrolling) return; // was just scrolling the grid past this block
 
     if (!moved) {
       onPlanBlockClick(e, dateStr, plan);
@@ -1784,7 +1819,29 @@
     if (e.button !== undefined && e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
-    dayUnschedDragCtx = { row, item, dateStr, moved: false, startClientX: e.clientX, startClientY: e.clientY, targetCol: null, clientY: e.clientY };
+    dayUnschedDragCtx = {
+      row,
+      item,
+      dateStr,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startScrollTop: calendarWeekBody.scrollTop,
+      // see startPlanDrag: only a genuine long-press arms this row for
+      // dragging, so a quick move (e.g. to scroll past it) doesn't grab it
+      armed: false,
+      scrolling: false,
+      moved: false,
+      targetCol: null,
+      clientY: e.clientY,
+      timer: null,
+    };
+    dayUnschedDragCtx.timer = setTimeout(() => {
+      if (!dayUnschedDragCtx || dayUnschedDragCtx.scrolling) return;
+      dayUnschedDragCtx.timer = null;
+      dayUnschedDragCtx.armed = true;
+      dayUnschedDragCtx.row.classList.add("armed");
+      vibrate(15);
+    }, PLAN_LONGPRESS_MS);
     document.addEventListener("pointermove", onDayUnscheduledDragMove);
     document.addEventListener("pointerup", onDayUnscheduledDragEnd);
     document.addEventListener("pointercancel", onDayUnscheduledDragEnd);
@@ -1792,12 +1849,29 @@
 
   function onDayUnscheduledDragMove(e) {
     if (!dayUnschedDragCtx) return;
-    e.preventDefault();
     const dx = e.clientX - dayUnschedDragCtx.startClientX;
     const dy = e.clientY - dayUnschedDragCtx.startClientY;
+
+    if (!dayUnschedDragCtx.armed && !dayUnschedDragCtx.scrolling) {
+      if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
+      dayUnschedDragCtx.scrolling = true;
+      if (dayUnschedDragCtx.timer) {
+        clearTimeout(dayUnschedDragCtx.timer);
+        dayUnschedDragCtx.timer = null;
+      }
+    }
+
+    if (dayUnschedDragCtx.scrolling) {
+      e.preventDefault();
+      calendarWeekBody.scrollTop = dayUnschedDragCtx.startScrollTop - dy;
+      return;
+    }
+
+    e.preventDefault();
     if (!dayUnschedDragCtx.moved) {
       if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
       dayUnschedDragCtx.moved = true;
+      dayUnschedDragCtx.row.classList.remove("armed");
       dayUnschedDragCtx.row.classList.add("dragging");
       vibrate(15);
     }
@@ -1853,16 +1927,19 @@
 
   function onDayUnscheduledDragEnd() {
     if (!dayUnschedDragCtx) return;
-    const { row, item, dateStr, moved, targetCol, clientY, overUnplannedBox } = dayUnschedDragCtx;
+    const { row, item, dateStr, moved, scrolling, timer, targetCol, clientY, overUnplannedBox } = dayUnschedDragCtx;
+    if (timer) clearTimeout(timer);
     document.removeEventListener("pointermove", onDayUnscheduledDragMove);
     document.removeEventListener("pointerup", onDayUnscheduledDragEnd);
     document.removeEventListener("pointercancel", onDayUnscheduledDragEnd);
-    row.classList.remove("dragging");
+    row.classList.remove("dragging", "armed");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
     calendarUnplannedBox.classList.remove("drop-target");
     clearDragPreview();
     clearDragGhost();
     dayUnschedDragCtx = null;
+
+    if (scrolling) return; // was just scrolling the grid past this row
 
     if (!moved) {
       // a plain tap (no drag): 時間未定のタスク gets the same 変更修正/削除

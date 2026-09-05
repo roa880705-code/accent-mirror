@@ -1314,6 +1314,12 @@ body {
   cursor: grabbing;
 }
 
+/* shown once the long-press to arm a move has fired, before any actual
+   drag movement — the same "ready to grab" cue used on いつか chips */
+.cal-plan-block.armed {
+  box-shadow: 0 0 0 2px var(--accent) inset;
+}
+
 .cal-plan-block.selected {
   z-index: 10;
   border-style: solid;
@@ -1585,6 +1591,10 @@ body {
 
 .cal-unscheduled-row.dragging {
   opacity: 0.5;
+}
+
+.cal-unscheduled-row.armed {
+  box-shadow: 0 0 0 2px var(--accent) inset;
 }
 
 .cal-unscheduled-empty {
