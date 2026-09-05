@@ -500,9 +500,6 @@
   const taskSubtaskConnector = document.getElementById("taskSubtaskConnector");
   const taskGrandchildConnector = document.getElementById("taskGrandchildConnector");
   const taskGreatGrandchildConnector = document.getElementById("taskGreatGrandchildConnector");
-  const tasklistSubtaskConnector = document.getElementById("tasklistSubtaskConnector");
-  const tasklistGrandchildConnector = document.getElementById("tasklistGrandchildConnector");
-  const tasklistGreatGrandchildConnector = document.getElementById("tasklistGreatGrandchildConnector");
   const breakdownModal = document.getElementById("breakdownModal");
   const historyModal = document.getElementById("historyModal");
   const openBreakdownBtn = document.getElementById("openBreakdownBtn");
@@ -2251,16 +2248,22 @@
 
   // connectorEls[d][pageIdx] draws the line from the active parent at depth
   // d down to the tray holding its children (somedayLevelEls[d + 1]) — same
-  // page order as somedayLevelEls (calendar/weekly/monthly/task/tasklist).
+  // page order as somedayLevelEls (calendar/weekly/monthly/task), but WITHOUT
+  // タスク(縦一覧): its columns sit left-to-right (see .tasklist-page in
+  // style.css), where adjacency alone already reads as the parent/child
+  // relationship, so the branch-line overlay (meant for chips scattered
+  // across a horizontally-scrolling tray) has nothing useful to draw there.
   const somedayConnectorEls = [
-    [calendarSubtaskConnector, weeklySubtaskConnector, monthlySubtaskConnector, taskSubtaskConnector, tasklistSubtaskConnector],
-    [calendarGrandchildConnector, weeklyGrandchildConnector, monthlyGrandchildConnector, taskGrandchildConnector, tasklistGrandchildConnector],
-    [calendarGreatGrandchildConnector, weeklyGreatGrandchildConnector, monthlyGreatGrandchildConnector, taskGreatGrandchildConnector, tasklistGreatGrandchildConnector],
+    [calendarSubtaskConnector, weeklySubtaskConnector, monthlySubtaskConnector, taskSubtaskConnector],
+    [calendarGrandchildConnector, weeklyGrandchildConnector, monthlyGrandchildConnector, taskGrandchildConnector],
+    [calendarGreatGrandchildConnector, weeklyGreatGrandchildConnector, monthlyGreatGrandchildConnector, taskGreatGrandchildConnector],
   ];
 
   // the containing block each page's connectors are positioned absolutely
   // against — .calendar/.monthly-calendar for those pages, or .page itself
-  // for ログ・タスク(縦一覧)(どちらも専用ラッパーを持たない)
+  // for ログ (which has no such wrapper of its own). Indexed the same as
+  // somedayConnectorEls's page order above (タスク一覧 excluded, so only the
+  // first 4 of somedayLevelEls[0].lists are ever looked up by pageIdx).
   const somedayConnectorRoots = somedayLevelEls[0].lists.map((listEl) => listEl.closest(".calendar, .monthly-calendar, .page"));
 
   function addSomedayBranchLine(containerEl, x, y, w, h) {

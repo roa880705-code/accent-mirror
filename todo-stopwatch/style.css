@@ -1751,29 +1751,41 @@ body {
 
 /* --- タスク一覧ページ(設定とマンスリーの間のタブ): 他のページの
    横スクロールのチップトレイと同じ「いつか/子/孫/ひ孫」データを、
-   横一列ではなく縦一列に並べて表示する専用ページ。ドラッグでの並べ替え
-   やスケジュールへのドラッグは意味がないので持たず、タップで変更/削除/
-   子タスク追加・掘り下げができるだけ(script.js の handleSomedayChipTap
-   と VERTICAL_SOMEDAY_LISTS を参照)。 --- */
+   縦一列のリストとして表示する専用ページ。列(いつか/子/孫/ひ孫)は
+   下ではなく右へ右へ展開するMiller Columns式のレイアウト — 親だけの
+   ときは1列が全幅、子タスクを持つ親をタップして掘り下げるたびに列が
+   増え、表示中の列数に応じて flex:1 が自動で幅を均等割りする。
+   ドラッグでの並べ替えやスケジュールへのドラッグは意味がないので持たず、
+   タップで変更/削除/子タスク追加・掘り下げができるだけ(script.js の
+   handleSomedayChipTap と VERTICAL_SOMEDAY_LISTS を参照)。 --- */
 
 .tasklist-page {
   flex: 1;
   min-height: 0;
   display: flex;
-  flex-direction: column;
-  gap: clamp(4px, 1vh, 8px);
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
   padding: 2px 2px 4px;
   overflow: hidden;
 }
 
 .tasklist-box {
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
-  padding: 8px 2px 6px;
+  padding: 8px 10px 6px;
+  border-top: none;
+  border-left: 1px solid var(--line);
+}
+
+.tasklist-box:first-child {
+  border-left: none;
 }
 
 .tasklist-box-header {
