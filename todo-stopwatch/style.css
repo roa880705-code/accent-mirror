@@ -918,6 +918,11 @@ body {
   overflow: hidden;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
+  /* allow the ancestor .monthly-weeks-scroll's native vertical scroll to
+     keep working untouched, but stop the browser from also claiming a
+     horizontal drag here (there's nothing to pan sideways anyway) so the
+     swipe-navigation gesture gets a clean, uncontested pointer stream */
+  touch-action: pan-y;
 }
 
 .monthly-cell:hover {

@@ -1252,6 +1252,12 @@
   const PLAN_LONGPRESS_MS = 500;
   const PLAN_MOVE_TOLERANCE = 8;
 
+  // shared with the swipe-navigation block further down: how much a drag
+  // must favor the horizontal axis before it's read as a swipe rather than a
+  // vertical scroll, and how far (in px) it must travel to actually fire.
+  const SWIPE_NAV_AXIS_RATIO = 1.5;
+  const SWIPE_NAV_MIN_DX = 60;
+
   // .calendar-day-col uses touch-action: none (see style.css) so this handler
   // gets full control of the gesture instead of the browser racing it against
   // native scroll — on touch, letting the browser's own pan-detection compete
@@ -1276,6 +1282,12 @@
     const startY = e.clientY;
     const startScrollTop = calendarWeekBody.scrollTop;
     let scrolling = false;
+    // decided once, on the first movement past PLAN_MOVE_TOLERANCE: 'v' keeps
+    // the pre-existing manual vertical-scroll behavior, 'h' means the finger
+    // is clearly swiping sideways instead — see SWIPE_NAV_AXIS_RATIO below,
+    // biased toward 'v' so ordinary scrolling is never misread as a swipe.
+    let gestureAxis = null;
+    let lastDx = 0;
     let timer = null;
 
     function cleanup() {
@@ -1289,16 +1301,23 @@
       const dy = ev.clientY - startY;
       if (!scrolling && Math.hypot(dx, dy) > PLAN_MOVE_TOLERANCE) {
         scrolling = true;
+        gestureAxis = Math.abs(dx) > Math.abs(dy) * SWIPE_NAV_AXIS_RATIO ? "h" : "v";
         if (timer) {
           clearTimeout(timer);
           timer = null;
         }
       }
-      if (scrolling) calendarWeekBody.scrollTop = startScrollTop - dy;
+      if (gestureAxis === "v") calendarWeekBody.scrollTop = startScrollTop - dy;
+      else if (gestureAxis === "h") lastDx = dx;
     }
     function onUp() {
       cleanup();
       activeDayPress = null;
+      if (gestureAxis === "h" && Math.abs(lastDx) > SWIPE_NAV_MIN_DX) {
+        selectedPlanId = null;
+        shiftCalendarWeek(lastDx < 0 ? 1 : -1);
+        return;
+      }
       if (selectedPlanId) {
         selectedPlanId = null;
         renderCalendar();
@@ -3151,9 +3170,12 @@
 
   // --- tabs / paging ---
   // Page order: 0 マンスリー, 1 ウィークリー, 2 デイリー, 3 タスク.
-  // Switching is tap-only (no swipe): goToPage() slides pagesTrack via a CSS
-  // transform instead of relying on native horizontal scrolling.
+  // Switching PAGES (tabs) is tap-only: goToPage() slides pagesTrack via a
+  // CSS transform instead of relying on native horizontal scrolling. Swiping
+  // left/right instead advances the content WITHIN whichever page is active
+  // (next/prev month/week/day) — see the swipe-navigation block below.
 
+  const MONTHLY_PAGE = 0;
   const WEEKLY_PAGE = 1;
   const DAILY_PAGE = 2;
   const TASK_PAGE = 3;
@@ -3234,6 +3256,63 @@
   }
 
   tabBtns.forEach((btn, i) => btn.addEventListener("click", () => goToPage(i)));
+
+  // --- swipe navigation (回転什器のように左右にスライドすると隣の月/週/日) ---
+  // One shared horizontal-swipe detector, delegated from pagesTrack, covers
+  // all four pages: swipe left -> 次(未来)側, swipe right -> 前(過去)側,
+  // dispatched to whichever page is currently active. This does NOT switch
+  // pages (that stays tap-only, see goToPage above) — it only advances the
+  // content of the page you're already on, mirroring its existing prev/next
+  // button.
+  //
+  // Elements that already own a horizontal or precision gesture of their own
+  // are excluded so this never competes with them: day columns (handled
+  // inline by onDayColPointerDown instead, since their long-press-to-create
+  // gesture needs the same pointer stream and axis decision), plan blocks
+  // and their resize handles, the someday-tray drag chips and its own
+  // natively horizontally-scrolling list, the task-row drag handle, and
+  // text inputs (whose native drag-to-select must not be hijacked).
+  const SWIPE_NAV_EXCLUDE =
+    ".calendar-day-col, .row-handle, .cal-unplanned-chip, .cal-plan-block, " +
+    ".cal-plan-resize-handle, .cal-unscheduled-row, .calendar-unplanned, input, textarea";
+
+  function swipeToAdjacentPeriod(delta) {
+    // delta: +1 = 次(未来)側, -1 = 前(過去)側
+    if (activePage === MONTHLY_PAGE) scrollMonthlyByWeeks(delta * 4);
+    else if (isCalendarPage(activePage)) shiftCalendarWeek(delta);
+    else if (activePage === TASK_PAGE) goToDate(addDaysStr(viewingDate, delta));
+  }
+
+  let pageSwipeCtx = null;
+
+  pagesTrack.addEventListener("pointerdown", (e) => {
+    if (pageSwipeCtx) return;
+    if (e.button !== undefined && e.button !== 0) return;
+    if (e.target.closest(SWIPE_NAV_EXCLUDE)) return;
+
+    const ctx = { startX: e.clientX, startY: e.clientY, axis: null, lastDx: 0 };
+    function onMove(ev) {
+      const dx = ev.clientX - ctx.startX;
+      const dy = ev.clientY - ctx.startY;
+      if (!ctx.axis && Math.hypot(dx, dy) > PLAN_MOVE_TOLERANCE) {
+        ctx.axis = Math.abs(dx) > Math.abs(dy) * SWIPE_NAV_AXIS_RATIO ? "h" : "v";
+      }
+      if (ctx.axis === "h") ctx.lastDx = dx;
+    }
+    function onEnd() {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onEnd);
+      document.removeEventListener("pointercancel", onEnd);
+      pageSwipeCtx = null;
+      if (ctx.axis === "h" && Math.abs(ctx.lastDx) > SWIPE_NAV_MIN_DX) {
+        swipeToAdjacentPeriod(ctx.lastDx < 0 ? 1 : -1);
+      }
+    }
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onEnd);
+    document.addEventListener("pointercancel", onEnd);
+    pageSwipeCtx = ctx;
+  });
 
   openBreakdownBtn.addEventListener("click", () => {
     renderBreakdown();
