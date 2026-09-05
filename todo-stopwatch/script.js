@@ -432,7 +432,11 @@
   let calendarWeekGrid = dailyWeekGridEl;
   let calendarDetail = dailyDetailEl;
   let calendarUnscheduledRow = dailyUnscheduledRowEl;
-  const calendarUnplannedBox = document.getElementById("calendarUnplannedBox");
+  const dailyUnplannedBoxEl = document.getElementById("calendarUnplannedBox");
+  // 予定/時間未定タスクのドラッグ判定(onPlanDragMove等)がいつかトレイの
+  // 位置を調べるのに使う、"現在アクティブな方のいつかトレイ" へのポインタ。
+  // ウィークリー表示中はweeklyUnplannedBoxElへ差し替わる。
+  let calendarUnplannedBox = dailyUnplannedBoxEl;
   const calendarUnplannedList = document.getElementById("calendarUnplannedList");
   const calendarSomedayAddBtn = document.getElementById("calendarSomedayAddBtn");
   const calendarSubtaskBox = document.getElementById("calendarSubtaskBox");
@@ -443,7 +447,7 @@
   const calendarGreatGrandchildList = document.getElementById("calendarGreatGrandchildList");
   const calendarPrevBtn = document.getElementById("calendarPrevBtn");
   const calendarNextBtn = document.getElementById("calendarNextBtn");
-  const weeklyUnplannedBox = document.getElementById("weeklyUnplannedBox");
+  const weeklyUnplannedBoxEl = document.getElementById("weeklyUnplannedBox");
   const weeklyUnplannedList = document.getElementById("weeklyUnplannedList");
   const weeklySomedayAddBtn = document.getElementById("weeklySomedayAddBtn");
   const weeklySubtaskBox = document.getElementById("weeklySubtaskBox");
@@ -1645,34 +1649,62 @@
     planDragCtx.overUnplannedBox = overBox;
     if (overBox) {
       planDragCtx.overDayUnscheduled = false;
+      Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+      Array.from(calendarUnscheduledRow.children).forEach((c) => c.classList.remove("drop-target"));
+      return;
+    }
+
+    // 「時間未定」への割り当て判定: 時間軸グリッドとは別の、常時表示の
+    // 専用行(calendarUnscheduledRow)の、この予定と同じ日付の列だけを見る
+    let overDayUnscheduled = false;
+    const unschedCols = Array.from(calendarUnscheduledRow.children).filter((c) =>
+      c.classList.contains("cal-unscheduled-day")
+    );
+    for (const col of unschedCols) {
+      if (col.dataset.date !== planDragCtx.dateStr) continue;
+      const rect = col.getBoundingClientRect();
+      if (
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom
+      ) {
+        overDayUnscheduled = true;
+        break;
+      }
+    }
+    unschedCols.forEach((c) => c.classList.toggle("drop-target", overDayUnscheduled && c.dataset.date === planDragCtx.dateStr));
+    planDragCtx.overDayUnscheduled = overDayUnscheduled;
+    if (overDayUnscheduled) {
+      Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
       return;
     }
 
     const cols = Array.from(calendarWeekGrid.children);
     let targetCol = null;
-    for (const col of cols) {
-      const rect = col.getBoundingClientRect();
-      if (e.clientX >= rect.left && e.clientX < rect.right) {
-        targetCol = col;
-        break;
+    const bodyRect = calendarWeekBody.getBoundingClientRect();
+    if (e.clientY >= bodyRect.top && e.clientY <= bodyRect.bottom) {
+      for (const col of cols) {
+        const rect = col.getBoundingClientRect();
+        if (
+          e.clientX >= rect.left &&
+          e.clientX < rect.right &&
+          e.clientY >= rect.top &&
+          e.clientY <= rect.bottom
+        ) {
+          targetCol = col;
+          break;
+        }
       }
     }
     if (!targetCol) {
       cols.forEach((c) => c.classList.remove("drop-target"));
-      planDragCtx.overDayUnscheduled = false;
       return;
     }
+    cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
 
     const rect = targetCol.getBoundingClientRect();
     const relY = e.clientY - rect.top;
-
-    // dropping below the plan's own day's 24-hour line sends it back to that
-    // day's own "time undetermined" list instead of moving it to a new time
-    const overDayUnscheduled = targetCol.dataset.date === planDragCtx.dateStr && relY > 24 * CAL_HOUR_H;
-    cols.forEach((c) => c.classList.toggle("drop-target", overDayUnscheduled && c === targetCol));
-    planDragCtx.overDayUnscheduled = overDayUnscheduled;
-    if (overDayUnscheduled) return;
-
     const rawMin = pxToMin(relY);
     let startMin = Math.round(rawMin / 15) * 15;
     startMin = Math.max(0, Math.min(1440 - planDragCtx.duration, startMin));
@@ -1701,6 +1733,7 @@
     block.classList.remove("dragging", "armed");
     calendarUnplannedBox.classList.remove("drop-target");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+    Array.from(calendarUnscheduledRow.children).forEach((c) => c.classList.remove("drop-target"));
     planDragCtx = null;
 
     if (scrolling) return; // was just scrolling the grid past this block
@@ -3709,6 +3742,7 @@
       calendarWeekGrid = weeklyWeekGridEl;
       calendarDetail = weeklyDetailEl;
       calendarUnscheduledRow = weeklyUnscheduledRowEl;
+      calendarUnplannedBox = weeklyUnplannedBoxEl;
       weekAnchor = weeklyWeekAnchor;
     } else {
       CAL_DAYS = 1;
@@ -3719,6 +3753,7 @@
       calendarWeekGrid = dailyWeekGridEl;
       calendarDetail = dailyDetailEl;
       calendarUnscheduledRow = dailyUnscheduledRowEl;
+      calendarUnplannedBox = dailyUnplannedBoxEl;
       weekAnchor = dailyWeekAnchor;
     }
   }

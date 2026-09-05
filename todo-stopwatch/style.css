@@ -1159,11 +1159,13 @@ body {
 .briefing-memo-input {
   flex: 1;
   min-width: 0;
-  height: 76px;
+  height: 96px;
   resize: none;
   text-align: left;
   font-family: inherit;
-  font-size: 0.72rem;
+  /* iOS Safari auto-zooms on focus for any text input under 16px, so this
+     stays at 16px rather than matching the app's usual small UI text. */
+  font-size: 16px;
   line-height: 1.3;
   color: var(--ink);
   background: var(--panel);
@@ -1392,7 +1394,8 @@ body {
   background: var(--card-bg);
   color: var(--ink);
   font-family: inherit;
-  font-size: 0.72rem;
+  /* iOS Safari auto-zooms on focus for any text input under 16px */
+  font-size: 16px;
   line-height: 1.05;
   padding: 8px 10px;
 }
