@@ -122,9 +122,10 @@ body {
 
 .app-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   flex: none;
   padding-bottom: clamp(5px, 1vh, 10px);
   border-bottom: 1px solid var(--line);
@@ -179,6 +180,9 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .total-panel {
@@ -230,6 +234,9 @@ body {
   background: var(--panel);
   color: var(--muted);
   border: 1px solid var(--panel-line);
+  max-width: 42vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .btn-sync[hidden] {
@@ -245,6 +252,26 @@ body {
   flex: none;
   display: flex;
   gap: 6px;
+}
+
+.settings-btn {
+  all: unset;
+  flex: 0.5;
+  box-sizing: border-box;
+  text-align: center;
+  padding: clamp(4px, 1vh, 7px) 4px;
+  border-radius: 7px;
+  font-size: clamp(0.68rem, 1.5vw, 0.8rem);
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  background: var(--panel);
+  border: 1.5px solid var(--panel-line);
+}
+
+.settings-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .tab-btn {
@@ -291,23 +318,14 @@ body {
   outline-offset: 1px;
 }
 
-/* --- タスク tab: also hosts small round buttons that open the 内訳 / 履歴
-   panels as modals, since they're no longer top-level swipeable pages --- */
+/* --- ログページ上部: 内訳 / 履歴 パネルを開く小さな丸ボタン --- */
 
-.tab-btn.tab-task {
+.task-page-header {
+  flex: none;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 4px;
-}
-
-.tab-task-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-bottom: clamp(3px, 0.6vh, 5px);
 }
 
 .tab-round-btn {
