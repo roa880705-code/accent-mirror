@@ -1435,6 +1435,26 @@ body {
   z-index: 15;
 }
 
+/* a small chip that tracks the pointer 1:1 for the whole drag, positioned
+   just above the finger/cursor so it stays visible instead of being hidden
+   underneath it */
+.drag-ghost {
+  position: fixed;
+  z-index: 100;
+  transform: translate(-50%, -135%);
+  max-width: 160px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
 .calendar-someday-add {
   all: unset;
   box-sizing: border-box;

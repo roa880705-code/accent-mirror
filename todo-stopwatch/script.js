@@ -384,6 +384,7 @@
   const monthlyGreatGrandchildBox = document.getElementById("monthlyGreatGrandchildBox");
   const monthlyGreatGrandchildList = document.getElementById("monthlyGreatGrandchildList");
   const monthlyGreatGrandchildAddBtn = document.getElementById("monthlyGreatGrandchildAddBtn");
+  const taskUnplannedBox = document.getElementById("taskUnplannedBox");
   const taskUnplannedList = document.getElementById("taskUnplannedList");
   const taskSomedayAddBtn = document.getElementById("taskSomedayAddBtn");
   const taskSubtaskBox = document.getElementById("taskSubtaskBox");
@@ -729,6 +730,18 @@
     const currentTop = node.offsetTop;
     node.style.transform = `translateY(${desiredTop - currentTop}px)`;
 
+    // dragging a row down past the list, onto いつか, sends it back there
+    // instead of just reordering it
+    const boxRect = taskUnplannedBox.getBoundingClientRect();
+    const overUnplannedBox =
+      e.clientX >= boxRect.left &&
+      e.clientX <= boxRect.right &&
+      e.clientY >= boxRect.top &&
+      e.clientY <= boxRect.bottom;
+    taskUnplannedBox.classList.toggle("drop-target", overUnplannedBox);
+    dragCtx.overUnplannedBox = overUnplannedBox;
+    if (overUnplannedBox) return;
+
     const rowRect = node.getBoundingClientRect();
     const rowCenter = rowRect.top + rowRect.height / 2;
     const siblings = Array.from(list.children).filter((n) => n.classList.contains("row"));
@@ -751,11 +764,40 @@
 
   function onDragEnd() {
     if (!dragCtx) return;
-    const { node, item: draggedItem } = dragCtx;
+    const { node, item: draggedItem, overUnplannedBox } = dragCtx;
 
     document.removeEventListener("pointermove", onDragMove);
     document.removeEventListener("pointerup", onDragEnd);
     document.removeEventListener("pointercancel", onDragEnd);
+    taskUnplannedBox.classList.remove("drop-target");
+
+    if (overUnplannedBox) {
+      if (draggedItem.elapsedMs > 0 || draggedItem.running) {
+        // real recorded time exists: refuse the move so it isn't lost,
+        // いつか has no time fields to hold it — just settle back in place
+        vibrate([10, 30, 10]);
+        node.classList.remove("dragging");
+        node.style.transition = "transform 0.15s ease";
+        node.style.transform = "";
+        setTimeout(() => {
+          node.style.transition = "";
+        }, 160);
+        dragCtx = null;
+        return;
+      }
+      const items = currentItemsArray();
+      const idx = items.indexOf(draggedItem);
+      if (idx >= 0) items.splice(idx, 1);
+      if (draggedItem.planId) removePlan(viewingDate, draggedItem.planId);
+      someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: labelOf(draggedItem, "予定"), parentId: null });
+      saveSomeday();
+      persistItemsChange();
+      vibrate(20);
+      buildRows();
+      render();
+      dragCtx = null;
+      return;
+    }
 
     node.classList.remove("dragging");
     node.style.transition = "transform 0.15s ease";
@@ -1609,6 +1651,30 @@
     if (dragPreviewEl && dragPreviewEl.parentElement) dragPreviewEl.parentElement.removeChild(dragPreviewEl);
   }
 
+  // --- a small floating chip that tracks the pointer 1:1 for the whole
+  // drag, so the item visibly "sticks" to the finger/cursor even before
+  // (or without ever) landing on a valid drop target — showDragPreview
+  // above only appears once hovering a specific droppable time slot. ---
+
+  let dragGhostEl = null;
+
+  function showDragGhost(clientX, clientY, label) {
+    if (!dragGhostEl) {
+      dragGhostEl = document.createElement("div");
+      dragGhostEl.className = "drag-ghost";
+      dragGhostEl.style.pointerEvents = "none";
+      document.body.appendChild(dragGhostEl);
+    }
+    dragGhostEl.textContent = label;
+    dragGhostEl.style.left = `${clientX}px`;
+    dragGhostEl.style.top = `${clientY}px`;
+  }
+
+  function clearDragGhost() {
+    if (dragGhostEl && dragGhostEl.parentElement) dragGhostEl.parentElement.removeChild(dragGhostEl);
+    dragGhostEl = null;
+  }
+
   // --- a day's own "unscheduled but on that day" list, drawn below the
   // 24:00 line (items already in that date's item list with no plan —
   // dragging one up onto its own column schedules it; only that same day
@@ -1637,6 +1703,7 @@
       dayUnschedDragCtx.row.classList.add("dragging");
       vibrate(15);
     }
+    showDragGhost(e.clientX, e.clientY, labelOf(dayUnschedDragCtx.item, "予定"));
 
     // dragging this row into the いつか tray sends it back to the backlog
     // instead of scheduling it
@@ -1696,6 +1763,7 @@
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
     calendarUnplannedBox.classList.remove("drop-target");
     clearDragPreview();
+    clearDragGhost();
     dayUnschedDragCtx = null;
 
     if (!moved) return;
@@ -2055,6 +2123,7 @@
 
     if (ctx.phase === "schedule") {
       e.preventDefault();
+      showDragGhost(e.clientX, e.clientY, ctx.task.label);
       const cols = Array.from(calendarWeekGrid.children);
       let targetCol = null;
       // .calendar-day-col is often much taller than what's actually visible
@@ -2192,6 +2261,7 @@
     Array.from(document.querySelectorAll(".monthly-cell.drop-target")).forEach((c) => c.classList.remove("drop-target"));
     listWrap.classList.remove("drop-target");
     clearDragPreview();
+    clearDragGhost();
 
     if (ctx.phase === "scroll" || ctx.phase === "blocked") {
       somedayDragCtx = null;
