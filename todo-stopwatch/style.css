@@ -941,29 +941,41 @@ body {
   color: #fff;
 }
 
+/* body column: day title (if any) stacked above the task labels */
+.mc-body {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 /* day title: a label on the date itself (e.g. "旅行"), separate from any
-   plan or task on it — shown filled-in so it reads as a title, and placed
-   above the regular event list so it always wins the limited space there */
+   plan or task on it — shown filled-in so it reads as a title. Horizontal,
+   as small as stays legible, and allowed to wrap onto 2 lines (the cell has
+   height to spare) instead of truncating a single line too eagerly. */
 .mc-day-title {
   align-self: stretch;
   width: 100%;
   box-sizing: border-box;
   padding: 1px 4px;
   border-radius: 4px;
-  font-size: 0.5rem;
+  font-size: 0.42rem;
+  line-height: 1.2;
   font-weight: 700;
   text-align: center;
   color: #fff;
   background: var(--accent);
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
   cursor: pointer;
 }
 
 .mc-events {
-  align-self: stretch;
-  width: 100%;
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;

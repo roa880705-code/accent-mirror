@@ -1958,6 +1958,27 @@
     renderSomedayList();
   }
 
+  // Activates taskId at the given depth (revealing its children in the next
+  // layer down), then keeps drilling deeper on its own: at each level, if
+  // one of the newly-shown children is itself a parent, that child becomes
+  // the next level's active task too — so a task whose descendants go all
+  // the way down to ひ孫タスク reveals every populated layer in one tap,
+  // instead of requiring a separate tap at each level. A branch with no
+  // further descendants simply stops here, leaving deeper layers closed.
+  function activateSomedayChain(depth, taskId) {
+    activeSomedayIds[depth] = taskId;
+    let node = taskId;
+    let slot = depth + 1;
+    while (slot < activeSomedayIds.length) {
+      const deeper = childrenOf(node).find((k) => isParentTask(k.id));
+      if (!deeper) break;
+      activeSomedayIds[slot] = deeper.id;
+      node = deeper.id;
+      slot++;
+    }
+    for (let l = slot; l < activeSomedayIds.length; l++) activeSomedayIds[l] = null;
+  }
+
   async function addSomedayTask() {
     const name = await openNameModal("");
     if (name === null) return;
@@ -2385,8 +2406,7 @@
         if (activeSomedayIds[depth] === task.id) {
           renameSomedayTask(task);
         } else {
-          activeSomedayIds[depth] = task.id;
-          for (let l = depth + 1; l < activeSomedayIds.length; l++) activeSomedayIds[l] = null;
+          activateSomedayChain(depth, task.id);
           renderSomedayList();
         }
         return;
@@ -2402,8 +2422,7 @@
             if (!label) return;
             someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId: task.id });
             saveSomeday();
-            activeSomedayIds[depth] = task.id;
-            for (let l = depth + 1; l < activeSomedayIds.length; l++) activeSomedayIds[l] = null;
+            activateSomedayChain(depth, task.id);
             renderSomedayList();
           });
         }
@@ -2786,7 +2805,7 @@
   // weeks are on screen or the scroll position.
   function refreshMonthlyCellContent(cell, dateStr) {
     cell.classList.toggle("today", dateStr === todayStr());
-    cell.querySelectorAll(".mc-date, .mc-month-tag, .mc-day-title, .mc-events").forEach((el) => el.remove());
+    cell.querySelectorAll(".mc-date, .mc-month-tag, .mc-body").forEach((el) => el.remove());
 
     const d = parseDateStr(dateStr);
     const dateEl = document.createElement("span");
@@ -2801,8 +2820,11 @@
       cell.appendChild(tag);
     }
 
-    // day title takes priority over the timed plans/tasks below it — always
-    // shown first, at the very top of the cell's event area
+    // day title (if any) stacks above the event list, both inside .mc-body —
+    // it takes priority over the timed plans/tasks below it
+    const body = document.createElement("div");
+    body.className = "mc-body";
+
     const dayTitle = dayTitleFor(dateStr);
     if (dayTitle) {
       const titleEl = document.createElement("span");
@@ -2813,7 +2835,7 @@
         e.stopPropagation();
         editDayTitle(dateStr);
       });
-      cell.appendChild(titleEl);
+      body.appendChild(titleEl);
     }
 
     const labels = labelsForDate(dateStr);
@@ -2833,8 +2855,10 @@
         more.textContent = `+${labels.length - MONTH_CELL_MAX_EVENTS}`;
         list.appendChild(more);
       }
-      cell.appendChild(list);
+      body.appendChild(list);
     }
+
+    if (dayTitle || labels.length) cell.appendChild(body);
   }
 
   function buildMonthlyWeekRow(mondayStr) {
