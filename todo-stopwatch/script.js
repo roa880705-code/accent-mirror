@@ -1312,6 +1312,36 @@
     }
   }
 
+  // 指を離した後、勢いに応じてなめらかに減速しながらスクロールを続ける
+  // ("時間軸グリッド"の縦スワイプ、タスクトレイの横スワイプで使用) —
+  // これが無いと、指を離した瞬間にスクロールがピタッと止まってしまい、
+  // ネイティブなスクロールに比べてぎこちなく感じられる。
+  // velocity は px/ms。呼び出し側は戻り値を保持しておき、同じ要素に対して
+  // 新しいドラッグが始まったら呼び出して前の慣性を止めること。
+  function startMomentumScroll(getPos, setPos, velocity) {
+    if (!Number.isFinite(velocity) || Math.abs(velocity) < 0.02) return null;
+    let v = velocity;
+    let lastT = null;
+    let cancelled = false;
+    function step(t) {
+      if (cancelled) return;
+      if (lastT === null) {
+        lastT = t;
+        requestAnimationFrame(step);
+        return;
+      }
+      const dt = t - lastT;
+      lastT = t;
+      setPos(getPos() + v * dt);
+      v *= Math.pow(0.994, dt); // frame-rate-independent decay
+      if (Math.abs(v) > 0.01) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+    return () => {
+      cancelled = true;
+    };
+  }
+
   function onPlanBlockClick(e, dateStr, plan) {
     if (e) {
       e.stopPropagation();
@@ -1409,9 +1439,17 @@
     clearLongPress();
     const canCreatePlan = dateStr >= state.day; // no long-press-to-create on a past day, but the swipe-to-navigate gesture below still works there
 
+    if (calendarMomentumCancel) {
+      calendarMomentumCancel();
+      calendarMomentumCancel = null;
+    }
+    // captured once so a momentum scroll kicked off on pointerup keeps
+    // targeting the right page's grid even if the user switches tabs while
+    // it's still coasting (calendarWeekBody itself is a swapped pointer)
+    const scrollBody = calendarWeekBody;
     const startX = e.clientX;
     const startY = e.clientY;
-    const startScrollTop = calendarWeekBody.scrollTop;
+    const startScrollTop = scrollBody.scrollTop;
     let scrolling = false;
     // decided once, on the first movement past PLAN_MOVE_TOLERANCE: 'v' keeps
     // the pre-existing manual vertical-scroll behavior, 'h' means the finger
@@ -1420,6 +1458,10 @@
     let gestureAxis = null;
     let lastDx = 0;
     let timer = null;
+    // velocity tracking for the momentum scroll kicked off on release
+    let lastMoveTime = null;
+    let lastScrollTopSample = startScrollTop;
+    let velocity = 0;
 
     function cleanup() {
       if (timer) clearTimeout(timer);
@@ -1438,8 +1480,16 @@
           timer = null;
         }
       }
-      if (gestureAxis === "v") calendarWeekBody.scrollTop = startScrollTop - dy;
-      else if (gestureAxis === "h") lastDx = dx;
+      if (gestureAxis === "v") {
+        scrollBody.scrollTop = startScrollTop - dy;
+        const now = performance.now();
+        if (lastMoveTime !== null) {
+          const dt = now - lastMoveTime;
+          if (dt > 0) velocity = (scrollBody.scrollTop - lastScrollTopSample) / dt;
+        }
+        lastMoveTime = now;
+        lastScrollTopSample = scrollBody.scrollTop;
+      } else if (gestureAxis === "h") lastDx = dx;
     }
     function onUp() {
       cleanup();
@@ -1448,6 +1498,15 @@
         selectedPlanId = null;
         shiftCalendarWeek(lastDx < 0 ? 1 : -1);
         return;
+      }
+      if (gestureAxis === "v") {
+        calendarMomentumCancel = startMomentumScroll(
+          () => scrollBody.scrollTop,
+          (v) => {
+            scrollBody.scrollTop = v;
+          },
+          velocity
+        );
       }
       if (selectedPlanId) {
         selectedPlanId = null;
@@ -1572,6 +1631,11 @@
   // --- plan drag-to-move ---
 
   let planDragCtx = null;
+  // 進行中の慣性スクロールをキャンセルする関数(無ければnull) — 同じ
+  // スクロール対象に対して新しいドラッグが始まったら、まずこれを呼んで
+  // 前の慣性を止めてから新しい操作を始める。
+  let calendarMomentumCancel = null;
+  let chipTrayMomentumCancel = null;
 
   function startPlanDrag(e, block, dateStr, plan) {
     if (e.button !== undefined && e.button !== 0) return;
@@ -2379,17 +2443,18 @@
       labelEl.textContent = task.label;
       chip.appendChild(labelEl);
 
-      // every non-leaf-eligible depth (いつか/子/孫, not the always-leaf
-      // ひ孫) shows how many of the next tier hang off it, even when that's
-      // currently zero — so a glance tells you whether there's more to
-      // drill into without having to tap and check
-      if (depth < SOMEDAY_MAX_DEPTH) {
+      // parent vs. leaf already reads from the chip's own shape (square vs.
+      // pill), so the count badge only adds information for an actual
+      // parent — showing it on every leaf too (always "0") would just be
+      // clutter with nothing to see-at-a-glance.
+      const childCount = childrenOf(task.id).length;
+      if (depth < SOMEDAY_MAX_DEPTH && childCount > 0) {
         const badge = document.createElement("span");
         badge.className = "cal-child-count-badge";
         // rendered via CSS content: attr(), not textContent — so chip.textContent
         // stays just the label, which the rest of the someday code (and tests)
         // rely on for reading/comparing a chip's name
-        badge.dataset.count = String(childrenOf(task.id).length);
+        badge.dataset.count = String(childCount);
         chip.appendChild(badge);
       }
 
@@ -2693,6 +2758,10 @@
   function startSomedayChipDrag(e, chip, task) {
     if (e.button !== undefined && e.button !== 0) return;
     e.stopPropagation();
+    if (chipTrayMomentumCancel) {
+      chipTrayMomentumCancel();
+      chipTrayMomentumCancel = null;
+    }
     const listEl = chip.parentElement;
     somedayDragCtx = {
       chip,
@@ -2707,6 +2776,11 @@
       targetCol: null,
       clientY: e.clientY,
       longPressTimer: null,
+      // velocity tracking for the momentum scroll kicked off if this turns
+      // into the "scroll" phase and the pointer is released mid-swipe
+      lastMoveTime: null,
+      lastScrollLeftSample: listEl.scrollLeft,
+      scrollVelocity: 0,
     };
     somedayDragCtx.longPressTimer = setTimeout(() => {
       if (!somedayDragCtx || somedayDragCtx.phase !== "pending") return;
@@ -2770,6 +2844,13 @@
     if (ctx.phase === "scroll") {
       e.preventDefault();
       ctx.listEl.scrollLeft = ctx.startScrollLeft - (e.clientX - ctx.startClientX);
+      const now = performance.now();
+      if (ctx.lastMoveTime !== null) {
+        const dt = now - ctx.lastMoveTime;
+        if (dt > 0) ctx.scrollVelocity = (ctx.listEl.scrollLeft - ctx.lastScrollLeftSample) / dt;
+      }
+      ctx.lastMoveTime = now;
+      ctx.lastScrollLeftSample = ctx.listEl.scrollLeft;
       return;
     }
 
@@ -2935,7 +3016,21 @@
     clearDragPreview();
     clearDragGhost();
 
-    if (ctx.phase === "scroll" || ctx.phase === "blocked") {
+    if (ctx.phase === "scroll") {
+      const listEl = ctx.listEl;
+      const velocity = ctx.scrollVelocity;
+      somedayDragCtx = null;
+      chipTrayMomentumCancel = startMomentumScroll(
+        () => listEl.scrollLeft,
+        (v) => {
+          listEl.scrollLeft = v;
+        },
+        velocity
+      );
+      return;
+    }
+
+    if (ctx.phase === "blocked") {
       somedayDragCtx = null;
       return;
     }
