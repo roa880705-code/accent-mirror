@@ -2914,6 +2914,15 @@
         return;
       }
 
+      if (depth === 0 && activeSomedayIds.some((id) => id)) {
+        // an unrelated childless いつか task, tapped while some other
+        // family's 子/孫/ひ孫 trays are expanded below — just close that
+        // expansion (like tapping outside does) instead of also popping
+        // open this task's own edit choice on top of it
+        collapseSomedaySubtaskLayers();
+        return;
+      }
+
       promptSomedayEditOrAddChild(task, depth);
       return;
     }
