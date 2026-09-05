@@ -396,7 +396,6 @@
   const weeklyNextBtn = document.getElementById("weeklyNextBtn");
   const monthlyLabel = document.getElementById("monthlyLabel");
   const monthlyWeekdayRow = document.getElementById("monthlyWeekdayRow");
-  const monthlyWeeksScroll = document.getElementById("monthlyWeeksScroll");
   const monthlyWeeks = document.getElementById("monthlyWeeks");
   const monthlyPrevBtn = document.getElementById("monthlyPrevBtn");
   const monthlyNextBtn = document.getElementById("monthlyNextBtn");
@@ -1044,7 +1043,7 @@
   // separately in dailyWeekAnchor/weeklyWeekAnchor while the other is active.
   let weekAnchor = state.day;
   let dailyWeekAnchor = state.day;
-  let weeklyWeekAnchor = state.day;
+  let weeklyWeekAnchor = mondayOfWeek(state.day); // ウィークリーは常に月曜始まり
   let monthAnchor = state.day; // any date string within the displayed month (マンスリーカレンダー)
   let selectedDayDetail = null; // date string whose textual summary is shown below the grid
   let selectedPlanId = null; // plan currently tapped; shows a resize handle on its block
@@ -1313,6 +1312,7 @@
     if (e.target !== dayCol) return; // an existing block handles its own gesture
     if (e.button !== undefined && e.button !== 0) return;
     clearLongPress();
+    const canCreatePlan = dateStr >= state.day; // no long-press-to-create on a past day, but the swipe-to-navigate gesture below still works there
 
     const startX = e.clientX;
     const startY = e.clientY;
@@ -1365,12 +1365,14 @@
     document.addEventListener("pointercancel", onUp);
     activeDayPress = { cleanup };
 
-    timer = setTimeout(() => {
-      timer = null;
-      cleanup();
-      activeDayPress = null;
-      startPlanRangeDraw(dayCol, dateStr, startY);
-    }, PLAN_LONGPRESS_MS);
+    if (canCreatePlan) {
+      timer = setTimeout(() => {
+        timer = null;
+        cleanup();
+        activeDayPress = null;
+        startPlanRangeDraw(dayCol, dateStr, startY);
+      }, PLAN_LONGPRESS_MS);
+    }
   }
 
   // --- Googleカレンダー式: 長押しで始点を固定し、指を離すまでドラッグで
@@ -3127,9 +3129,15 @@
             }
           }
         );
-
-        dayCol.addEventListener("pointerdown", (e) => onDayColPointerDown(e, dayCol, dateStr));
       }
+
+      // attached unconditionally (not just for dateStr >= state.day): a
+      // past day column still needs this for the swipe-to-navigate gesture
+      // (ウィークリー can show past days now that it's a fixed Monday-start
+      // week rather than always starting at today) — onDayColPointerDown
+      // itself gates the long-press-to-create-a-plan part to present/future
+      // days only.
+      dayCol.addEventListener("pointerdown", (e) => onDayColPointerDown(e, dayCol, dateStr));
 
       const unscheduledForDay = dayUnscheduled[dateStr];
       if (dateStr >= state.day) {
@@ -3211,26 +3219,27 @@
     });
   }
 
-  // --- monthly calendar page (Monday-start; weeks flow by on vertical
-  // scroll instead of paging month-to-month, tap a day to jump the daily
-  // 3-day view to it) ---
+  // --- monthly calendar page (Monday-start; exactly the weeks the current
+  // month needs, all fitting on one screen — changed only by
+  // monthlyPrevBtn/monthlyNextBtn or a horizontal swipe, never by scrolling;
+  // tap a day to jump the daily view to it) ---
 
   const MONTH_WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
-  const MONTHLY_ROW_H = 147; // px per week row; keep in sync with --monthly-row-h in style.css
-  const MONTHLY_WEEKS_BEFORE = 6; // weeks rendered above today's week on first load
-  const MONTHLY_WEEKS_AFTER = 8; // weeks rendered below today's week on first load
-  const MONTHLY_EXTEND_WEEKS = 6; // weeks appended/prepended once the user scrolls near an edge
-  const MONTHLY_EDGE_THRESHOLD = MONTHLY_ROW_H * 2; // how close to an edge triggers an extend
-  const MONTHLY_MAX_WEEKS = 40; // cap on rendered weeks; the far edge is trimmed past this
+  // px per week row — a month can need 4-6 rows, so unlike a fixed page this
+  // is only known once the rows are actually laid out; renderMonthlyGrid()
+  // remeasures it after every render and redraws event counts against the
+  // real number (see its trailing requestAnimationFrame).
+  let monthlyRowH = 147;
+  let monthlyDisplayedMonth = null; // "YYYY-MM" of the month currently shown in the grid
 
   // A cell's event list has no fixed item cap, but showing every label
   // unconditionally let a long list squeeze the day title down to nothing
   // (both shared the same flexible space). These mirror the fixed pixel
   // values in style.css's .monthly-cell/.mc-day-title/.mc-event rules — kept
-  // in sync by hand, same as MONTHLY_ROW_H above — so the number of events
-  // that actually fit can be worked out before the row is even in the DOM
-  // (buildMonthlyWeekRow renders a cell before its row is attached, so a
-  // live measurement isn't available yet).
+  // in sync by hand — so the number of events that actually fit can be
+  // worked out from monthlyRowH. The day title row is always reserved now
+  // (a real title, or a tappable "+" placeholder when there's none yet —
+  // see refreshMonthlyCellContent), so it's always subtracted.
   const MC_CELL_PAD_V = 8; // .monthly-cell padding: 4px top + 4px bottom
   const MC_DATE_H = 22; // .mc-date circle height
   const MC_BODY_GAP = 2; // gap between mc-date/mc-body, and between title/events inside mc-body
@@ -3238,15 +3247,11 @@
   const MC_EVENT_ROW_H = 11; // .mc-event: 0.5rem/1.3 line-height
   const MC_EVENT_GAP = 1; // gap between .mc-event rows
 
-  function maxEventsForCell(hasTitle) {
-    let avail = MONTHLY_ROW_H - MC_CELL_PAD_V - MC_DATE_H - MC_BODY_GAP;
-    if (hasTitle) avail -= MC_TITLE_H + MC_BODY_GAP;
+  function maxEventsForCell() {
+    const avail = monthlyRowH - MC_CELL_PAD_V - MC_DATE_H - MC_BODY_GAP - MC_TITLE_H - MC_BODY_GAP;
     if (avail <= 0) return 0;
     return Math.max(0, Math.floor((avail + MC_EVENT_GAP) / (MC_EVENT_ROW_H + MC_EVENT_GAP)));
   }
-
-  let monthlyWeeksStart = null; // Monday date string of the first rendered week row
-  let monthlyWeeksEnd = null; // Monday date string of the last rendered week row
 
   function addDaysStr(dateStr, days) {
     const d = parseDateStr(dateStr);
@@ -3259,6 +3264,11 @@
     const lead = (d.getDay() + 6) % 7; // JS getDay() is 0=Sun..6=Sat; shift so weeks start Monday
     d.setDate(d.getDate() - lead);
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
+  function firstOfMonthStr(dateStr) {
+    const d = parseDateStr(dateStr);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-01`;
   }
 
   function jumpDailyToDate(dateStr) {
@@ -3279,49 +3289,73 @@
   // used both when a week row is first created and to refresh already-
   // rendered cells (e.g. after a task is added) without touching which
   // weeks are on screen or the scroll position.
+  // Reuses the cell's own child nodes (.mc-date/.mc-body/...) across refreshes
+  // instead of tearing them down and rebuilding from scratch every time —
+  // now that .mc-body is always present (the day-title placeholder made it
+  // so), rebuilding it fresh on every call meant a plain tap anywhere on a
+  // cell's empty space could detach its own event target mid-click (the
+  // cell's click handler navigates to デイリー, which ends by refreshing
+  // every monthly cell), leaving document's later click listeners looking
+  // at an already-removed node and skipping work that should still run
+  // (e.g. collapsing the someday trays). Keeping the container nodes
+  // themselves stable avoids that regardless of which cell content or
+  // interaction is added here later.
   function refreshMonthlyCellContent(cell, dateStr) {
     cell.classList.toggle("today", dateStr === todayStr());
-    cell.querySelectorAll(".mc-date, .mc-month-tag, .mc-body").forEach((el) => el.remove());
+    cell.classList.toggle("other-month", dateStr.slice(0, 7) !== monthlyDisplayedMonth);
 
     const d = parseDateStr(dateStr);
-    const dateEl = document.createElement("span");
-    dateEl.className = "mc-date";
-    dateEl.textContent = String(d.getDate());
-    cell.appendChild(dateEl);
 
+    let dateEl = cell.querySelector(".mc-date");
+    if (!dateEl) {
+      dateEl = document.createElement("span");
+      dateEl.className = "mc-date";
+      cell.appendChild(dateEl);
+    }
+    dateEl.textContent = String(d.getDate());
+
+    let tagEl = cell.querySelector(".mc-month-tag");
     if (d.getDate() === 1) {
-      const tag = document.createElement("span");
-      tag.className = "mc-month-tag";
-      tag.textContent = `${d.getMonth() + 1}月`;
-      cell.appendChild(tag);
+      if (!tagEl) {
+        tagEl = document.createElement("span");
+        tagEl.className = "mc-month-tag";
+        cell.appendChild(tagEl);
+      }
+      tagEl.textContent = `${d.getMonth() + 1}月`;
+    } else if (tagEl) {
+      tagEl.remove();
     }
 
-    // day title (if any) stacks above the event list, both inside .mc-body —
-    // it takes priority over the timed plans/tasks below it
-    const body = document.createElement("div");
-    body.className = "mc-body";
+    // day title stacks above the event list, both inside .mc-body — it
+    // takes priority over the timed plans/tasks below it. Always shown, a
+    // real title or (like the weekly/daily day headers) a tappable "+"
+    // placeholder when there's none yet, so a title can be added from
+    // マンスリー too, not just デイリー/ウィークリー.
+    let body = cell.querySelector(".mc-body");
+    if (!body) {
+      body = document.createElement("div");
+      body.className = "mc-body";
+      cell.appendChild(body);
+    }
+    body.innerHTML = "";
 
     const dayTitle = dayTitleFor(dateStr);
-    if (dayTitle) {
-      const titleEl = document.createElement("span");
-      titleEl.className = "mc-day-title";
-      titleEl.textContent = dayTitle;
-      titleEl.title = "タップしてタイトルを編集";
-      titleEl.addEventListener("click", (e) => {
-        e.stopPropagation();
-        editDayTitle(dateStr);
-      });
-      body.appendChild(titleEl);
-    }
+    const titleEl = document.createElement("span");
+    titleEl.className = dayTitle ? "mc-day-title" : "mc-day-title empty";
+    titleEl.textContent = dayTitle || "+";
+    titleEl.title = dayTitle ? "タップしてタイトルを編集" : "タップして日付にタイトルを追加";
+    titleEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      editDayTitle(dateStr);
+    });
+    body.appendChild(titleEl);
 
-    // shows as many events as actually fit next to the title (if any) —
-    // more than the old fixed 4-item cap when there's no title, fewer when
-    // there is one, so the title itself never gets squeezed down to fit
+    // shows as many events as actually fit next to the title
     const labels = labelsForDate(dateStr);
     if (labels.length) {
       const list = document.createElement("div");
       list.className = "mc-events";
-      const maxEvents = maxEventsForCell(!!dayTitle);
+      const maxEvents = maxEventsForCell();
       const showCount = labels.length > maxEvents ? Math.max(0, maxEvents - 1) : labels.length;
       labels.slice(0, showCount).forEach((label) => {
         const row = document.createElement("span");
@@ -3338,8 +3372,6 @@
       }
       body.appendChild(list);
     }
-
-    if (dayTitle || labels.length) cell.appendChild(body);
   }
 
   function buildMonthlyWeekRow(mondayStr) {
@@ -3368,97 +3400,62 @@
     });
   }
 
-  function trimMonthlyWeeks(fromStart) {
-    const rows = Array.from(monthlyWeeks.children);
-    const excess = rows.length - MONTHLY_MAX_WEEKS;
-    if (excess <= 0) return;
-    if (fromStart) {
-      rows.slice(0, excess).forEach((r) => r.remove());
-      monthlyWeeksStart = addDaysStr(monthlyWeeksStart, 7 * excess);
-      monthlyWeeksScroll.scrollTop -= excess * MONTHLY_ROW_H;
-    } else {
-      rows.slice(rows.length - excess).forEach((r) => r.remove());
-      monthlyWeeksEnd = addDaysStr(monthlyWeeksEnd, -7 * excess);
-    }
-  }
+  // (Re)builds the whole visible grid for whichever month monthAnchor falls
+  // in: a Monday-start week per row, exactly as many rows as that month
+  // needs (4-6) and no more, so the entire month always fits on one screen
+  // with no scrolling. Called on init and by shiftMonthlyMonth(); data-only
+  // changes call refreshAllMonthlyContent() instead, which never rebuilds
+  // the grid itself.
+  function renderMonthlyGrid() {
+    const first = firstOfMonthStr(monthAnchor);
+    monthAnchor = first;
+    monthlyDisplayedMonth = first.slice(0, 7);
+    const d0 = parseDateStr(first);
+    monthlyLabel.textContent = `${d0.getFullYear()}年${d0.getMonth() + 1}月`;
 
-  function extendMonthlyWeeksBefore() {
-    const newStart = addDaysStr(monthlyWeeksStart, -7 * MONTHLY_EXTEND_WEEKS);
-    const rows = [];
-    for (let cursor = newStart; cursor < monthlyWeeksStart; cursor = addDaysStr(cursor, 7)) {
-      rows.push(buildMonthlyWeekRow(cursor));
-    }
-    const firstChild = monthlyWeeks.firstChild;
-    rows.forEach((row) => monthlyWeeks.insertBefore(row, firstChild));
-    monthlyWeeksStart = newStart;
-    // added above the viewport, so bump scrollTop by the same amount to
-    // keep whatever week the user was looking at visually in place
-    monthlyWeeksScroll.scrollTop += rows.length * MONTHLY_ROW_H;
-    trimMonthlyWeeks(false);
-  }
+    const gridStart = mondayOfWeek(first);
+    const lastDayOfMonth = new Date(d0.getFullYear(), d0.getMonth() + 1, 0);
+    const lastDayStr = `${lastDayOfMonth.getFullYear()}-${pad2(lastDayOfMonth.getMonth() + 1)}-${pad2(lastDayOfMonth.getDate())}`;
 
-  function extendMonthlyWeeksAfter() {
-    let cursor = monthlyWeeksEnd;
-    for (let i = 0; i < MONTHLY_EXTEND_WEEKS; i++) {
-      cursor = addDaysStr(cursor, 7);
+    monthlyWeeks.innerHTML = "";
+    for (let cursor = gridStart; cursor <= lastDayStr; cursor = addDaysStr(cursor, 7)) {
       monthlyWeeks.appendChild(buildMonthlyWeekRow(cursor));
     }
-    monthlyWeeksEnd = cursor;
-    trimMonthlyWeeks(true);
-  }
 
-  function updateMonthlyLabelFromScroll() {
-    const idx = Math.max(0, Math.round(monthlyWeeksScroll.scrollTop / MONTHLY_ROW_H));
-    const mondayStr = addDaysStr(monthlyWeeksStart, 7 * idx);
-    const d = parseDateStr(mondayStr);
-    monthlyLabel.textContent = `${d.getFullYear()}年${d.getMonth() + 1}月`;
-  }
-
-  let monthlyScrollTicking = false;
-  function onMonthlyScroll() {
-    if (monthlyScrollTicking) return;
-    monthlyScrollTicking = true;
+    // monthlyRowH depends on how many weeks this month needed and on the
+    // viewport, so it's only known for sure once the rows are actually laid
+    // out (they're flex:1 siblings that split whatever height is
+    // available) — remeasure now and, if it moved, redraw every cell's
+    // event count against the real number.
     requestAnimationFrame(() => {
-      monthlyScrollTicking = false;
-      const { scrollTop, clientHeight, scrollHeight } = monthlyWeeksScroll;
-      if (scrollTop < MONTHLY_EDGE_THRESHOLD) extendMonthlyWeeksBefore();
-      if (scrollHeight - (scrollTop + clientHeight) < MONTHLY_EDGE_THRESHOLD) extendMonthlyWeeksAfter();
-      updateMonthlyLabelFromScroll();
+      const rowEl = monthlyWeeks.querySelector(".monthly-week-row");
+      if (!rowEl) return;
+      const measured = rowEl.getBoundingClientRect().height;
+      if (measured > 0 && Math.abs(measured - monthlyRowH) > 1) {
+        monthlyRowH = measured;
+        refreshAllMonthlyContent();
+      }
     });
   }
 
-  // One-time setup: seeds the initial window of weeks around today and
-  // wires up the scroll-driven extend/trim behavior. Later data changes
-  // call refreshAllMonthlyContent() instead, which never touches this.
-  function initMonthlyWeeks() {
+  function shiftMonthlyMonth(delta) {
+    const d = parseDateStr(monthAnchor);
+    d.setMonth(d.getMonth() + delta);
+    monthAnchor = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-01`;
+    renderMonthlyGrid();
+  }
+
+  function initMonthlyCalendar() {
     MONTH_WEEKDAYS.forEach((w) => {
       const span = document.createElement("span");
       span.textContent = w;
       monthlyWeekdayRow.appendChild(span);
     });
-
-    const centerMonday = mondayOfWeek(monthAnchor);
-    monthlyWeeksStart = addDaysStr(centerMonday, -7 * MONTHLY_WEEKS_BEFORE);
-    monthlyWeeksEnd = addDaysStr(centerMonday, 7 * MONTHLY_WEEKS_AFTER);
-    for (let cursor = monthlyWeeksStart; cursor <= monthlyWeeksEnd; cursor = addDaysStr(cursor, 7)) {
-      monthlyWeeks.appendChild(buildMonthlyWeekRow(cursor));
-    }
-    updateMonthlyLabelFromScroll();
-
-    monthlyWeeksScroll.addEventListener("scroll", onMonthlyScroll, { passive: true });
-
-    requestAnimationFrame(() => {
-      // today's week starts one row down from the top, not flush against it
-      monthlyWeeksScroll.scrollTop = Math.max(0, (MONTHLY_WEEKS_BEFORE - 1) * MONTHLY_ROW_H);
-    });
+    renderMonthlyGrid();
   }
 
-  function scrollMonthlyByWeeks(deltaWeeks) {
-    monthlyWeeksScroll.scrollBy({ top: deltaWeeks * MONTHLY_ROW_H, behavior: "smooth" });
-  }
-
-  monthlyPrevBtn.addEventListener("click", () => scrollMonthlyByWeeks(-4));
-  monthlyNextBtn.addEventListener("click", () => scrollMonthlyByWeeks(4));
+  monthlyPrevBtn.addEventListener("click", () => shiftMonthlyMonth(-1));
+  monthlyNextBtn.addEventListener("click", () => shiftMonthlyMonth(1));
 
   calendarPrevBtn.addEventListener("click", () => shiftCalendarWeek(-1));
   calendarNextBtn.addEventListener("click", () => shiftCalendarWeek(1));
@@ -3492,7 +3489,7 @@
 
   initCalendarHours(dailyHoursEl);
   initCalendarHours(weeklyHoursEl);
-  initMonthlyWeeks();
+  initMonthlyCalendar();
 
   // --- tabs / paging ---
   // Page order: 0 マンスリー, 1 ウィークリー, 2 デイリー, 3 タスク.
@@ -3604,7 +3601,7 @@
 
   function swipeToAdjacentPeriod(delta) {
     // delta: +1 = 次(未来)側, -1 = 前(過去)側
-    if (activePage === MONTHLY_PAGE) scrollMonthlyByWeeks(delta * 4);
+    if (activePage === MONTHLY_PAGE) shiftMonthlyMonth(delta);
     else if (isCalendarPage(activePage)) shiftCalendarWeek(delta);
     else if (activePage === TASK_PAGE) goToDate(addDaysStr(viewingDate, delta));
   }

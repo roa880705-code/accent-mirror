@@ -852,11 +852,12 @@ body {
   white-space: nowrap;
 }
 
-/* --- monthly calendar page (Monday-start, tap a day to jump the daily
-   3-day view to it) --- */
+/* --- monthly calendar page (Monday-start, exactly the weeks the current
+   month needs, all fitting on one screen with no scrolling — only a
+   horizontal swipe or the prev/next buttons change month; tap a day to
+   jump the daily view to it) --- */
 
 .monthly-calendar {
-  --monthly-row-h: 147px;
   position: relative;
   flex: 1;
   min-height: 0;
@@ -881,26 +882,27 @@ body {
   padding: 2px 0;
 }
 
-/* Weeks scroll by continuously (no month-page switching) — each row is a
-   fixed height so the list can be extended/trimmed at either end as the
-   user scrolls without any row resizing underneath them. */
+/* No scrolling — the grid always shows exactly this month's weeks (4-6
+   rows), so this box just claims whatever vertical space is left. */
 .monthly-weeks-scroll {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   border-top: 1px solid var(--line);
   border-left: 1px solid var(--line);
 }
 
 .monthly-weeks {
+  height: 100%;
   display: flex;
   flex-direction: column;
 }
 
+/* flex:1 (not a fixed height) so 4, 5, or 6 week rows always split the
+   available height evenly and the whole month fits on one screen. */
 .monthly-week-row {
-  flex: none;
-  height: var(--monthly-row-h);
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(7, 1fr);
 }
@@ -920,11 +922,11 @@ body {
   overflow: hidden;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  /* allow the ancestor .monthly-weeks-scroll's native vertical scroll to
-     keep working untouched, but stop the browser from also claiming a
-     horizontal drag here (there's nothing to pan sideways anyway) so the
-     swipe-navigation gesture gets a clean, uncontested pointer stream */
-  touch-action: pan-y;
+  /* nothing here scrolls (the grid never scrolls), so claim the whole
+     gesture — this keeps the browser from intercepting it as a native pan,
+     giving the horizontal swipe-navigation gesture (which changes month) a
+     clean, uncontested pointer stream */
+  touch-action: none;
 }
 
 .monthly-cell:hover {
@@ -933,6 +935,13 @@ body {
 
 .monthly-cell.drop-target {
   background: var(--accent-soft);
+}
+
+/* a lead/trail day from the adjacent month, shown only to complete a
+   Monday-start week row — dimmed so the current month's own days read as
+   the primary content */
+.monthly-cell.other-month {
+  opacity: 0.45;
 }
 
 .mc-month-tag {
@@ -992,6 +1001,13 @@ body {
   -webkit-line-clamp: 2;
   overflow: hidden;
   cursor: pointer;
+}
+
+.mc-day-title.empty {
+  background: transparent;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  -webkit-line-clamp: 1;
 }
 
 .mc-events {
