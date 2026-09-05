@@ -41,12 +41,16 @@
   async function upsertKey(syncKey, value) {
     if (!client || !session || value === undefined) return;
     try {
-      await client.from("app_data").upsert({
+      // supabase-js resolves this even on a server-side rejection (e.g. an
+      // RLS policy violation) rather than throwing — the failure only shows
+      // up in the returned `error`, never as a caught exception.
+      const { error } = await client.from("app_data").upsert({
         user_id: session.user.id,
         key: syncKey,
         value,
         updated_at: new Date().toISOString(),
       });
+      if (error) throw error;
     } catch (err) {
       log("push failed for", syncKey, err);
     }
@@ -98,24 +102,39 @@
   // alone — with no further edit — is enough to seed the cloud (several of
   // these keys are only ever saved on an explicit user edit, so waiting for
   // "the next save call" could mean waiting forever).
+  // Guards against overlapping calls — onAuthStateChange can fire more than
+  // once for what is effectively the same sign-in (e.g. an immediate
+  // INITIAL_SESSION event alongside the explicit check in init()), and
+  // without this guard each overlapping call independently sees the same
+  // "cloud has nothing for this key yet" snapshot and re-seeds it.
+  let syncInFlight = null;
+
   async function initialSync() {
-    const remote = await pullAll();
-    const seeds = [];
-    Object.entries(LOCAL_KEY_MAP).forEach(([syncKey, localKey]) => {
-      if (Object.prototype.hasOwnProperty.call(remote, syncKey)) {
-        localStorage.setItem(localKey, JSON.stringify(remote[syncKey]));
-      } else {
-        const raw = localStorage.getItem(localKey);
-        if (raw !== null) {
-          try {
-            seeds.push(upsertKey(syncKey, JSON.parse(raw)));
-          } catch (err) {
-            log("seed parse failed for", syncKey, err);
+    if (syncInFlight) return syncInFlight;
+    syncInFlight = (async () => {
+      const remote = await pullAll();
+      const seeds = [];
+      Object.entries(LOCAL_KEY_MAP).forEach(([syncKey, localKey]) => {
+        if (Object.prototype.hasOwnProperty.call(remote, syncKey)) {
+          localStorage.setItem(localKey, JSON.stringify(remote[syncKey]));
+        } else {
+          const raw = localStorage.getItem(localKey);
+          if (raw !== null) {
+            try {
+              seeds.push(upsertKey(syncKey, JSON.parse(raw)));
+            } catch (err) {
+              log("seed parse failed for", syncKey, err);
+            }
           }
         }
-      }
-    });
-    await Promise.all(seeds);
+      });
+      await Promise.all(seeds);
+    })();
+    try {
+      await syncInFlight;
+    } finally {
+      syncInFlight = null;
+    }
   }
 
   async function init() {
