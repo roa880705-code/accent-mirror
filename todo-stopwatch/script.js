@@ -1133,7 +1133,7 @@
   // separately in dailyWeekAnchor/weeklyWeekAnchor while the other is active.
   let weekAnchor = state.day;
   let dailyWeekAnchor = state.day;
-  let weeklyWeekAnchor = mondayOfWeek(state.day); // ウィークリーは常に月曜始まり
+  let weeklyWeekAnchor = state.day; // ウィークリーは曜日固定ではなく、本日を1番左にした5日間表示
   let monthAnchor = state.day; // any date string within the displayed month (マンスリーカレンダー)
   let selectedDayDetail = null; // date string whose textual summary is shown below the grid
   let selectedPlanId = null; // plan currently tapped; shows a resize handle on its block
@@ -3684,7 +3684,7 @@
     else if (activePage === DAILY_PAGE) dailyWeekAnchor = weekAnchor;
 
     if (target === WEEKLY_PAGE) {
-      CAL_DAYS = 7;
+      CAL_DAYS = 5;
       calendarWeekLabel = weeklyWeekLabelEl;
       calendarWeekHeader = weeklyWeekHeaderEl;
       calendarWeekBody = weeklyWeekBodyEl;
