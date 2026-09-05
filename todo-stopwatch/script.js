@@ -2765,7 +2765,6 @@
   const MONTHLY_EXTEND_WEEKS = 6; // weeks appended/prepended once the user scrolls near an edge
   const MONTHLY_EDGE_THRESHOLD = MONTHLY_ROW_H * 2; // how close to an edge triggers an extend
   const MONTHLY_MAX_WEEKS = 40; // cap on rendered weeks; the far edge is trimmed past this
-  const MONTH_CELL_MAX_EVENTS = 4;
 
   let monthlyWeeksStart = null; // Monday date string of the first rendered week row
   let monthlyWeeksEnd = null; // Monday date string of the last rendered week row
@@ -2838,23 +2837,21 @@
       body.appendChild(titleEl);
     }
 
+    // no fixed cap here — every label is rendered, and the cell's own
+    // overflow:hidden (plus .mc-event's flex:none, so rows don't get
+    // squished to fit) simply clips whatever doesn't fit in the space
+    // actually available for that day, using it to the fullest.
     const labels = labelsForDate(dateStr);
     if (labels.length) {
       const list = document.createElement("div");
       list.className = "mc-events";
-      labels.slice(0, MONTH_CELL_MAX_EVENTS).forEach((label) => {
+      labels.forEach((label) => {
         const row = document.createElement("span");
         row.className = "mc-event";
         row.textContent = label;
         row.style.color = colorForLabel(label);
         list.appendChild(row);
       });
-      if (labels.length > MONTH_CELL_MAX_EVENTS) {
-        const more = document.createElement("span");
-        more.className = "mc-event mc-event-more";
-        more.textContent = `+${labels.length - MONTH_CELL_MAX_EVENTS}`;
-        list.appendChild(more);
-      }
       body.appendChild(list);
     }
 

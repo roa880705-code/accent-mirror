@@ -983,6 +983,7 @@ body {
 }
 
 .mc-event {
+  flex: none;
   font-size: 0.5rem;
   font-weight: 700;
   line-height: 1.3;
@@ -990,11 +991,6 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.mc-event-more {
-  color: var(--muted);
-  font-weight: 600;
 }
 
 .monthly-cell:focus-visible {
