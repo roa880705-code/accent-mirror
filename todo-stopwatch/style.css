@@ -1518,10 +1518,13 @@ body {
 
 /* a いつか task with subtasks of its own — filled solid so it visibly reads
    as a "parent," distinct from a plain leaf task's outlined chip */
+/* a parent (has children) reads as a container at a glance, distinct from
+   a leaf's pill shape — square-ish corners instead of fully round */
 .cal-unplanned-chip.parent {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;
+  border-radius: 8px;
 }
 
 .cal-unplanned-chip.parent.active-parent {

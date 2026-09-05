@@ -857,7 +857,7 @@
       const idx = items.indexOf(draggedItem);
       if (idx >= 0) items.splice(idx, 1);
       if (draggedItem.planId) removePlan(viewingDate, draggedItem.planId);
-      someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: labelOf(draggedItem, "予定"), parentId: null });
+      someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: labelOf(draggedItem, "予定"), parentId: somedayRestoreParentId(draggedItem.somedayParentId) });
       saveSomeday();
       persistItemsChange();
       vibrate(20);
@@ -1646,16 +1646,19 @@
           items[idx].planId = null;
           sortItemsByPlan(dateStr);
         } else {
-          // nothing was ever tracked: drop the item and send it back to the いつか backlog
+          // nothing was ever tracked: drop the item and send it back to the
+          // いつか backlog — restoring it under its original 子/孫/ひ孫
+          // parent if it had one and that parent is still around
+          const restoreParentId = somedayRestoreParentId(items[idx].somedayParentId);
           items.splice(idx, 1);
-          someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: plan.label });
+          someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: plan.label, parentId: restoreParentId });
           saveSomeday();
         }
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
       } else {
         // a plan with no linked item goes straight to いつか
-        someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: plan.label });
+        someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: plan.label, parentId: somedayRestoreParentId(plan.somedayParentId) });
         saveSomeday();
       }
       vibrate(20);
@@ -1960,7 +1963,7 @@
       const items = itemsArrayForDate(dateStr);
       const idx = items.indexOf(item);
       if (idx >= 0) items.splice(idx, 1);
-      someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: labelOf(item, "予定") });
+      someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: labelOf(item, "予定"), parentId: somedayRestoreParentId(item.somedayParentId) });
       saveSomeday();
       persistItemsForDate(dateStr);
       refreshTimerIfShowing(dateStr);
@@ -2199,6 +2202,18 @@
       if (t.parentId === id) t.parentId = null;
     });
     someday = someday.filter((t) => t.id !== id);
+  }
+
+  // A 子/孫/ひ孫タスク dragged onto the schedule is removed from someday
+  // (see above) and lives on as a plain item/plan; item.somedayParentId /
+  // plan.somedayParentId remember where it came from so that dragging it
+  // back off the schedule can restore it under that same parent instead of
+  // always landing at the top level — unless that parent has itself since
+  // been scheduled or deleted, in which case falling back to top-level
+  // mirrors what removeSomedayTaskPromotingChildren already does for a
+  // parent's own children when the parent disappears.
+  function somedayRestoreParentId(sourceParentId) {
+    return sourceParentId && someday.some((t) => t.id === sourceParentId) ? sourceParentId : null;
   }
 
   // いつか is shown in two places (デイリー's tray and マンスリー's), and
@@ -2795,6 +2810,7 @@
         // マンスリーには時間軸がないので、常にその日の「時間未定」リストへ
         const dateStr = targetMonthlyCell.dataset.date;
         const item = freshItem(task.label);
+        item.somedayParentId = task.parentId || null;
         ensureItemsArrayForDate(dateStr).push(item);
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
@@ -2810,6 +2826,7 @@
         // タスクとして追加する
         const dateStr = viewingDate;
         const item = freshItem(task.label);
+        item.somedayParentId = task.parentId || null;
         ensureItemsArrayForDate(dateStr).push(item);
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
@@ -2826,6 +2843,7 @@
 
       if (overZone) {
         const item = freshItem(task.label);
+        item.somedayParentId = task.parentId || null;
         ensureItemsArrayForDate(dateStr).push(item);
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
@@ -2844,9 +2862,10 @@
       const endMin = startMin + PLAN_DEFAULT_MIN;
       const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-      addPlan(dateStr, { id, label: task.label, startMin, endMin });
+      addPlan(dateStr, { id, label: task.label, startMin, endMin, somedayParentId: task.parentId || null });
       const item = freshItem(task.label);
       item.planId = id;
+      item.somedayParentId = task.parentId || null;
       ensureItemsArrayForDate(dateStr).push(item);
       sortItemsByPlan(dateStr);
       persistItemsForDate(dateStr);
