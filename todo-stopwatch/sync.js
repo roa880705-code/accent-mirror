@@ -6,8 +6,9 @@
 // supabase/schema.sql and the setup notes in the project README for what
 // to fill in and how.
 (() => {
-  const SUPABASE_URL = ""; // TODO: paste your Supabase project URL (Project Settings -> API)
-  const SUPABASE_ANON_KEY = ""; // TODO: paste your Supabase anon/public key (same page)
+  const SUPABASE_URL = "https://nfwjtyfiljkbchwdybep.supabase.co";
+  const SUPABASE_ANON_KEY =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5md2p0eWZpbGprYmNod2R5YmVwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDMxODgsImV4cCI6MjEwNDE3OTE4OH0.c6FQylm8D7BqrD4Nu_xqFzcpgT4RUOXOXl4ZjAM9Ng0";
 
   // Maps the sync table's "key" column to the localStorage key script.js
   // already reads/writes, so no other file needs to know both names.
