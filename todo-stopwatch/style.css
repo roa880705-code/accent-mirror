@@ -346,6 +346,7 @@ body {
 }
 
 .page {
+  position: relative;
   flex: 0 0 100%;
   min-width: 100%;
   min-height: 0;
@@ -856,6 +857,7 @@ body {
 
 .monthly-calendar {
   --monthly-row-h: 147px;
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -1026,6 +1028,7 @@ body {
 .calendar {
   --cal-gutter: 30px;
   --hour-h: 40px;
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -1411,6 +1414,24 @@ body {
   flex: none;
   font-size: 0.65rem;
   color: var(--muted);
+}
+
+/* a thin line from the currently active parent chip down to the tray of
+   its own children just below, so the parent/child relationship reads at
+   a glance instead of only being inferable from the active-parent ring.
+   Position (left/top/height) is computed in JS from the two elements'
+   real on-screen positions, since the parent chip can sit anywhere along
+   its horizontally-scrolling tray. */
+.someday-connector {
+  position: absolute;
+  width: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.someday-connector[hidden] {
+  display: none;
 }
 
 .cal-unplanned-chip {

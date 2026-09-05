@@ -377,13 +377,10 @@
   const calendarSomedayAddBtn = document.getElementById("calendarSomedayAddBtn");
   const calendarSubtaskBox = document.getElementById("calendarSubtaskBox");
   const calendarSubtaskList = document.getElementById("calendarSubtaskList");
-  const calendarSubtaskAddBtn = document.getElementById("calendarSubtaskAddBtn");
   const calendarGrandchildBox = document.getElementById("calendarGrandchildBox");
   const calendarGrandchildList = document.getElementById("calendarGrandchildList");
-  const calendarGrandchildAddBtn = document.getElementById("calendarGrandchildAddBtn");
   const calendarGreatGrandchildBox = document.getElementById("calendarGreatGrandchildBox");
   const calendarGreatGrandchildList = document.getElementById("calendarGreatGrandchildList");
-  const calendarGreatGrandchildAddBtn = document.getElementById("calendarGreatGrandchildAddBtn");
   const calendarPrevBtn = document.getElementById("calendarPrevBtn");
   const calendarNextBtn = document.getElementById("calendarNextBtn");
   const weeklyUnplannedBox = document.getElementById("weeklyUnplannedBox");
@@ -391,13 +388,10 @@
   const weeklySomedayAddBtn = document.getElementById("weeklySomedayAddBtn");
   const weeklySubtaskBox = document.getElementById("weeklySubtaskBox");
   const weeklySubtaskList = document.getElementById("weeklySubtaskList");
-  const weeklySubtaskAddBtn = document.getElementById("weeklySubtaskAddBtn");
   const weeklyGrandchildBox = document.getElementById("weeklyGrandchildBox");
   const weeklyGrandchildList = document.getElementById("weeklyGrandchildList");
-  const weeklyGrandchildAddBtn = document.getElementById("weeklyGrandchildAddBtn");
   const weeklyGreatGrandchildBox = document.getElementById("weeklyGreatGrandchildBox");
   const weeklyGreatGrandchildList = document.getElementById("weeklyGreatGrandchildList");
-  const weeklyGreatGrandchildAddBtn = document.getElementById("weeklyGreatGrandchildAddBtn");
   const weeklyPrevBtn = document.getElementById("weeklyPrevBtn");
   const weeklyNextBtn = document.getElementById("weeklyNextBtn");
   const monthlyLabel = document.getElementById("monthlyLabel");
@@ -410,25 +404,31 @@
   const monthlySomedayAddBtn = document.getElementById("monthlySomedayAddBtn");
   const monthlySubtaskBox = document.getElementById("monthlySubtaskBox");
   const monthlySubtaskList = document.getElementById("monthlySubtaskList");
-  const monthlySubtaskAddBtn = document.getElementById("monthlySubtaskAddBtn");
   const monthlyGrandchildBox = document.getElementById("monthlyGrandchildBox");
   const monthlyGrandchildList = document.getElementById("monthlyGrandchildList");
-  const monthlyGrandchildAddBtn = document.getElementById("monthlyGrandchildAddBtn");
   const monthlyGreatGrandchildBox = document.getElementById("monthlyGreatGrandchildBox");
   const monthlyGreatGrandchildList = document.getElementById("monthlyGreatGrandchildList");
-  const monthlyGreatGrandchildAddBtn = document.getElementById("monthlyGreatGrandchildAddBtn");
   const taskUnplannedBox = document.getElementById("taskUnplannedBox");
   const taskUnplannedList = document.getElementById("taskUnplannedList");
   const taskSomedayAddBtn = document.getElementById("taskSomedayAddBtn");
   const taskSubtaskBox = document.getElementById("taskSubtaskBox");
   const taskSubtaskList = document.getElementById("taskSubtaskList");
-  const taskSubtaskAddBtn = document.getElementById("taskSubtaskAddBtn");
   const taskGrandchildBox = document.getElementById("taskGrandchildBox");
   const taskGrandchildList = document.getElementById("taskGrandchildList");
-  const taskGrandchildAddBtn = document.getElementById("taskGrandchildAddBtn");
   const taskGreatGrandchildBox = document.getElementById("taskGreatGrandchildBox");
   const taskGreatGrandchildList = document.getElementById("taskGreatGrandchildList");
-  const taskGreatGrandchildAddBtn = document.getElementById("taskGreatGrandchildAddBtn");
+  const calendarSubtaskConnector = document.getElementById("calendarSubtaskConnector");
+  const calendarGrandchildConnector = document.getElementById("calendarGrandchildConnector");
+  const calendarGreatGrandchildConnector = document.getElementById("calendarGreatGrandchildConnector");
+  const weeklySubtaskConnector = document.getElementById("weeklySubtaskConnector");
+  const weeklyGrandchildConnector = document.getElementById("weeklyGrandchildConnector");
+  const weeklyGreatGrandchildConnector = document.getElementById("weeklyGreatGrandchildConnector");
+  const monthlySubtaskConnector = document.getElementById("monthlySubtaskConnector");
+  const monthlyGrandchildConnector = document.getElementById("monthlyGrandchildConnector");
+  const monthlyGreatGrandchildConnector = document.getElementById("monthlyGreatGrandchildConnector");
+  const taskSubtaskConnector = document.getElementById("taskSubtaskConnector");
+  const taskGrandchildConnector = document.getElementById("taskGrandchildConnector");
+  const taskGreatGrandchildConnector = document.getElementById("taskGreatGrandchildConnector");
   const breakdownModal = document.getElementById("breakdownModal");
   const historyModal = document.getElementById("historyModal");
   const openBreakdownBtn = document.getElementById("openBreakdownBtn");
@@ -2028,6 +2028,63 @@
     },
   ];
 
+  // connectorEls[d][pageIdx] draws the line from the active parent at depth
+  // d down to the tray holding its children (somedayLevelEls[d + 1]) — same
+  // page order as somedayLevelEls (calendar/weekly/monthly/task).
+  const somedayConnectorEls = [
+    [calendarSubtaskConnector, weeklySubtaskConnector, monthlySubtaskConnector, taskSubtaskConnector],
+    [calendarGrandchildConnector, weeklyGrandchildConnector, monthlyGrandchildConnector, taskGrandchildConnector],
+    [calendarGreatGrandchildConnector, weeklyGreatGrandchildConnector, monthlyGreatGrandchildConnector, taskGreatGrandchildConnector],
+  ];
+
+  // the containing block each page's connectors are positioned absolutely
+  // against — .calendar/.monthly-calendar for those pages, or .page itself
+  // for ログ (which has no such wrapper of its own)
+  const somedayConnectorRoots = somedayLevelEls[0].lists.map((listEl) => listEl.closest(".calendar, .monthly-calendar, .page"));
+
+  function positionSomedayConnector(connectorEl, rootEl, chipEl, sourceListEl, destEl) {
+    if (!chipEl || !destEl) {
+      connectorEl.hidden = true;
+      return;
+    }
+    const rootRect = rootEl.getBoundingClientRect();
+    const chipRect = chipEl.getBoundingClientRect();
+    const listRect = sourceListEl.getBoundingClientRect();
+    const destRect = destEl.getBoundingClientRect();
+
+    // clamp to the source tray's own visible width so a chip scrolled out of
+    // view doesn't drag the line off to some point outside the tray
+    const chipCenter = Math.max(listRect.left, Math.min(listRect.right, chipRect.left + chipRect.width / 2));
+
+    const top = chipRect.bottom - rootRect.top;
+    const bottom = destRect.top - rootRect.top;
+    connectorEl.style.left = `${chipCenter - rootRect.left}px`;
+    connectorEl.style.top = `${top}px`;
+    connectorEl.style.height = `${Math.max(0, bottom - top)}px`;
+    connectorEl.hidden = false;
+  }
+
+  // Redraws every currently-visible parent-to-child connector line. Cheap
+  // enough (a handful of getBoundingClientRect calls) to run on every
+  // someday render, plus on scroll/resize since a chip's on-screen position
+  // shifts independently of any data change.
+  function repositionSomedayConnectors() {
+    for (let depth = 0; depth < somedayConnectorEls.length; depth++) {
+      const parentId = activeSomedayIds[depth];
+      const parentTask = parentId ? someday.find((t) => t.id === parentId) : null;
+      somedayConnectorEls[depth].forEach((connectorEl, pageIdx) => {
+        if (!parentTask) {
+          connectorEl.hidden = true;
+          return;
+        }
+        const sourceListEl = somedayLevelEls[depth].lists[pageIdx];
+        const chipEl = sourceListEl.querySelector(`[data-someday-id="${parentTask.id}"]`);
+        const destEl = somedayLevelEls[depth + 1].lists[pageIdx];
+        positionSomedayConnector(connectorEl, somedayConnectorRoots[pageIdx], chipEl, sourceListEl, destEl);
+      });
+    }
+  }
+
   // A task's nesting depth: 0=top-level, 1=子タスク, 2=孫タスク, 3=ひ孫タスク.
   function somedayTaskDepth(task) {
     let depth = 0;
@@ -2180,6 +2237,7 @@
   function renderSomedayList() {
     somedayLevelEls[0].lists.forEach((listEl) => renderSomedayListInto(listEl, topLevelSomeday()));
     renderSubtaskTrays();
+    repositionSomedayConnectors();
   }
 
   // Hides every 子/孫/ひ孫タスク layer, leaving just いつか — used whenever
@@ -2218,20 +2276,6 @@
     const label = name.trim();
     if (!label) return;
     someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId: null });
-    saveSomeday();
-    renderSomedayList();
-  }
-
-  // Adds a subtask under whichever task is currently active at this level
-  // (level 0 = the タスク追加 button in 子タスク's own tray, and so on).
-  async function addSubtaskAtLevel(level) {
-    const parentId = activeSomedayIds[level];
-    if (!parentId) return;
-    const name = await openNameModal("", SOMEDAY_CHILD_LABELS[level]);
-    if (name === null) return;
-    const label = name.trim();
-    if (!label) return;
-    someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId });
     saveSomeday();
     renderSomedayList();
   }
@@ -2767,6 +2811,7 @@
       // drag, so sync them too — ctx.listEl's own DOM order is already
       // correct and mid-settle-animation
       siblingSomedayLists(ctx.listEl).forEach((sibling) => renderSomedayListInto(sibling, tasksForSomedayList(sibling)));
+      repositionSomedayConnectors();
       somedayDragCtx = null;
       return;
     }
@@ -3388,18 +3433,15 @@
   weeklySomedayAddBtn.addEventListener("click", addSomedayTask);
   monthlySomedayAddBtn.addEventListener("click", addSomedayTask);
   taskSomedayAddBtn.addEventListener("click", addSomedayTask);
-  calendarSubtaskAddBtn.addEventListener("click", () => addSubtaskAtLevel(0));
-  weeklySubtaskAddBtn.addEventListener("click", () => addSubtaskAtLevel(0));
-  monthlySubtaskAddBtn.addEventListener("click", () => addSubtaskAtLevel(0));
-  taskSubtaskAddBtn.addEventListener("click", () => addSubtaskAtLevel(0));
-  calendarGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(1));
-  weeklyGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(1));
-  monthlyGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(1));
-  taskGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(1));
-  calendarGreatGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(2));
-  weeklyGreatGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(2));
-  monthlyGreatGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(2));
-  taskGreatGrandchildAddBtn.addEventListener("click", () => addSubtaskAtLevel(2));
+
+  // a connector line tracks its parent chip's real on-screen position, so
+  // it needs to move along whenever the tray holding that chip is scrolled
+  // horizontally — no listener on the ひ孫タスク lists, since nothing ever
+  // connects out of them (always a leaf)
+  somedayLevelEls.slice(0, 3).forEach((cfg) => {
+    cfg.lists.forEach((listEl) => listEl.addEventListener("scroll", repositionSomedayConnectors, { passive: true }));
+  });
+  window.addEventListener("resize", repositionSomedayConnectors);
 
   // tapping anywhere outside the いつか/子/孫/ひ孫タスク trays (the grid, a
   // day header, a plan block, ...) collapses back to just いつか — but not
