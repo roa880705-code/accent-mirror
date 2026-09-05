@@ -2149,18 +2149,46 @@
     return someday.some((t) => t.parentId === id);
   }
 
-  // Assigns a task its own solid color the first time it becomes a parent
-  // (lazily, so tasks that already had children before this feature existed
-  // pick one up on first render too), cycling through CAL_PALETTE in the
-  // order tasks became parents. Idempotent — a task keeps the same color
-  // for as long as it stays a parent, even across reloads.
-  function ensureParentColor(task) {
-    if (task.colorIdx == null) {
+  // Walks up to the top-level (いつか) ancestor of a task — the whole family
+  // (子/孫/ひ孫 hanging off one いつか task) shares that ancestor's color, so
+  // the lineage reads as one consistent hue no matter how deep a chip sits.
+  function rootSomedayTask(task) {
+    let current = task;
+    while (current && current.parentId) {
+      const parent = someday.find((t) => t.id === current.parentId);
+      if (!parent) break;
+      current = parent;
+    }
+    return current;
+  }
+
+  // Assigns a family's root (いつか) task its own solid color the first time
+  // any member of that family becomes a parent (lazily, so families that
+  // already existed before this feature did pick one up on first render
+  // too), cycling through CAL_PALETTE in the order families first needed
+  // one. Idempotent — a root keeps the same color for as long as its family
+  // exists, even across reloads.
+  function ensureParentColor(rootTask) {
+    if (rootTask.colorIdx == null) {
       const maxIdx = someday.reduce((m, t) => (t.colorIdx != null && t.colorIdx > m ? t.colorIdx : m), -1);
-      task.colorIdx = maxIdx + 1;
+      rootTask.colorIdx = maxIdx + 1;
       saveSomeday();
     }
-    return CAL_PALETTE[task.colorIdx % CAL_PALETTE.length];
+    return CAL_PALETTE[rootTask.colorIdx % CAL_PALETTE.length];
+  }
+
+  // Fades a family's base color toward white as depth increases, so a
+  // parent chip reads as progressively lighter the closer it sits to the
+  // leaves — while the caller keeps using the family's plain base color for
+  // borders, which never fades.
+  const SOMEDAY_FILL_LIGHTEN = [0, 0.35, 0.6, 0.6]; // by depth (0=いつか..3=ひ孫, though ひ孫 is always a leaf and never filled)
+  function lightenHex(hex, amount) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = (n >> 16) & 0xff;
+    const g = (n >> 8) & 0xff;
+    const b = n & 0xff;
+    const mix = (c) => Math.round(c + (255 - c) * amount);
+    return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
   }
 
   // Removes a task from someday; if it had subtasks of its own, they're
@@ -2189,23 +2217,28 @@
       const chip = document.createElement("button");
       chip.type = "button";
       chip.className = "cal-unplanned-chip";
+      const depth = somedayTaskDepth(task);
       if (isParentTask(task.id)) {
-        // a parent: filled solid with its own color, so it visibly reads as
-        // a container rather than something you can schedule directly
+        // a parent: filled with its family's color, so it visibly reads as
+        // a container rather than something you can schedule directly. The
+        // whole family (every 子/孫/ひ孫 hanging off the same いつか task)
+        // shares one base color — the border always stays at that full
+        // color regardless of depth, while the fill itself fades lighter
+        // the closer this chip sits to the leaves.
         chip.classList.add("parent");
         if (activeSomedayIds.includes(task.id)) chip.classList.add("active-parent");
-        const solid = ensureParentColor(task);
-        chip.style.borderColor = solid;
-        chip.style.background = solid;
+        const base = ensureParentColor(rootSomedayTask(task));
+        chip.style.borderColor = base;
+        chip.style.background = lightenHex(base, SOMEDAY_FILL_LIGHTEN[depth] || 0);
+        // the class's white text (for a full-strength fill) stops reading
+        // well once the fill has faded most of the way toward white
+        chip.style.color = depth >= 2 ? "var(--ink)" : "#fff";
       } else if (task.parentId) {
-        // a leaf whose parent has its own color — outline it in that SAME
-        // color (no fill) so the family resemblance still reads at a
-        // glance, while the white interior doubles as the "this one can be
+        // a leaf — never filled, just outlined in its family's base color
+        // (no fill) so the family resemblance still reads at a glance,
+        // while the white interior doubles as the "this one can be
         // scheduled" marker leaf tasks already have by default
-        const parentTask = someday.find((t) => t.id === task.parentId);
-        if (parentTask) {
-          chip.style.borderColor = ensureParentColor(parentTask);
-        }
+        chip.style.borderColor = ensureParentColor(rootSomedayTask(task));
       }
       const labelEl = document.createElement("span");
       labelEl.className = "cal-unplanned-chip-label";
@@ -2216,7 +2249,6 @@
       // ひ孫) shows how many of the next tier hang off it, even when that's
       // currently zero — so a glance tells you whether there's more to
       // drill into without having to tap and check
-      const depth = somedayTaskDepth(task);
       if (depth < SOMEDAY_MAX_DEPTH) {
         const badge = document.createElement("span");
         badge.className = "cal-child-count-badge";
@@ -3024,6 +3056,8 @@
       header.className = "calendar-day-header";
       if (dateStr === state.day) header.classList.add("today");
       if (dateStr === selectedDayDetail) header.classList.add("selected");
+      if (d.getDay() === 6) header.classList.add("saturday");
+      if (d.getDay() === 0) header.classList.add("sunday");
 
       const weekdayEl = document.createElement("span");
       weekdayEl.className = "cdh-weekday";
@@ -3305,6 +3339,8 @@
     cell.classList.toggle("other-month", dateStr.slice(0, 7) !== monthlyDisplayedMonth);
 
     const d = parseDateStr(dateStr);
+    cell.classList.toggle("saturday", d.getDay() === 6);
+    cell.classList.toggle("sunday", d.getDay() === 0);
 
     let dateEl = cell.querySelector(".mc-date");
     if (!dateEl) {
@@ -3446,9 +3482,11 @@
   }
 
   function initMonthlyCalendar() {
-    MONTH_WEEKDAYS.forEach((w) => {
+    MONTH_WEEKDAYS.forEach((w, i) => {
       const span = document.createElement("span");
       span.textContent = w;
+      if (i === 5) span.classList.add("saturday"); // Monday-start: index 5 = 土
+      if (i === 6) span.classList.add("sunday"); // index 6 = 日
       monthlyWeekdayRow.appendChild(span);
     });
     renderMonthlyGrid();

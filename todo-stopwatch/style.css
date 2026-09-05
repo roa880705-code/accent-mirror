@@ -882,6 +882,14 @@ body {
   padding: 2px 0;
 }
 
+.monthly-weekday-row span.saturday {
+  color: var(--tab-monthly);
+}
+
+.monthly-weekday-row span.sunday {
+  color: var(--danger);
+}
+
 /* No scrolling — the grid always shows exactly this month's weeks (4-6
    rows), so this box just claims whatever vertical space is left. */
 .monthly-weeks-scroll {
@@ -962,6 +970,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.monthly-cell.saturday:not(.today) .mc-date {
+  color: var(--tab-monthly);
+}
+
+.monthly-cell.sunday:not(.today) .mc-date {
+  color: var(--danger);
 }
 
 .monthly-cell.today .mc-date {
@@ -1134,6 +1150,14 @@ body {
   font-weight: 600;
 }
 
+.calendar-day-header.saturday .cdh-weekday {
+  color: var(--tab-monthly);
+}
+
+.calendar-day-header.sunday .cdh-weekday {
+  color: var(--danger);
+}
+
 .calendar-day-header .cdh-date {
   font-size: clamp(0.68rem, 1.5vw, 0.82rem);
   font-weight: 700;
@@ -1143,6 +1167,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.calendar-day-header.saturday:not(.today) .cdh-date {
+  color: var(--tab-monthly);
+}
+
+.calendar-day-header.sunday:not(.today) .cdh-date {
+  color: var(--danger);
 }
 
 .calendar-day-header.today .cdh-date {
