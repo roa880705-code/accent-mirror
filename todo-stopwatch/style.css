@@ -1392,6 +1392,7 @@ body {
 
 .cal-unplanned-chip {
   all: unset;
+  position: relative;
   box-sizing: border-box;
   flex: none;
   max-width: 120px;
@@ -1438,10 +1439,43 @@ body {
 }
 
 .cal-unplanned-chip.reordering {
-  position: relative;
   z-index: 5;
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.22);
   cursor: grabbing;
+}
+
+.cal-unplanned-chip-label {
+  display: inline;
+}
+
+/* small corner badge on every いつか/子/孫 task (not ひ孫, always a leaf)
+   showing how many of the next tier hang off it — shown even at 0, so a
+   glance says whether there's more to drill into without tapping in */
+.cal-child-count-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 15px;
+  height: 15px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--ink);
+  pointer-events: none;
+}
+
+/* the digit is CSS-generated content, not a text node, so it never shows up
+   in chip.textContent (which the rest of the someday code, and its tests,
+   read as the task's plain label) */
+.cal-child-count-badge::before {
+  content: attr(data-count);
+  display: block;
+  padding: 0 3px;
+  color: var(--paper);
+  font-size: 0.55rem;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .cal-plan-preview {

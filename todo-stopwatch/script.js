@@ -988,17 +988,6 @@
     return CAL_PALETTE[hash % CAL_PALETTE.length];
   }
 
-  // Blends a "#rrggbb" color toward white by `amount` (0-1) — used to tint
-  // a いつか parent's children with a diluted version of its own color.
-  function lightenHex(hex, amount) {
-    const n = parseInt(hex.slice(1), 16);
-    const r = (n >> 16) & 255;
-    const g = (n >> 8) & 255;
-    const b = n & 255;
-    const mix = (c) => Math.round(c + (255 - c) * amount);
-    return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
-  }
-
   function formatHM(ms) {
     const d = new Date(ms);
     return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
@@ -1921,23 +1910,43 @@
       chip.type = "button";
       chip.className = "cal-unplanned-chip";
       if (isParentTask(task.id)) {
+        // a parent: filled solid with its own color, so it visibly reads as
+        // a container rather than something you can schedule directly
         chip.classList.add("parent");
         if (activeSomedayIds.includes(task.id)) chip.classList.add("active-parent");
         const solid = ensureParentColor(task);
         chip.style.borderColor = solid;
         chip.style.background = solid;
       } else if (task.parentId) {
-        // a leaf whose parent has its own color — tint it with a diluted
-        // version of that SAME color so the family resemblance reads at a
-        // glance, even several taps deep
+        // a leaf whose parent has its own color — outline it in that SAME
+        // color (no fill) so the family resemblance still reads at a
+        // glance, while the white interior doubles as the "this one can be
+        // scheduled" marker leaf tasks already have by default
         const parentTask = someday.find((t) => t.id === task.parentId);
         if (parentTask) {
-          const solid = ensureParentColor(parentTask);
-          chip.style.borderColor = solid;
-          chip.style.background = lightenHex(solid, 0.75);
+          chip.style.borderColor = ensureParentColor(parentTask);
         }
       }
-      chip.textContent = task.label;
+      const labelEl = document.createElement("span");
+      labelEl.className = "cal-unplanned-chip-label";
+      labelEl.textContent = task.label;
+      chip.appendChild(labelEl);
+
+      // every non-leaf-eligible depth (いつか/子/孫, not the always-leaf
+      // ひ孫) shows how many of the next tier hang off it, even when that's
+      // currently zero — so a glance tells you whether there's more to
+      // drill into without having to tap and check
+      const depth = somedayTaskDepth(task);
+      if (depth < SOMEDAY_MAX_DEPTH) {
+        const badge = document.createElement("span");
+        badge.className = "cal-child-count-badge";
+        // rendered via CSS content: attr(), not textContent — so chip.textContent
+        // stays just the label, which the rest of the someday code (and tests)
+        // rely on for reading/comparing a chip's name
+        badge.dataset.count = String(childrenOf(task.id).length);
+        chip.appendChild(badge);
+      }
+
       chip.dataset.somedayId = task.id;
       chip.addEventListener("pointerdown", (e) => startSomedayChipDrag(e, chip, task));
       listEl.appendChild(chip);
