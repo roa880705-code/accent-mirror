@@ -956,6 +956,7 @@ body {
    as small as stays legible, and allowed to wrap onto 2 lines (the cell has
    height to spare) instead of truncating a single line too eagerly. */
 .mc-day-title {
+  flex: none;
   align-self: stretch;
   width: 100%;
   box-sizing: border-box;
@@ -991,6 +992,11 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.mc-event-more {
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .monthly-cell:focus-visible {

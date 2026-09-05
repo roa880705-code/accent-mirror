@@ -988,6 +988,17 @@
     return CAL_PALETTE[hash % CAL_PALETTE.length];
   }
 
+  // Blends a "#rrggbb" color toward white by `amount` (0-1) — used to tint
+  // a いつか parent's children with a diluted version of its own color.
+  function lightenHex(hex, amount) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = (n >> 16) & 255;
+    const g = (n >> 8) & 255;
+    const b = n & 255;
+    const mix = (c) => Math.round(c + (255 - c) * amount);
+    return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+  }
+
   function formatHM(ms) {
     const d = new Date(ms);
     return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
@@ -1869,6 +1880,20 @@
     return someday.some((t) => t.parentId === id);
   }
 
+  // Assigns a task its own solid color the first time it becomes a parent
+  // (lazily, so tasks that already had children before this feature existed
+  // pick one up on first render too), cycling through CAL_PALETTE in the
+  // order tasks became parents. Idempotent — a task keeps the same color
+  // for as long as it stays a parent, even across reloads.
+  function ensureParentColor(task) {
+    if (task.colorIdx == null) {
+      const maxIdx = someday.reduce((m, t) => (t.colorIdx != null && t.colorIdx > m ? t.colorIdx : m), -1);
+      task.colorIdx = maxIdx + 1;
+      saveSomeday();
+    }
+    return CAL_PALETTE[task.colorIdx % CAL_PALETTE.length];
+  }
+
   // Removes a task from someday; if it had subtasks of its own, they're
   // promoted back to top-level instead of being orphaned under a parent
   // that no longer exists (e.g. when the parent itself gets scheduled).
@@ -1898,6 +1923,19 @@
       if (isParentTask(task.id)) {
         chip.classList.add("parent");
         if (activeSomedayIds.includes(task.id)) chip.classList.add("active-parent");
+        const solid = ensureParentColor(task);
+        chip.style.borderColor = solid;
+        chip.style.background = solid;
+      } else if (task.parentId) {
+        // a leaf whose parent has its own color — tint it with a diluted
+        // version of that SAME color so the family resemblance reads at a
+        // glance, even several taps deep
+        const parentTask = someday.find((t) => t.id === task.parentId);
+        if (parentTask) {
+          const solid = ensureParentColor(parentTask);
+          chip.style.borderColor = solid;
+          chip.style.background = lightenHex(solid, 0.75);
+        }
       }
       chip.textContent = task.label;
       chip.dataset.somedayId = task.id;
@@ -2054,6 +2092,27 @@
       task.label = label;
       saveSomeday();
       renderSomedayList();
+    });
+  }
+
+  // Shared by a leaf task's tap and an already-expanded parent's tap alike,
+  // so either one offers the same 変更修正/子タスク追加 choice instead of a
+  // parent tap ever forcing straight into rename.
+  function promptSomedayEditOrAddChild(task, depth) {
+    openSomedayChoiceModal(task).then((choice) => {
+      if (choice === "edit") {
+        renameSomedayTask(task);
+      } else if (choice === "addChild") {
+        openNameModal("", SOMEDAY_CHILD_LABELS[depth]).then((name) => {
+          if (name === null) return;
+          const label = name.trim();
+          if (!label) return;
+          someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId: task.id });
+          saveSomeday();
+          activateSomedayChain(depth, task.id);
+          renderSomedayList();
+        });
+      }
     });
   }
 
@@ -2402,9 +2461,12 @@
       if (isParentTask(task.id)) {
         // already has subtasks of its own: tapping it drills into the next
         // layer down — but a SECOND tap on the SAME already-active one
-        // opens the rename modal directly instead of toggling it closed
+        // opens the same 変更修正/子タスク追加 choice as a leaf task, instead
+        // of always renaming — otherwise there was no way to add ANOTHER
+        // child from an already-expanded parent without first collapsing
+        // and re-tapping it
         if (activeSomedayIds[depth] === task.id) {
-          renameSomedayTask(task);
+          promptSomedayEditOrAddChild(task, depth);
         } else {
           activateSomedayChain(depth, task.id);
           renderSomedayList();
@@ -2412,21 +2474,7 @@
         return;
       }
 
-      openSomedayChoiceModal(task).then((choice) => {
-        if (choice === "edit") {
-          renameSomedayTask(task);
-        } else if (choice === "addChild") {
-          openNameModal("", SOMEDAY_CHILD_LABELS[depth]).then((name) => {
-            if (name === null) return;
-            const label = name.trim();
-            if (!label) return;
-            someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId: task.id });
-            saveSomeday();
-            activateSomedayChain(depth, task.id);
-            renderSomedayList();
-          });
-        }
-      });
+      promptSomedayEditOrAddChild(task, depth);
       return;
     }
 
@@ -2766,6 +2814,28 @@
   const MONTHLY_EDGE_THRESHOLD = MONTHLY_ROW_H * 2; // how close to an edge triggers an extend
   const MONTHLY_MAX_WEEKS = 40; // cap on rendered weeks; the far edge is trimmed past this
 
+  // A cell's event list has no fixed item cap, but showing every label
+  // unconditionally let a long list squeeze the day title down to nothing
+  // (both shared the same flexible space). These mirror the fixed pixel
+  // values in style.css's .monthly-cell/.mc-day-title/.mc-event rules — kept
+  // in sync by hand, same as MONTHLY_ROW_H above — so the number of events
+  // that actually fit can be worked out before the row is even in the DOM
+  // (buildMonthlyWeekRow renders a cell before its row is attached, so a
+  // live measurement isn't available yet).
+  const MC_CELL_PAD_V = 8; // .monthly-cell padding: 4px top + 4px bottom
+  const MC_DATE_H = 22; // .mc-date circle height
+  const MC_BODY_GAP = 2; // gap between mc-date/mc-body, and between title/events inside mc-body
+  const MC_TITLE_H = 19; // .mc-day-title: up to 2 lines at 0.42rem/1.2 + 1px top/bottom padding
+  const MC_EVENT_ROW_H = 11; // .mc-event: 0.5rem/1.3 line-height
+  const MC_EVENT_GAP = 1; // gap between .mc-event rows
+
+  function maxEventsForCell(hasTitle) {
+    let avail = MONTHLY_ROW_H - MC_CELL_PAD_V - MC_DATE_H - MC_BODY_GAP;
+    if (hasTitle) avail -= MC_TITLE_H + MC_BODY_GAP;
+    if (avail <= 0) return 0;
+    return Math.max(0, Math.floor((avail + MC_EVENT_GAP) / (MC_EVENT_ROW_H + MC_EVENT_GAP)));
+  }
+
   let monthlyWeeksStart = null; // Monday date string of the first rendered week row
   let monthlyWeeksEnd = null; // Monday date string of the last rendered week row
 
@@ -2837,21 +2907,28 @@
       body.appendChild(titleEl);
     }
 
-    // no fixed cap here — every label is rendered, and the cell's own
-    // overflow:hidden (plus .mc-event's flex:none, so rows don't get
-    // squished to fit) simply clips whatever doesn't fit in the space
-    // actually available for that day, using it to the fullest.
+    // shows as many events as actually fit next to the title (if any) —
+    // more than the old fixed 4-item cap when there's no title, fewer when
+    // there is one, so the title itself never gets squeezed down to fit
     const labels = labelsForDate(dateStr);
     if (labels.length) {
       const list = document.createElement("div");
       list.className = "mc-events";
-      labels.forEach((label) => {
+      const maxEvents = maxEventsForCell(!!dayTitle);
+      const showCount = labels.length > maxEvents ? Math.max(0, maxEvents - 1) : labels.length;
+      labels.slice(0, showCount).forEach((label) => {
         const row = document.createElement("span");
         row.className = "mc-event";
         row.textContent = label;
         row.style.color = colorForLabel(label);
         list.appendChild(row);
       });
+      if (showCount < labels.length) {
+        const more = document.createElement("span");
+        more.className = "mc-event mc-event-more";
+        more.textContent = `+${labels.length - showCount}`;
+        list.appendChild(more);
+      }
       body.appendChild(list);
     }
 
