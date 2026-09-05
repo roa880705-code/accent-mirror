@@ -226,6 +226,16 @@ body {
   color: var(--danger);
 }
 
+.btn-sync {
+  background: var(--panel);
+  color: var(--muted);
+  border: 1px solid var(--panel-line);
+}
+
+.btn-sync[hidden] {
+  display: none;
+}
+
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;

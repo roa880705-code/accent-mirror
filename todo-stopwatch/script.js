@@ -1,4 +1,10 @@
-(() => {
+(async () => {
+  // If sync.js is configured (see its SUPABASE_URL/SUPABASE_ANON_KEY) and a
+  // session already exists, it pulls cloud data into localStorage before
+  // this resolves, so the very first render below already reflects it.
+  // Unconfigured (the default), this resolves immediately — no delay.
+  await (window.AppSyncReady || Promise.resolve());
+
   const STORAGE_KEY = "todoStopwatch:v6";
   const HISTORY_KEY = "todoStopwatch:history:v1";
   const DRAFTS_KEY = "todoStopwatch:drafts:v1";
@@ -152,26 +158,32 @@
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    window.AppSync?.markDirty("v6", state);
   }
 
   function saveHistory() {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    window.AppSync?.markDirty("history:v1", history);
   }
 
   function saveDrafts() {
     localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts));
+    window.AppSync?.markDirty("drafts:v1", drafts);
   }
 
   function savePlans() {
     localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+    window.AppSync?.markDirty("plans:v1", plans);
   }
 
   function saveSomeday() {
     localStorage.setItem(SOMEDAY_KEY, JSON.stringify(someday));
+    window.AppSync?.markDirty("someday:v1", someday);
   }
 
   function saveDayTitles() {
     localStorage.setItem(DAY_TITLES_KEY, JSON.stringify(dayTitles));
+    window.AppSync?.markDirty("dayTitles:v1", dayTitles);
   }
 
   function dayTitleFor(dateStr) {
@@ -343,6 +355,7 @@
   const template = document.getElementById("rowTemplate");
   const totalTimeEl = document.getElementById("totalTime");
   const resetAllBtn = document.getElementById("resetAllBtn");
+  const syncBtn = document.getElementById("syncBtn");
   const appHeaderEl = document.querySelector(".app-header");
   const breakdownEl = document.getElementById("breakdown");
   const historyEl = document.getElementById("history");
@@ -901,6 +914,25 @@
     renderHistory();
     render();
   });
+
+  // 複数デバイス間の同期(Googleログイン)は sync.js 側の SUPABASE_URL /
+  // SUPABASE_ANON_KEY が未設定の間は完全に無効なので、その場合はボタン自体
+  // を表示しない。
+  if (window.AppSync?.isConfigured()) {
+    syncBtn.hidden = false;
+    if (window.AppSync.isSignedIn()) {
+      const email = window.AppSync.userEmail() || "";
+      syncBtn.textContent = email ? `${email.split("@")[0]} ログアウト` : "ログアウト";
+      syncBtn.addEventListener("click", async () => {
+        const ok = await openConfirmModal("ログアウトします。よろしいですか?");
+        if (!ok) return;
+        window.AppSync.signOut();
+      });
+    } else {
+      syncBtn.textContent = "Googleでログイン";
+      syncBtn.addEventListener("click", () => window.AppSync.signIn());
+    }
+  }
 
   // --- breakdown page ---
 
