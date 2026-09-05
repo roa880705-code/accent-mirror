@@ -488,6 +488,9 @@
   const tasklistGrandchildList = document.getElementById("tasklistGrandchildList");
   const tasklistGreatGrandchildBox = document.getElementById("tasklistGreatGrandchildBox");
   const tasklistGreatGrandchildList = document.getElementById("tasklistGreatGrandchildList");
+  const tasklistSubtaskConnector = document.getElementById("tasklistSubtaskConnector");
+  const tasklistGrandchildConnector = document.getElementById("tasklistGrandchildConnector");
+  const tasklistGreatGrandchildConnector = document.getElementById("tasklistGreatGrandchildConnector");
   const calendarSubtaskConnector = document.getElementById("calendarSubtaskConnector");
   const calendarGrandchildConnector = document.getElementById("calendarGrandchildConnector");
   const calendarGreatGrandchildConnector = document.getElementById("calendarGreatGrandchildConnector");
@@ -2249,21 +2252,25 @@
   // connectorEls[d][pageIdx] draws the line from the active parent at depth
   // d down to the tray holding its children (somedayLevelEls[d + 1]) — same
   // page order as somedayLevelEls (calendar/weekly/monthly/task), but WITHOUT
-  // タスク(縦一覧): its columns sit left-to-right (see .tasklist-page in
-  // style.css), where adjacency alone already reads as the parent/child
-  // relationship, so the branch-line overlay (meant for chips scattered
-  // across a horizontally-scrolling tray) has nothing useful to draw there.
+  // タスク(縦一覧): its columns sit left-to-right instead of stacking
+  // downward, so its branch line needs different geometry — see
+  // tasklistConnectorEls/positionSomedayConnectorHorizontal below.
   const somedayConnectorEls = [
     [calendarSubtaskConnector, weeklySubtaskConnector, monthlySubtaskConnector, taskSubtaskConnector],
     [calendarGrandchildConnector, weeklyGrandchildConnector, monthlyGrandchildConnector, taskGrandchildConnector],
     [calendarGreatGrandchildConnector, weeklyGreatGrandchildConnector, monthlyGreatGrandchildConnector, taskGreatGrandchildConnector],
   ];
 
+  // タスク(縦一覧)ページの列は右へ右へ並ぶので、他ページと同じ「下に伸びる
+  // 幹→横の梁→各子へ垂らす」形ではなく、90度回した「右に伸びる幹→縦の
+  // 梁→各子へ横に伸ばす」形で親子の連結線を描く(positionSomedayConnectorHorizontal)。
+  const tasklistConnectorEls = [tasklistSubtaskConnector, tasklistGrandchildConnector, tasklistGreatGrandchildConnector];
+  // somedayLevelEls[*].lists / somedayConnectorRoots 内でのタスクページの位置
+  const TASKLIST_PAGE_IDX = 4;
+
   // the containing block each page's connectors are positioned absolutely
   // against — .calendar/.monthly-calendar for those pages, or .page itself
-  // for ログ (which has no such wrapper of its own). Indexed the same as
-  // somedayConnectorEls's page order above (タスク一覧 excluded, so only the
-  // first 4 of somedayLevelEls[0].lists are ever looked up by pageIdx).
+  // for ログ・タスク(縦一覧)(どちらも専用ラッパーを持たない)
   const somedayConnectorRoots = somedayLevelEls[0].lists.map((listEl) => listEl.closest(".calendar, .monthly-calendar, .page"));
 
   function addSomedayBranchLine(containerEl, x, y, w, h) {
@@ -2322,6 +2329,65 @@
     containerEl.hidden = false;
   }
 
+  // タスク(縦一覧)ページ用: 親チップの右端から伸びる幹→縦の梁→各子チップ
+  // への横方向の枝、という90度回した形で連結線を描く(他ページの
+  // positionSomedayConnector をx/y入れ替えただけの鏡写し)。
+  function positionSomedayConnectorHorizontal(containerEl, rootEl, chipEl, sourceListEl, destListEl) {
+    containerEl.innerHTML = "";
+    const childChips = destListEl ? Array.from(destListEl.querySelectorAll(".cal-unplanned-chip")) : [];
+    if (!chipEl || !childChips.length) {
+      containerEl.hidden = true;
+      return;
+    }
+
+    const rootRect = rootEl.getBoundingClientRect();
+    const chipRect = chipEl.getBoundingClientRect();
+    const listRect = sourceListEl.getBoundingClientRect();
+    const destListRect = destListEl.getBoundingClientRect();
+
+    // clamp each anchor to its own list's visible height so a chip scrolled
+    // out of view doesn't drag its line off to some point outside the tray
+    const parentY = Math.max(listRect.top, Math.min(listRect.bottom, chipRect.top + chipRect.height / 2)) - rootRect.top;
+    const stemLeft = chipRect.right - rootRect.left;
+
+    const childAnchors = childChips.map((c) => {
+      const r = c.getBoundingClientRect();
+      const y = Math.max(destListRect.top, Math.min(destListRect.bottom, r.top + r.height / 2)) - rootRect.top;
+      return { y, left: r.left - rootRect.left };
+    });
+
+    const branchX = Math.max(stemLeft + 2, Math.min(...childAnchors.map((a) => a.left)) - SOMEDAY_BRANCH_GAP);
+    const allY = [parentY, ...childAnchors.map((a) => a.y)];
+    const minY = Math.min(...allY);
+    const maxY = Math.max(...allY);
+    const half = SOMEDAY_BRANCH_LINE_W / 2;
+
+    addSomedayBranchLine(containerEl, stemLeft, parentY - half, branchX - stemLeft, SOMEDAY_BRANCH_LINE_W);
+    addSomedayBranchLine(containerEl, branchX - half, minY, SOMEDAY_BRANCH_LINE_W, maxY - minY);
+    childAnchors.forEach((a) => {
+      addSomedayBranchLine(containerEl, branchX, a.y - half, a.left - branchX, SOMEDAY_BRANCH_LINE_W);
+    });
+
+    containerEl.hidden = false;
+  }
+
+  function repositionTasklistConnectors() {
+    for (let depth = 0; depth < tasklistConnectorEls.length; depth++) {
+      const parentId = activeSomedayIds[depth];
+      const parentTask = parentId ? someday.find((t) => t.id === parentId) : null;
+      const connectorEl = tasklistConnectorEls[depth];
+      if (!parentTask) {
+        connectorEl.innerHTML = "";
+        connectorEl.hidden = true;
+        continue;
+      }
+      const sourceListEl = somedayLevelEls[depth].lists[TASKLIST_PAGE_IDX];
+      const chipEl = sourceListEl.querySelector(`[data-someday-id="${parentTask.id}"]`);
+      const destListEl = somedayLevelEls[depth + 1].lists[TASKLIST_PAGE_IDX];
+      positionSomedayConnectorHorizontal(connectorEl, somedayConnectorRoots[TASKLIST_PAGE_IDX], chipEl, sourceListEl, destListEl);
+    }
+  }
+
   // Redraws every currently-visible parent-to-children branch. Cheap enough
   // (a handful of getBoundingClientRect calls) to run on every someday
   // render, plus on scroll/resize since a chip's on-screen position shifts
@@ -2342,6 +2408,7 @@
         positionSomedayConnector(connectorEl, somedayConnectorRoots[pageIdx], chipEl, sourceListEl, destListEl);
       });
     }
+    repositionTasklistConnectors();
   }
 
   // A task's nesting depth: 0=top-level, 1=子タスク, 2=孫タスク, 3=ひ孫タスク.

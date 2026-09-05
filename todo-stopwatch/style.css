@@ -1788,6 +1788,16 @@ body {
   border-left: none;
 }
 
+/* 実際の連結線(.someday-branch-line)は.pageを基準にposition:absoluteで
+   置かれるので、この要素自体はposition:staticのまま — flexの並び幅計算に
+   加わらないよう幅だけ0にする(position:absoluteにすると、この要素自身が
+   子のabsolute配置の基準になってしまい、線の座標計算が狂うため避ける)。 */
+.tasklist-connector {
+  flex: 0 0 0;
+  min-width: 0;
+  overflow: visible;
+}
+
 .tasklist-box-header {
   flex: none;
   display: flex;
