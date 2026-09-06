@@ -1202,19 +1202,30 @@
 
   // --- keeping a date's timer list and that date's plans in sync ---
 
-  // Orders a date's items by their linked plan's start time; items with no
-  // plan (or whose plan vanished) sort after all planned ones, keeping
-  // their existing relative order (Array#sort is stable).
+  // Re-times only the SCHEDULED items into chronological order, sliding them
+  // into whichever array slots are currently held by a scheduled item —
+  // every item with no plan (or whose plan vanished) is left exactly where
+  // it sits, even if that's interleaved between two scheduled items. Time-
+  // undetermined items sink to the end only when nothing has ever moved
+  // them elsewhere; once the user drags one to sit next to a specific
+  // scheduled task in ログ, this keeps it right there instead of yanking it
+  // back below every scheduled item the next time some unrelated plan
+  // change on the same date calls this.
   function sortItemsByPlan(dateStr) {
     const dayPlans = plansForDate(dateStr);
-    const startOf = (planId) => {
-      const p = planId && dayPlans.find((pl) => pl.id === planId);
-      return p ? p.startMin : Infinity;
-    };
-    itemsArrayForDate(dateStr).sort((a, b) => {
-      const sa = startOf(a.planId);
-      const sb = startOf(b.planId);
-      return sa === sb ? 0 : sa - sb;
+    const items = itemsArrayForDate(dateStr);
+    const scheduledSlots = [];
+    const scheduledItems = [];
+    items.forEach((item, idx) => {
+      const plan = item.planId && dayPlans.find((p) => p.id === item.planId);
+      if (plan) {
+        scheduledSlots.push(idx);
+        scheduledItems.push({ item, startMin: plan.startMin });
+      }
+    });
+    scheduledItems.sort((a, b) => a.startMin - b.startMin);
+    scheduledSlots.forEach((slot, i) => {
+      items[slot] = scheduledItems[i].item;
     });
   }
 
