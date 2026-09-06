@@ -1330,8 +1330,11 @@ body {
 }
 
 #calendarWeekHeader .calendar-day-header {
-  flex: none;
-  min-width: 64px;
+  /* 固定幅にする — flex:none(基準値auto)のままだと、中の日付タイトル
+     チップ列(.cdh-titles)がいくつあっても横スクロールせず、この列自体
+     がその分だけ際限なく伸びてメモ欄を押し出してしまう。基準値を数値で
+     固定して初めて .cdh-titles の overflow-x:auto が効くようになる。 */
+  flex: 0 0 92px;
   padding-left: 8px;
   padding-right: 8px;
 }
