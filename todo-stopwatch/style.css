@@ -289,7 +289,7 @@ body {
 .tab-undo-badge {
   position: absolute;
   top: -5px;
-  right: -5px;
+  left: -5px;
   width: 16px;
   height: 16px;
   box-sizing: border-box;
@@ -308,12 +308,12 @@ body {
 
 /* 「戻す」で失われた操作を、対象が画面外(見えない範囲)でも取り戻せる
    ように — 戻すバッジと違い、こちらはそれ自体がタップ可能なボタン
-   (タブ本体をタップした時の「戻す」とは独立して動く)。左上に置いて
-   右上の戻すバッジと重ならないようにする。 */
+   (タブ本体をタップした時の「戻す」とは独立して動く)。ブラウザの
+   戻る/進むと同じ左右関係(戻す=左、進む=右)で並べる。 */
 .tab-redo-badge {
   position: absolute;
   top: -5px;
-  left: -5px;
+  right: -5px;
   width: 16px;
   height: 16px;
   box-sizing: border-box;
@@ -1478,45 +1478,8 @@ body {
   background: var(--accent);
 }
 
-/* day title: separate from any plan/task on the date, so it's shown filled
-   solid to read as a title, sitting right under the date and above the
-   scrollable hour grid below it */
-/* 日付タイトルは複数登録できるので、下部のタスクトレイと同じ横スクロール
-   のチップ列として並べる。日付ヘッダー自体は幅が限られる(特にウィーク
-   リーの7列)ので、ネイティブスクロールで見せる。 */
-.cdh-titles {
-  max-width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  overflow-x: auto;
-  padding: 1px 0;
-}
-
-.cdh-title-chip {
-  flex: none;
-  box-sizing: border-box;
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-size: 0.58rem;
-  font-weight: 700;
-  color: #fff;
-  background: var(--accent);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.cdh-title-add {
-  all: unset;
-  flex: none;
-  box-sizing: border-box;
-  padding: 1px 6px;
-  border-radius: 999px;
-  border: 1.5px dashed var(--line);
-  color: var(--muted);
-  font-size: 0.58rem;
-  cursor: pointer;
-}
+/* 日付タイトルはデイリーと同じ縦積みの.mc-day-title表示(appendDayTitle
+   Stack参照)を、ウィークリー/デイリー双方の日付ヘッダーで共有する。 */
 
 .calendar-day-header .cdh-dot {
   position: absolute;
@@ -2090,8 +2053,12 @@ body {
   min-width: 0;
   padding: 0 3px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
   gap: 4px;
+  /* 複数あっても縦に積んで伸びるのではなく、常に1行に収めて横スクロール
+     で見せる(最優先/今日中と同じ考え方)。 */
+  overflow-x: auto;
   /* matches .calendar-day-col's own border-left above, so the day
      boundaries visually line up between the grid and this row */
   border-left: 1px solid var(--line);

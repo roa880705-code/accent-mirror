@@ -400,6 +400,36 @@
     return dayTitles.filter((e) => e.start <= dateStr && dateStr <= e.end);
   }
 
+  // 日付タイトルを縦積みの.mc-day-title(マンスリーの日付セルと同じ見た目)
+  // で描画する — デイリー/ウィークリーどちらの日付ヘッダーからも呼ぶ、
+  // 共通の描画ロジック。
+  function appendDayTitleStack(container, dateStr) {
+    const titles = dayTitleEntriesForDate(dateStr);
+    titles.forEach((entry) => {
+      const titleEl = document.createElement("span");
+      titleEl.className = "mc-day-title";
+      titleEl.textContent = entry.label;
+      titleEl.title =
+        entry.start === entry.end
+          ? "タップしてタイトルを編集"
+          : `${entry.start}〜${entry.end}・タップしてタイトルを編集`;
+      titleEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        editDayTitleEntry(entry);
+      });
+      container.appendChild(titleEl);
+    });
+    const addEl = document.createElement("span");
+    addEl.className = "mc-day-title empty";
+    addEl.textContent = "+";
+    addEl.title = titles.length ? "タップしてタイトルを追加" : "タップして日付にタイトルを追加";
+    addEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      addDayTitle(dateStr);
+    });
+    container.appendChild(addEl);
+  }
+
   async function addDayTitle(dateStr) {
     const result = await openDayTitleModal({ label: "", start: dateStr, end: dateStr });
     if (result === null) return;
@@ -2387,180 +2417,11 @@
     dragGhostEl = null;
   }
 
-  // --- a day's own "unscheduled but on that day" list, drawn below the
-  // 24:00 line (items already in that date's item list with no plan —
-  // dragging one up onto its own column schedules it; only that same day
-  // is a valid drop target since these items only exist on that date.)
-
-  let dayUnschedDragCtx = null;
-
-  function startDayUnscheduledDrag(e, row, item, dateStr) {
-    if (e.button !== undefined && e.button !== 0) return;
-    e.stopPropagation();
-    e.preventDefault();
-    dayUnschedDragCtx = {
-      row,
-      item,
-      dateStr,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      // see startPlanDrag: only a genuine long-press arms this row for
-      // dragging, so a quick move doesn't grab it
-      armed: false,
-      moved: false,
-      targetCol: null,
-      clientY: e.clientY,
-      timer: null,
-    };
-    dayUnschedDragCtx.timer = setTimeout(() => {
-      if (!dayUnschedDragCtx) return;
-      dayUnschedDragCtx.timer = null;
-      dayUnschedDragCtx.armed = true;
-      dayUnschedDragCtx.row.classList.add("armed");
-      vibrate(15);
-    }, PLAN_LONGPRESS_MS);
-    document.addEventListener("pointermove", onDayUnscheduledDragMove);
-    document.addEventListener("pointerup", onDayUnscheduledDragEnd);
-    document.addEventListener("pointercancel", onDayUnscheduledDragEnd);
-  }
-
-  function onDayUnscheduledDragMove(e) {
-    if (!dayUnschedDragCtx) return;
-    const dx = e.clientX - dayUnschedDragCtx.startClientX;
-    const dy = e.clientY - dayUnschedDragCtx.startClientY;
-
-    if (!dayUnschedDragCtx.armed) {
-      // this row now lives in the always-visible unscheduled row rather
-      // than inside a scrollable area, so a quick pre-arm move (which used
-      // to fall back to scrolling the grid past it) simply cancels the
-      // gesture instead.
-      if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
-      if (dayUnschedDragCtx.timer) clearTimeout(dayUnschedDragCtx.timer);
-      document.removeEventListener("pointermove", onDayUnscheduledDragMove);
-      document.removeEventListener("pointerup", onDayUnscheduledDragEnd);
-      document.removeEventListener("pointercancel", onDayUnscheduledDragEnd);
-      dayUnschedDragCtx = null;
-      return;
-    }
-
-    e.preventDefault();
-    if (!dayUnschedDragCtx.moved) {
-      if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
-      dayUnschedDragCtx.moved = true;
-      dayUnschedDragCtx.row.classList.remove("armed");
-      dayUnschedDragCtx.row.classList.add("dragging");
-      vibrate(15);
-    }
-    showDragGhost(e.clientX, e.clientY, labelOf(dayUnschedDragCtx.item, "予定"));
-
-    // dragging this row into the いつか tray sends it back to the backlog
-    // instead of scheduling it
-    const boxRect = calendarUnplannedBox.getBoundingClientRect();
-    const overBox =
-      e.clientX >= boxRect.left &&
-      e.clientX <= boxRect.right &&
-      e.clientY >= boxRect.top &&
-      e.clientY <= boxRect.bottom;
-    calendarUnplannedBox.classList.toggle("drop-target", overBox);
-    dayUnschedDragCtx.overUnplannedBox = overBox;
-    if (overBox) {
-      Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
-      dayUnschedDragCtx.targetCol = null;
-      clearDragPreview();
-      return;
-    }
-
-    const cols = Array.from(calendarWeekGrid.children);
-    let targetCol = null;
-    for (const col of cols) {
-      const rect = col.getBoundingClientRect();
-      if (
-        e.clientX >= rect.left &&
-        e.clientX <= rect.right &&
-        e.clientY >= rect.top &&
-        e.clientY <= rect.top + 24 * CAL_HOUR_H &&
-        col.dataset.date === dayUnschedDragCtx.dateStr
-      ) {
-        targetCol = col;
-        break;
-      }
-    }
-    cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
-    dayUnschedDragCtx.targetCol = targetCol;
-    dayUnschedDragCtx.clientY = e.clientY;
-
-    if (targetCol) {
-      const colRect = targetCol.getBoundingClientRect();
-      const relY = e.clientY - colRect.top;
-      const rawMin = pxToMin(relY);
-      let startMin = Math.round(rawMin / 15) * 15;
-      startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
-      showDragPreview(targetCol, labelOf(dayUnschedDragCtx.item, "予定"), startMin, PLAN_DEFAULT_MIN);
-    } else {
-      clearDragPreview();
-    }
-  }
-
-  function onDayUnscheduledDragEnd() {
-    if (!dayUnschedDragCtx) return;
-    const { row, item, dateStr, moved, timer, targetCol, clientY, overUnplannedBox } = dayUnschedDragCtx;
-    if (timer) clearTimeout(timer);
-    document.removeEventListener("pointermove", onDayUnscheduledDragMove);
-    document.removeEventListener("pointerup", onDayUnscheduledDragEnd);
-    document.removeEventListener("pointercancel", onDayUnscheduledDragEnd);
-    row.classList.remove("dragging", "armed");
-    Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
-    calendarUnplannedBox.classList.remove("drop-target");
-    clearDragPreview();
-    clearDragGhost();
-    dayUnschedDragCtx = null;
-
-    if (!moved) {
-      // a plain tap (no drag): 時間未定のタスク gets the same 変更修正/削除
-      // choice as a regular ログ行, instead of doing nothing as before
-      promptRegularTaskEdit(dateStr, item);
-      return;
-    }
-
-    if (overUnplannedBox) {
-      if (item.elapsedMs > 0 || item.running) {
-        // real recorded time exists: refuse the move so it isn't lost, いつか
-        // entries carry no time fields to hold it
-        vibrate([10, 30, 10]);
-        return;
-      }
-      captureUndoSnapshot();
-      const items = itemsArrayForDate(dateStr);
-      const idx = items.indexOf(item);
-      if (idx >= 0) items.splice(idx, 1);
-      someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: labelOf(item, "予定"), parentId: somedayRestoreParentId(item.somedayParentId) });
-      saveSomeday();
-      persistItemsForDate(dateStr);
-      refreshTimerIfShowing(dateStr);
-      vibrate(20);
-      renderCalendar();
-      return;
-    }
-
-    if (!targetCol) return;
-
-    const rect = targetCol.getBoundingClientRect();
-    const relY = clientY - rect.top;
-    const rawMin = pxToMin(relY);
-    let startMin = Math.round(rawMin / 15) * 15;
-    startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
-    const endMin = startMin + PLAN_DEFAULT_MIN;
-    const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-
-    captureUndoSnapshot();
-    addPlan(dateStr, { id, label: labelOf(item, "予定"), startMin, endMin });
-    item.planId = id;
-    vibrate(20);
-    sortItemsByPlan(dateStr);
-    persistItemsForDate(dateStr);
-    refreshTimerIfShowing(dateStr);
-    renderCalendar();
-  }
+  // 「時間未定のタスク」(items内のplanId/priorityなしのitem)は、デイリー
+  // ページの今日中トレイ/ウィークリーの各曜日の列、どちらもstartTrayItemDrag
+  // (最優先チップと共通の横スクロール/並べ替え/スケジュールへドラッグの
+  // 仕組み)で扱う — 詳細は各呼び出し箇所(renderPriorityBox付近の
+  // startTrayItemDrag定義)を参照。
 
   // --- いつか tray: tasks with no day or time yet, draggable onto any visible
   // day's grid to schedule them (or add new ones directly here). A chip's
@@ -4342,44 +4203,8 @@
       if (CAL_DAYS === 1) {
         // デイリーはすでに表示中の日付なので、この列はもう「タップして
         // どこかへ飛ぶ」ナビゲーションを持たない — 曜日/日付circle/
-        // 下書きドットは表示せず、空いた高さでタイトルを縦に積んで
-        // 並べる(マンスリーのmc-day-titleと同じ見た目を再利用)。
-        const titles = dayTitleEntriesForDate(dateStr);
-        if (!titles.length) {
-          const placeholder = document.createElement("span");
-          placeholder.className = "mc-day-title empty";
-          placeholder.textContent = "+";
-          placeholder.title = "タップして日付にタイトルを追加";
-          placeholder.addEventListener("click", (e) => {
-            e.stopPropagation();
-            addDayTitle(dateStr);
-          });
-          header.appendChild(placeholder);
-        } else {
-          titles.forEach((entry) => {
-            const titleEl = document.createElement("span");
-            titleEl.className = "mc-day-title";
-            titleEl.textContent = entry.label;
-            titleEl.title =
-              entry.start === entry.end
-                ? "タップしてタイトルを編集"
-                : `${entry.start}〜${entry.end}・タップしてタイトルを編集`;
-            titleEl.addEventListener("click", (e) => {
-              e.stopPropagation();
-              editDayTitleEntry(entry);
-            });
-            header.appendChild(titleEl);
-          });
-          const addEl = document.createElement("span");
-          addEl.className = "mc-day-title empty";
-          addEl.textContent = "+";
-          addEl.title = "タップしてタイトルを追加";
-          addEl.addEventListener("click", (e) => {
-            e.stopPropagation();
-            addDayTitle(dateStr);
-          });
-          header.appendChild(addEl);
-        }
+        // 下書きドットは表示しない。
+        appendDayTitleStack(header, dateStr);
       } else {
         const weekdayEl = document.createElement("span");
         weekdayEl.className = "cdh-weekday";
@@ -4389,34 +4214,10 @@
         dateEl.textContent = String(d.getDate());
         header.append(weekdayEl, dateEl);
 
-        // day title: 複数登録できるので、マンスリーの日付セルと同様に
-        // 「タスク」下部トレイのような横スクロールのチップ列として並べる —
+        // day title: デイリーと同じ縦積みのmc-day-title表示に統一 —
         // タップで各タイトルを編集、末尾の"+"で新規追加。ウィークリーの
         // 日付をタップした場合はデイリーへ飛ぶ(jumpDailyToDate)。
-        const titlesEl = document.createElement("div");
-        titlesEl.className = "cdh-titles";
-        const titles = dayTitleEntriesForDate(dateStr);
-        titles.forEach((entry) => {
-          const chip = document.createElement("span");
-          chip.className = "cdh-title-chip";
-          chip.textContent = entry.label;
-          chip.title = "タップしてタイトルを編集";
-          chip.addEventListener("click", (e) => {
-            e.stopPropagation();
-            editDayTitleEntry(entry);
-          });
-          titlesEl.appendChild(chip);
-        });
-        const addTitleBtn = document.createElement("span");
-        addTitleBtn.className = "cdh-title-add";
-        addTitleBtn.textContent = "+";
-        addTitleBtn.title = titles.length ? "タップしてタイトルを追加" : "タップして日付にタイトルを追加";
-        addTitleBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          addDayTitle(dateStr);
-        });
-        titlesEl.appendChild(addTitleBtn);
-        header.appendChild(titlesEl);
+        appendDayTitleStack(header, dateStr);
 
         const draft = drafts[dateStr];
         if (dateStr > state.day && draft && draft.length) {
@@ -4552,7 +4353,7 @@
         } else {
           const empty = document.createElement("span");
           empty.className = "calendar-unplanned-empty";
-          empty.textContent = "時間未定のタスクなし";
+          empty.textContent = "今日中のタスクなし";
           list.appendChild(empty);
         }
       }
@@ -4580,14 +4381,15 @@
             unscheduledForDay.forEach((item, idx) => {
               const row = document.createElement("div");
               row.className = "cal-unscheduled-row";
+              row.trayItem = item;
               row.textContent = labelOf(item, `タスク${idx + 1}`);
-              row.addEventListener("pointerdown", (e) => startDayUnscheduledDrag(e, row, item, dateStr));
+              row.addEventListener("pointerdown", (e) => startTrayItemDrag(e, row, item, dateStr, "cal-unscheduled-row", "予定"));
               col.appendChild(row);
             });
           } else {
             const empty = document.createElement("span");
             empty.className = "cal-unscheduled-empty";
-            empty.textContent = "時間未定のタスクなし";
+            empty.textContent = "今日中のタスクなし";
             col.appendChild(empty);
           }
         }
@@ -5243,7 +5045,7 @@
   // drag-to-select must not be hijacked).
   const SWIPE_NAV_EXCLUDE =
     ".calendar-day-col, .cal-unplanned-chip, .cal-plan-block, " +
-    ".cal-plan-resize-handle, .cal-unscheduled-row, .calendar-unplanned, .cdh-titles, input, textarea";
+    ".cal-plan-resize-handle, .cal-unscheduled-row, .calendar-unplanned, input, textarea";
 
   function swipeToAdjacentPeriod(delta) {
     // delta: +1 = 次(未来)側, -1 = 前(過去)側
