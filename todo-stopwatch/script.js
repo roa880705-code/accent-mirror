@@ -1694,14 +1694,13 @@
       completeBtn = document.createElement("button");
       completeBtn.type = "button";
       completeBtn.className = "btn btn-modal-cancel cal-plan-complete";
-      completeBtn.textContent = "完了";
+      completeBtn.textContent = item.completed ? "完了を取り消す" : "完了";
       completeBtn.addEventListener("click", () => {
-        // 完了はこのplan自体を外す(グリッドから消す)ので、削除と同じく
-        // パネルを閉じる — 中身を作り直しても紐づくplanがもう無い。
+        // 完了にしてもplan自体はグリッドに残す(ブロックのタスク名に取り
+        // 消し線を引くだけ)ので、monthlyBtnと同じくパネルを作り直して
+        // ボタンのラベル切り替えを反映する。
         toggleItemCompleted(dateStr, item);
-        selectedPlanId = null;
-        calendarDetail.hidden = true;
-        calendarDetail.innerHTML = "";
+        showPlanDetail(dateStr, plan);
       });
     }
 
@@ -3275,16 +3274,18 @@
 
   // 完了は削除と違い、記録として残す(その日のうちはログにチェック済みで
   // 表示され続け、次のロールオーバーで消える — rolloverIfNeeded参照)。
-  // 最優先/スケジュールからは外れるので、掴んでいたplanId/priorityも
-  // ここで一緒に手放す。既に完了済みなら逆に取り消して現役へ戻す。
+  // 最優先からは外れるが、スケジュール済み(planId)はそのまま — グリッド
+  // のブロックは残り、タスク名に取り消し線が引かれるだけ。既に完了済み
+  // なら逆に取り消して現役へ戻す。
   function toggleItemCompleted(dateStr, item) {
     captureUndoSnapshot();
     if (item.completed) {
       item.completed = false;
     } else {
       stopIfRunning(item);
-      if (item.planId) removePlan(dateStr, item.planId);
-      item.planId = null;
+      // スケジュール済みのplanId/planはそのまま残す — グリッドのブロック
+      // 自体は消さず、タスク名に取り消し線を引くだけで完了を表す
+      // (renderCalendarのブロック描画側でcompletedを見て切り替える)。
       item.priority = false;
       item.completed = true;
     }
@@ -4428,6 +4429,8 @@
             block.style.borderColor = color;
             block.style.color = color;
             block.textContent = p.label;
+            const linkedItem = itemsArrayForDate(dateStr).find((it) => it.planId === p.id);
+            block.classList.toggle("cal-plan-completed", !!(linkedItem && linkedItem.completed));
             block.addEventListener("pointerdown", (e) => startPlanDrag(e, block, dateStr, p));
 
             dayCol.appendChild(block);
