@@ -2078,6 +2078,7 @@ body {
 
 .cal-unscheduled-row {
   box-sizing: border-box;
+  flex: none;
   height: 30px;
   display: flex;
   align-items: center;
@@ -2103,6 +2104,12 @@ body {
 
 .cal-unscheduled-row.armed {
   box-shadow: 0 0 0 2px var(--accent) inset;
+}
+
+.cal-unscheduled-row.reordering {
+  z-index: 5;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.22);
+  cursor: grabbing;
 }
 
 .cal-unscheduled-empty {
