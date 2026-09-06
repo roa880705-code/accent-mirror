@@ -36,7 +36,15 @@
   }
 
   function freshItem(label) {
-    return { label: label || "", elapsedMs: 0, running: false, startedAt: null, planId: null, showOnMonthly: false };
+    return {
+      label: label || "",
+      elapsedMs: 0,
+      running: false,
+      startedAt: null,
+      planId: null,
+      showOnMonthly: false,
+      priority: false,
+    };
   }
 
   function loadState() {
@@ -59,6 +67,7 @@
           parsed.items.forEach((it) => {
             if (it.planId === undefined) it.planId = null;
             if (it.showOnMonthly === undefined) it.showOnMonthly = false;
+            if (it.priority === undefined) it.priority = false;
           });
           return parsed;
         }
@@ -102,7 +111,12 @@
             parsed[dateStr] = parsed[dateStr].map((it) =>
               typeof it === "string"
                 ? freshItem(it)
-                : { ...it, planId: it.planId ?? null, showOnMonthly: it.showOnMonthly ?? false }
+                : {
+                    ...it,
+                    planId: it.planId ?? null,
+                    showOnMonthly: it.showOnMonthly ?? false,
+                    priority: it.priority ?? false,
+                  }
             );
           });
           return parsed;
@@ -212,20 +226,45 @@
     return {};
   }
 
-  // 「最優先」タスク: デイリーページ限定、日付ごとにフラットな(階層を
-  // 持たない)リストを持つ。いつか/子/孫/ひ孫の末端タスクをこのトレイへ
-  // ドロップすると、そちらから外れてここに移る(あるいは"+"から直接追加)。
-  function loadPriorityTasks() {
+  // 最優先タスクは元々「priorityTasks」という別ストアに保存する、通常の
+  // itemとは無関係な階層なしタスクだった。ログの並び順(最優先→
+  // スケジュール済み→今日中)を実現するため、通常のitem(item.priority=
+  // trueのフラグ付き、時間未定と同様プランIdなし)へ統合した。旧ストアに
+  // 残っているデータがあれば、起動時に一度だけ通常のitemへ変換して
+  // 吸収し、旧キーは消す(呼び出し側はensurePriorityTasksArrayForDateの
+  // 代わりにensureItemsArrayForDateを使う)。
+  function migratePriorityTasksToItems() {
+    let raw;
     try {
-      const raw = localStorage.getItem(PRIORITY_TASKS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
-      }
+      raw = localStorage.getItem(PRIORITY_TASKS_KEY);
     } catch (e) {
-      // corrupt storage, fall through to empty
+      return;
     }
-    return {};
+    if (!raw) return;
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      parsed = null;
+    }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      let changed = false;
+      Object.keys(parsed).forEach((dateStr) => {
+        const list = Array.isArray(parsed[dateStr]) ? parsed[dateStr] : [];
+        list.forEach((task) => {
+          if (!task || typeof task.label !== "string") return;
+          const item = freshItem(task.label);
+          item.priority = true;
+          ensureItemsArrayForDate(dateStr).push(item);
+          changed = true;
+        });
+      });
+      if (changed) {
+        saveState();
+        saveDrafts();
+      }
+    }
+    localStorage.removeItem(PRIORITY_TASKS_KEY);
   }
 
   // 学校の時限表示のデフォルト: 8-9時を0限、9-13時を1-4限、13-14時は
@@ -297,7 +336,6 @@
   // 自由記述メモ。どちらも表示中の日付(dateStr)をキーに持つ。
   let briefingMemos = loadBriefingMemos();
   let dailyNotes = loadDailyNotes();
-  let priorityTasks = loadPriorityTasks();
   let periodSettings = loadPeriodSettings();
 
   function saveState() {
@@ -338,20 +376,6 @@
   function saveDailyNotes() {
     localStorage.setItem(DAILY_NOTES_KEY, JSON.stringify(dailyNotes));
     window.AppSync?.markDirty("dailyNotes:v1", dailyNotes);
-  }
-
-  function savePriorityTasks() {
-    localStorage.setItem(PRIORITY_TASKS_KEY, JSON.stringify(priorityTasks));
-    window.AppSync?.markDirty("priorityTasks:v1", priorityTasks);
-  }
-
-  function priorityTasksForDate(dateStr) {
-    return priorityTasks[dateStr] || [];
-  }
-
-  function ensurePriorityTasksArrayForDate(dateStr) {
-    if (!priorityTasks[dateStr]) priorityTasks[dateStr] = [];
-    return priorityTasks[dateStr];
   }
 
   // 端末ごとの表示設定なので、他の設定と違いデバイス間の同期はしない
@@ -699,7 +723,6 @@
       const timeDisplay = node.querySelector(".row-time");
       const toggleBtn = node.querySelector(".row-toggle");
       const resetBtn = node.querySelector(".row-reset");
-      const handle = node.querySelector(".row-handle");
 
       input.value = item.label;
       input.addEventListener("input", () => {
@@ -724,7 +747,6 @@
         timeDisplay.disabled = true;
         timeDisplay.textContent = "--:--:--";
       }
-      handle.addEventListener("pointerdown", (e) => startDrag(e, node, item));
       node.addEventListener("pointerdown", (e) => onRowPointerDown(e, node, input, item));
 
       rowEls.push({ node, input, timeDisplay, toggleBtn, item });
@@ -744,7 +766,7 @@
   // pattern used for いつかタスク — a plain tap still just focuses the name
   // field for live inline editing, unchanged.
   function onRowPointerDown(e, node, input, item) {
-    if (e.target.closest(".row-time, .row-toggle, .row-reset, .row-handle")) return;
+    if (e.target.closest(".row-time, .row-toggle, .row-reset")) return;
     if (e.button !== undefined && e.button !== 0) return;
     const startX = e.clientX;
     const startY = e.clientY;
@@ -1066,126 +1088,6 @@
   });
 
   choreCircle.addEventListener("click", () => toggleExclusive(state.chore));
-
-  // --- drag to reorder ---
-
-  let dragCtx = null;
-
-  function startDrag(e, node, item) {
-    if (e.button !== undefined && e.button !== 0) return;
-    dragCtx = {
-      node,
-      item,
-      startClientY: e.clientY,
-      startTop: node.offsetTop,
-    };
-    node.classList.add("dragging");
-    node.style.transition = "none";
-    document.addEventListener("pointermove", onDragMove);
-    document.addEventListener("pointerup", onDragEnd);
-    document.addEventListener("pointercancel", onDragEnd);
-    e.preventDefault();
-  }
-
-  function onDragMove(e) {
-    if (!dragCtx) return;
-    e.preventDefault();
-    const { node, startClientY, startTop } = dragCtx;
-    const desiredTop = startTop + (e.clientY - startClientY);
-    const currentTop = node.offsetTop;
-    node.style.transform = `translateY(${desiredTop - currentTop}px)`;
-
-    // dragging a row down past the list, onto いつか, sends it back there
-    // instead of just reordering it
-    const boxRect = taskUnplannedBox.getBoundingClientRect();
-    const overUnplannedBox =
-      e.clientX >= boxRect.left &&
-      e.clientX <= boxRect.right &&
-      e.clientY >= boxRect.top &&
-      e.clientY <= boxRect.bottom;
-    taskUnplannedBox.classList.toggle("drop-target", overUnplannedBox);
-    dragCtx.overUnplannedBox = overUnplannedBox;
-    if (overUnplannedBox) return;
-
-    const rowRect = node.getBoundingClientRect();
-    const rowCenter = rowRect.top + rowRect.height / 2;
-    const siblings = Array.from(list.children).filter((n) => n.classList.contains("row"));
-    const draggedIndex = siblings.indexOf(node);
-
-    for (let j = 0; j < siblings.length; j++) {
-      const sib = siblings[j];
-      if (sib === node) continue;
-      const sibRect = sib.getBoundingClientRect();
-      if (rowCenter > sibRect.top && rowCenter < sibRect.bottom) {
-        if (j < draggedIndex) {
-          list.insertBefore(node, sib);
-        } else {
-          list.insertBefore(node, sib.nextSibling);
-        }
-        break;
-      }
-    }
-  }
-
-  function onDragEnd() {
-    if (!dragCtx) return;
-    const { node, item: draggedItem, overUnplannedBox } = dragCtx;
-
-    document.removeEventListener("pointermove", onDragMove);
-    document.removeEventListener("pointerup", onDragEnd);
-    document.removeEventListener("pointercancel", onDragEnd);
-    taskUnplannedBox.classList.remove("drop-target");
-
-    if (overUnplannedBox) {
-      if (draggedItem.elapsedMs > 0 || draggedItem.running) {
-        // real recorded time exists: refuse the move so it isn't lost,
-        // いつか has no time fields to hold it — just settle back in place
-        vibrate([10, 30, 10]);
-        node.classList.remove("dragging");
-        node.style.transition = "transform 0.15s ease";
-        node.style.transform = "";
-        setTimeout(() => {
-          node.style.transition = "";
-        }, 160);
-        dragCtx = null;
-        return;
-      }
-      const items = currentItemsArray();
-      const idx = items.indexOf(draggedItem);
-      if (idx >= 0) items.splice(idx, 1);
-      if (draggedItem.planId) removePlan(viewingDate, draggedItem.planId);
-      someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: labelOf(draggedItem, "予定"), parentId: somedayRestoreParentId(draggedItem.somedayParentId) });
-      saveSomeday();
-      persistItemsChange();
-      vibrate(20);
-      buildRows();
-      render();
-      dragCtx = null;
-      return;
-    }
-
-    node.classList.remove("dragging");
-    node.style.transition = "transform 0.15s ease";
-    node.style.transform = "";
-
-    const domOrder = Array.from(list.children).filter((n) => n.classList.contains("row"));
-    rowEls = domOrder.map((n) => rowEls.find((r) => r.node === n));
-    const newOrder = rowEls.map((r) => r.item);
-    if (isLive()) {
-      state.items = newOrder;
-    } else {
-      drafts[viewingDate] = newOrder;
-    }
-    const draggedIndex = newOrder.indexOf(draggedItem);
-    if (draggedIndex >= 0) resnapPlanForReorderedItem(viewingDate, newOrder, draggedIndex);
-    persistItemsChange();
-    render();
-
-    setTimeout(() => {
-      node.style.transition = "";
-    }, 160);
-    dragCtx = null;
-  }
 
   resetAllBtn.addEventListener("click", async () => {
     const ok = await openConfirmModal("今日の記録を履歴に保存してリセットします。よろしいですか?");
@@ -1549,63 +1451,33 @@
 
   // --- keeping a date's timer list and that date's plans in sync ---
 
-  // Re-times only the SCHEDULED items into chronological order, sliding them
-  // into whichever array slots are currently held by a scheduled item —
-  // every item with no plan (or whose plan vanished) is left exactly where
-  // it sits, even if that's interleaved between two scheduled items. Time-
-  // undetermined items sink to the end only when nothing has ever moved
-  // them elsewhere; once the user drags one to sit next to a specific
-  // scheduled task in ログ, this keeps it right there instead of yanking it
-  // back below every scheduled item the next time some unrelated plan
-  // change on the same date calls this.
+  // ログの並び順は常にこの3段構成で固定(手動での並べ替えは廃止): まず
+  // 最優先(item.priority)を元の並び順のまま、続けてスケジュール済み
+  // (planIdが実在するplanに解決するもの)を予定の開始時刻順、最後に
+  // 今日中(それ以外、時間未定)を元の並び順のまま。各グループ内の相対
+  // 順序は呼び出し時点のitems配列の並びをそのまま保つ。
   function sortItemsByPlan(dateStr) {
     const dayPlans = plansForDate(dateStr);
     const items = itemsArrayForDate(dateStr);
-    const scheduledSlots = [];
+    const priorityItems = [];
     const scheduledItems = [];
-    items.forEach((item, idx) => {
+    const restItems = [];
+    items.forEach((item) => {
+      if (item.priority) {
+        priorityItems.push(item);
+        return;
+      }
       const plan = item.planId && dayPlans.find((p) => p.id === item.planId);
       if (plan) {
-        scheduledSlots.push(idx);
         scheduledItems.push({ item, startMin: plan.startMin });
+      } else {
+        restItems.push(item);
       }
     });
     scheduledItems.sort((a, b) => a.startMin - b.startMin);
-    scheduledSlots.forEach((slot, i) => {
-      items[slot] = scheduledItems[i].item;
-    });
-  }
-
-  // After a manual drag reorders the timer list, re-times the moved item's
-  // plan so it actually sits in the gap between its new neighbors' plans,
-  // instead of leaving the list order and the calendar time out of sync.
-  function resnapPlanForReorderedItem(dateStr, items, index) {
-    const item = items[index];
-    if (!item.planId) return;
-    const dayPlans = plansForDate(dateStr);
-    const plan = dayPlans.find((p) => p.id === item.planId);
-    if (!plan) return;
-    const duration = plan.endMin - plan.startMin;
-
-    const prevItem = items[index - 1];
-    const nextItem = items[index + 1];
-    const prevPlan = prevItem && prevItem.planId ? dayPlans.find((p) => p.id === prevItem.planId) : null;
-    const nextPlan = nextItem && nextItem.planId ? dayPlans.find((p) => p.id === nextItem.planId) : null;
-    if (!prevPlan && !nextPlan) return;
-
-    let newStart = prevPlan ? prevPlan.endMin : Math.max(0, nextPlan.startMin - duration);
-    let newEnd = newStart + duration;
-    if (nextPlan && newEnd > nextPlan.startMin) {
-      newEnd = Math.max(nextPlan.startMin, newStart + 15);
-    }
-    if (newEnd > 1440) {
-      newEnd = 1440;
-      newStart = Math.max(0, newEnd - duration);
-    }
-
-    plan.startMin = newStart;
-    plan.endMin = newEnd;
-    savePlans();
+    const newOrder = [...priorityItems, ...scheduledItems.map((s) => s.item), ...restItems];
+    items.length = 0;
+    items.push(...newOrder);
   }
 
   function formatShort(ms) {
@@ -3282,8 +3154,10 @@
 
   // --- 最優先タスク欄(デイリーページ限定): いつか/子/孫/ひ孫の末端タスク
   // をここへドロップすると、階層から外れてフラットな1件として移ってくる。
+  // 通常のitem(priority:trueのフラグ付き、planIdなし)として保存される
+  // ので、ログでの並び順(最優先→スケジュール済み→今日中)の対象になる。
   // ここでの並び順に意味はなく、子タスク追加のような掘り下げもない —
-  // タップは常に変更修正/削除の二択だけ。 ---
+  // タップは他の通常タスクと同じ変更修正/マンスリー切替/削除の三択。 ---
 
   function renderPriorityBox() {
     const dateStr = weekAnchor;
@@ -3291,7 +3165,7 @@
     if (calendarPriorityBox.hidden) return;
 
     calendarPriorityList.innerHTML = "";
-    const tasks = priorityTasksForDate(dateStr);
+    const tasks = itemsArrayForDate(dateStr).filter((it) => it.priority);
     if (!tasks.length) {
       const empty = document.createElement("span");
       empty.className = "calendar-unplanned-empty";
@@ -3299,40 +3173,19 @@
       calendarPriorityList.appendChild(empty);
       return;
     }
-    tasks.forEach((task) => {
+    tasks.forEach((item) => {
       const chip = document.createElement("button");
       chip.type = "button";
       chip.className = "cal-unplanned-chip";
       const label = document.createElement("span");
       label.className = "cal-unplanned-chip-label";
-      label.textContent = task.label;
+      label.textContent = labelOf(item, "最優先タスク");
       chip.appendChild(label);
       chip.addEventListener("click", (e) => {
         e.stopPropagation();
-        promptPriorityTaskEdit(dateStr, task);
+        promptRegularTaskEdit(dateStr, item);
       });
       calendarPriorityList.appendChild(chip);
-    });
-  }
-
-  function promptPriorityTaskEdit(dateStr, task) {
-    openTaskChoiceModal(task, { showAddChild: false }).then((choice) => {
-      if (choice === "edit") {
-        openNameModal(task.label).then((name) => {
-          if (name === null) return;
-          const label = name.trim();
-          if (!label) return;
-          task.label = label;
-          savePriorityTasks();
-          renderPriorityBox();
-        });
-      } else if (choice === "delete") {
-        const list = priorityTasksForDate(dateStr);
-        const idx = list.indexOf(task);
-        if (idx >= 0) list.splice(idx, 1);
-        savePriorityTasks();
-        renderPriorityBox();
-      }
     });
   }
 
@@ -3341,10 +3194,13 @@
     if (name === null) return;
     const label = name.trim();
     if (!label) return;
-    const list = ensurePriorityTasksArrayForDate(weekAnchor);
-    list.push({ id: `priority_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
-    savePriorityTasks();
-    renderPriorityBox();
+    const item = freshItem(label);
+    item.priority = true;
+    ensureItemsArrayForDate(weekAnchor).push(item);
+    sortItemsByPlan(weekAnchor);
+    persistItemsForDate(weekAnchor);
+    refreshTimerIfShowing(weekAnchor);
+    renderCalendar();
   }
 
   calendarPriorityAddBtn.addEventListener("click", addPriorityTask);
@@ -3663,6 +3519,7 @@
         item.somedayParentId = task.parentId || null;
         item.showOnMonthly = true;
         ensureItemsArrayForDate(dateStr).push(item);
+        sortItemsByPlan(dateStr);
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
         removeSomedayTaskPromotingChildren(task.id);
@@ -3679,6 +3536,7 @@
         const item = freshItem(task.label);
         item.somedayParentId = task.parentId || null;
         ensureItemsArrayForDate(dateStr).push(item);
+        sortItemsByPlan(dateStr);
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
         removeSomedayTaskPromotingChildren(task.id);
@@ -3689,12 +3547,17 @@
       }
 
       if (targetPriorityList) {
-        // 最優先トレイへ落とした場合は、階層から完全に外れてフラットな
-        // 最優先タスクとして移る(子タスクがあれば通常の昇格処理で救う)。
+        // 最優先トレイへ落とした場合は、階層から完全に外れて通常のitem
+        // (priority:trueのフラグ付き)として移る(子タスクがあれば通常の
+        // 昇格処理で救う)。
         const dateStr = weekAnchor;
-        const list = ensurePriorityTasksArrayForDate(dateStr);
-        list.push({ id: `priority_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: task.label });
-        savePriorityTasks();
+        const item = freshItem(task.label);
+        item.priority = true;
+        item.somedayParentId = task.parentId || null;
+        ensureItemsArrayForDate(dateStr).push(item);
+        sortItemsByPlan(dateStr);
+        persistItemsForDate(dateStr);
+        refreshTimerIfShowing(dateStr);
         removeSomedayTaskPromotingChildren(task.id);
         saveSomeday();
         vibrate(20);
@@ -3710,6 +3573,7 @@
         const item = freshItem(task.label);
         item.somedayParentId = task.parentId || null;
         ensureItemsArrayForDate(dateStr).push(item);
+        sortItemsByPlan(dateStr);
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
         removeSomedayTaskPromotingChildren(task.id);
@@ -3940,7 +3804,7 @@
     const dayUnscheduled = {};
     dayDates.forEach((dateStr) => {
       const eligible = dateStr >= state.day;
-      dayUnscheduled[dateStr] = eligible ? itemsArrayForDate(dateStr).filter((it) => !it.planId) : [];
+      dayUnscheduled[dateStr] = eligible ? itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority) : [];
     });
     // 「時間未定」タスクはスクロール不要な常時表示の専用行(下記)にすべて
     // 表示するので、時間軸グリッド自体は24時間ぶんの高さで固定でよい。
@@ -4640,10 +4504,10 @@
   // inline by onDayColPointerDown instead, since their long-press-to-create
   // gesture needs the same pointer stream and axis decision), plan blocks
   // and their resize handles, the someday-tray drag chips and its own
-  // natively horizontally-scrolling list, the task-row drag handle, and
-  // text inputs (whose native drag-to-select must not be hijacked).
+  // natively horizontally-scrolling list, and text inputs (whose native
+  // drag-to-select must not be hijacked).
   const SWIPE_NAV_EXCLUDE =
-    ".calendar-day-col, .row-handle, .cal-unplanned-chip, .cal-plan-block, " +
+    ".calendar-day-col, .cal-unplanned-chip, .cal-plan-block, " +
     ".cal-plan-resize-handle, .cal-unscheduled-row, .calendar-unplanned, .cdh-titles, input, textarea";
 
   function swipeToAdjacentPeriod(delta) {
@@ -4774,6 +4638,7 @@
     }
   }
 
+  migratePriorityTasksToItems();
   unlinkOrphanedPlanIds();
   rolloverIfNeeded();
   sortItemsByPlan(state.day);

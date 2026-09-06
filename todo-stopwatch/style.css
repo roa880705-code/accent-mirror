@@ -850,43 +850,6 @@ body {
   outline-offset: 1px;
 }
 
-.row-handle {
-  all: unset;
-  box-sizing: border-box;
-  flex: none;
-  width: clamp(22px, 3.4vw, 30px);
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  cursor: grab;
-  touch-action: none;
-}
-
-.row-handle:active {
-  cursor: grabbing;
-}
-
-.row-handle .bars {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.row-handle .bars span {
-  display: block;
-  width: clamp(14px, 2.6vw, 18px);
-  height: 2px;
-  border-radius: 1px;
-  background: currentColor;
-}
-
-.row-handle:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
 .add-row {
   all: unset;
   box-sizing: border-box;
