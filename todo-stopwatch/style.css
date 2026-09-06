@@ -737,6 +737,14 @@ body {
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
+.row.row-completed {
+  opacity: 0.55;
+}
+
+.row.row-completed .row-input {
+  text-decoration: line-through;
+}
+
 .row.dragging {
   z-index: 30;
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.2);

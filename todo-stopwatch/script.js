@@ -44,6 +44,7 @@
       planId: null,
       showOnMonthly: false,
       priority: false,
+      completed: false,
     };
   }
 
@@ -554,10 +555,13 @@
     if (draftForToday && draftForToday.length) {
       // Already full item objects with their planId links intact, so a plan
       // made for this date while it was still "tomorrow" stays linked.
-      state.items = draftForToday;
+      // 完了済みは「その日のうちだけログに残る」実績なので、日付が変わる
+      // ここで一緒に手放す(削除したのと同じ、記録はarchiveDay側で済み)。
+      state.items = draftForToday.filter((it) => !it.completed);
       delete drafts[today];
       saveDrafts();
     } else {
+      state.items = state.items.filter((it) => !it.completed);
       state.items.forEach((it) => {
         if (it.running) it.startedAt = now;
         it.elapsedMs = 0;
@@ -739,6 +743,8 @@
         persistItemsChange();
       });
 
+      node.classList.toggle("row-completed", !!item.completed);
+
       if (live) {
         toggleBtn.addEventListener("click", () => toggleExclusive(item));
         resetBtn.addEventListener("click", () => resetItem(item));
@@ -749,6 +755,9 @@
         timeDisplay.disabled = true;
         timeDisplay.textContent = "--:--:--";
       }
+      // 完了済みは実績として見るだけ — 開始/停止で再度時間を積み増さない
+      // ようにする(リセット/手動入力での修正はそのまま許可)。
+      if (item.completed) toggleBtn.disabled = true;
       node.addEventListener("pointerdown", (e) => onRowPointerDown(e, node, input, item));
 
       rowEls.push({ node, input, timeDisplay, toggleBtn, item });
@@ -1476,7 +1485,12 @@
     const priorityItems = [];
     const scheduledItems = [];
     const restItems = [];
+    const completedItems = [];
     items.forEach((item) => {
+      if (item.completed) {
+        completedItems.push(item);
+        return;
+      }
       if (item.priority) {
         priorityItems.push(item);
         return;
@@ -1489,7 +1503,9 @@
       }
     });
     scheduledItems.sort((a, b) => a.startMin - b.startMin);
-    const newOrder = [...priorityItems, ...scheduledItems.map((s) => s.item), ...restItems];
+    // 完了済みは、済んだ順ではなく常に一番下 — アクティブなタスクを探す
+    // のに完了済みを読み飛ばさずに済むようにする。
+    const newOrder = [...priorityItems, ...scheduledItems.map((s) => s.item), ...restItems, ...completedItems];
     items.length = 0;
     items.push(...newOrder);
   }
@@ -1660,6 +1676,7 @@
     // は表示しない。
     const item = itemsArrayForDate(dateStr).find((it) => it.planId === plan.id);
     let monthlyBtn = null;
+    let completeBtn = null;
     if (item) {
       monthlyBtn = document.createElement("button");
       monthlyBtn.type = "button";
@@ -1673,9 +1690,22 @@
         toggleShowOnMonthly(dateStr, item);
         showPlanDetail(dateStr, plan);
       });
+
+      completeBtn = document.createElement("button");
+      completeBtn.type = "button";
+      completeBtn.className = "btn btn-modal-cancel cal-plan-complete";
+      completeBtn.textContent = "完了";
+      completeBtn.addEventListener("click", () => {
+        // 完了はこのplan自体を外す(グリッドから消す)ので、削除と同じく
+        // パネルを閉じる — 中身を作り直しても紐づくplanがもう無い。
+        toggleItemCompleted(dateStr, item);
+        selectedPlanId = null;
+        calendarDetail.hidden = true;
+        calendarDetail.innerHTML = "";
+      });
     }
 
-    actions.append(editBtn, ...(monthlyBtn ? [monthlyBtn] : []), delBtn);
+    actions.append(editBtn, ...(monthlyBtn ? [monthlyBtn] : []), ...(completeBtn ? [completeBtn] : []), delBtn);
     calendarDetail.append(line, actions);
   }
 
@@ -3001,18 +3031,24 @@
   const somedayChoiceEditBtn = document.getElementById("somedayChoiceEditBtn");
   const somedayChoiceAddChildBtn = document.getElementById("somedayChoiceAddChildBtn");
   const somedayChoiceMonthlyBtn = document.getElementById("somedayChoiceMonthlyBtn");
+  const somedayChoiceCompleteBtn = document.getElementById("somedayChoiceCompleteBtn");
   const somedayChoiceDeleteBtn = document.getElementById("somedayChoiceDeleteBtn");
   const somedayChoiceCancelBtn = document.getElementById("somedayChoiceCancelBtn");
 
   function openTaskChoiceModal(task, opts) {
     const showAddChild = !!(opts && opts.showAddChild);
     const showMonthlyToggle = !!(opts && opts.showMonthlyToggle);
+    const showComplete = !!(opts && opts.showComplete);
     return new Promise((resolve) => {
       somedayChoiceTitle.textContent = `「${task.label}」を編集`;
       somedayChoiceAddChildBtn.hidden = !showAddChild;
       somedayChoiceMonthlyBtn.hidden = !showMonthlyToggle;
+      somedayChoiceCompleteBtn.hidden = !showComplete;
       if (showMonthlyToggle) {
         somedayChoiceMonthlyBtn.textContent = opts.monthlyVisible ? "マンスリーでは非表示" : "マンスリーにもタスクとして表示";
+      }
+      if (showComplete) {
+        somedayChoiceCompleteBtn.textContent = opts.completeLabel || "完了";
       }
       somedayChoiceModal.hidden = false;
 
@@ -3021,6 +3057,7 @@
         somedayChoiceEditBtn.removeEventListener("click", onEdit);
         somedayChoiceAddChildBtn.removeEventListener("click", onAddChild);
         somedayChoiceMonthlyBtn.removeEventListener("click", onMonthlyToggle);
+        somedayChoiceCompleteBtn.removeEventListener("click", onComplete);
         somedayChoiceDeleteBtn.removeEventListener("click", onDelete);
         somedayChoiceCancelBtn.removeEventListener("click", onCancel);
         somedayChoiceModal.removeEventListener("mousedown", onBackdrop);
@@ -3035,6 +3072,9 @@
       function onMonthlyToggle() {
         cleanup("toggleMonthly");
       }
+      function onComplete() {
+        cleanup("complete");
+      }
       function onDelete() {
         cleanup("delete");
       }
@@ -3048,6 +3088,7 @@
       somedayChoiceEditBtn.addEventListener("click", onEdit);
       somedayChoiceAddChildBtn.addEventListener("click", onAddChild);
       somedayChoiceMonthlyBtn.addEventListener("click", onMonthlyToggle);
+      somedayChoiceCompleteBtn.addEventListener("click", onComplete);
       somedayChoiceDeleteBtn.addEventListener("click", onDelete);
       somedayChoiceCancelBtn.addEventListener("click", onCancel);
       somedayChoiceModal.addEventListener("mousedown", onBackdrop);
@@ -3151,7 +3192,10 @@
   // so either one offers the same 変更修正/子タスク追加/削除 choice instead
   // of a parent tap ever forcing straight into rename.
   function promptSomedayEditOrAddChild(task, depth) {
-    openTaskChoiceModal(task, { showAddChild: depth < SOMEDAY_MAX_DEPTH }).then((choice) => {
+    // 親(子タスクを持つ)は掘り下げ途中の未確定な括りなので、確定した1件
+    // として完了扱いにはできない — 葉タスクだけ完了を出す。
+    const showComplete = !isParentTask(task.id);
+    openTaskChoiceModal(task, { showAddChild: depth < SOMEDAY_MAX_DEPTH, showComplete }).then((choice) => {
       if (choice === "edit") {
         renameSomedayTask(task);
       } else if (choice === "addChild") {
@@ -3165,20 +3209,41 @@
           activateSomedayChain(depth, task.id);
           renderSomedayList();
         });
+      } else if (choice === "complete") {
+        completeSomedayTask(task);
       } else if (choice === "delete") {
         confirmDeleteSomedayTask(task);
       }
     });
   }
 
+  // いつか系タスクの完了は、スケジュールへドラッグした時と同じ「階層から
+  // 外れて今日のitemになる」変換 — ただしplanIdは持たず、completed:trueで
+  // 今日のログにだけ実績として残る(今日のロールオーバーで消える)。
+  function completeSomedayTask(task) {
+    captureUndoSnapshot();
+    someday = someday.filter((t) => t.id !== task.id);
+    saveSomeday();
+    const item = freshItem(task.label);
+    item.completed = true;
+    ensureItemsArrayForDate(state.day).push(item);
+    sortItemsByPlan(state.day);
+    persistItemsForDate(state.day);
+    refreshTimerIfShowing(state.day);
+    vibrate(20);
+    renderCalendar();
+  }
+
   // Regular tasks (ログ行/時間未定のタスク) never have subtasks of their
-  // own, so this is always 変更修正/マンスリー表示切替/削除 — no addChild,
-  // no keep-vs-delete-all follow-up.
+  // own, so this is always 変更修正/マンスリー表示切替/完了/削除 — no
+  // addChild, no keep-vs-delete-all follow-up.
   function promptRegularTaskEdit(dateStr, item) {
     openTaskChoiceModal(item, {
       showAddChild: false,
       showMonthlyToggle: true,
       monthlyVisible: !!item.showOnMonthly,
+      showComplete: true,
+      completeLabel: item.completed ? "完了を取り消す" : "完了",
     }).then((choice) => {
       if (choice === "edit") {
         openNameModal(item.label).then((name) => {
@@ -3200,10 +3265,34 @@
         });
       } else if (choice === "toggleMonthly") {
         toggleShowOnMonthly(dateStr, item);
+      } else if (choice === "complete") {
+        toggleItemCompleted(dateStr, item);
       } else if (choice === "delete") {
         deleteTaskItem(dateStr, item);
       }
     });
+  }
+
+  // 完了は削除と違い、記録として残す(その日のうちはログにチェック済みで
+  // 表示され続け、次のロールオーバーで消える — rolloverIfNeeded参照)。
+  // 最優先/スケジュールからは外れるので、掴んでいたplanId/priorityも
+  // ここで一緒に手放す。既に完了済みなら逆に取り消して現役へ戻す。
+  function toggleItemCompleted(dateStr, item) {
+    captureUndoSnapshot();
+    if (item.completed) {
+      item.completed = false;
+    } else {
+      stopIfRunning(item);
+      if (item.planId) removePlan(dateStr, item.planId);
+      item.planId = null;
+      item.priority = false;
+      item.completed = true;
+    }
+    sortItemsByPlan(dateStr);
+    persistItemsForDate(dateStr);
+    refreshTimerIfShowing(dateStr);
+    vibrate(20);
+    renderCalendar();
   }
 
   // タスク自身が原則マンスリーに出ない方針の例外を、ウィークリー/デイリー
@@ -3246,7 +3335,7 @@
     if (calendarPriorityBox.hidden) return;
 
     calendarPriorityList.innerHTML = "";
-    const tasks = itemsArrayForDate(dateStr).filter((it) => it.priority);
+    const tasks = itemsArrayForDate(dateStr).filter((it) => it.priority && !it.completed);
     if (!tasks.length) {
       const empty = document.createElement("span");
       empty.className = "calendar-unplanned-empty";
@@ -4177,7 +4266,7 @@
     const dayUnscheduled = {};
     dayDates.forEach((dateStr) => {
       const eligible = dateStr >= state.day;
-      dayUnscheduled[dateStr] = eligible ? itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority) : [];
+      dayUnscheduled[dateStr] = eligible ? itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority && !it.completed) : [];
     });
     // 「時間未定」タスクはスクロール不要な常時表示の専用行(下記)にすべて
     // 表示するので、時間軸グリッド自体は24時間ぶんの高さで固定でよい。
