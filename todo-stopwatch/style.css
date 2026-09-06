@@ -1296,8 +1296,11 @@ body {
   /* 固定幅にする — flex:none(基準値auto)のままだと、中の日付タイトル
      チップ列(.cdh-titles)がいくつあっても横スクロールせず、この列自体
      がその分だけ際限なく伸びてメモ欄を押し出してしまう。基準値を数値で
-     固定して初めて .cdh-titles の overflow-x:auto が効くようになる。 */
+     固定して初めて .cdh-titles の overflow-x:auto が効くようになる。
+     高さは固定せず、タイトルの積み上げ段数に応じて自然に伸びる —
+     min-heightだけタップしやすい最低限の高さを保証する。 */
   flex: 0 0 92px;
+  min-height: 48px;
   padding-left: 8px;
   padding-right: 8px;
 }
@@ -1305,7 +1308,9 @@ body {
 .briefing-memo-input {
   flex: 1;
   min-width: 0;
-  height: 75px;
+  /* 高さを固定せず、align-items:stretch(.daily-header-row)で日付タイト
+     ル列(#calendarWeekHeader .calendar-day-header)と同じ高さに揃える —
+     タイトルが無い日は小さく、多い日は一緒に伸びる。 */
   resize: none;
   text-align: left;
   font-family: inherit;
