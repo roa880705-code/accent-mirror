@@ -179,23 +179,33 @@
 
   // 学校の時限表示のデフォルト: 8-9時を0限、9-13時を1-4限、13-14時は
   // 昼休みで表示なし、14-20時を5-10限として、各時間枠の開始時に振る。
-  // 設定ページ(時限表示のオン/オフ、各時限の記号と開始時刻)で編集できる。
+  // 設定ページ(時限表示のオン/オフ、各時限ごとの記号・開始時刻・
+  // 個別のオン/オフ)で編集できる。開始時刻はhour:minuteの組で持ち、
+  // minuteは常に5分刻み(0,5,10,...,55)。
   const DEFAULT_PERIOD_SETTINGS = {
     enabled: true,
     periods: [
-      { hour: 8, symbol: "0" },
-      { hour: 9, symbol: "1" },
-      { hour: 10, symbol: "2" },
-      { hour: 11, symbol: "3" },
-      { hour: 12, symbol: "4" },
-      { hour: 14, symbol: "5" },
-      { hour: 15, symbol: "6" },
-      { hour: 16, symbol: "7" },
-      { hour: 17, symbol: "8" },
-      { hour: 18, symbol: "9" },
-      { hour: 19, symbol: "10" },
+      { hour: 8, minute: 0, symbol: "0", enabled: true },
+      { hour: 9, minute: 0, symbol: "1", enabled: true },
+      { hour: 10, minute: 0, symbol: "2", enabled: true },
+      { hour: 11, minute: 0, symbol: "3", enabled: true },
+      { hour: 12, minute: 0, symbol: "4", enabled: true },
+      { hour: 14, minute: 0, symbol: "5", enabled: true },
+      { hour: 15, minute: 0, symbol: "6", enabled: true },
+      { hour: 16, minute: 0, symbol: "7", enabled: true },
+      { hour: 17, minute: 0, symbol: "8", enabled: true },
+      { hour: 18, minute: 0, symbol: "9", enabled: true },
+      { hour: 19, minute: 0, symbol: "10", enabled: true },
     ],
   };
+
+  function normalizePeriodMinute(raw) {
+    if (!Number.isFinite(raw)) return 0;
+    let m = Math.round(raw / 5) * 5;
+    if (m < 0) m = 0;
+    if (m > 55) m = 55;
+    return m;
+  }
 
   function loadPeriodSettings() {
     try {
@@ -207,7 +217,12 @@
             enabled: parsed.enabled !== false,
             periods: parsed.periods
               .filter((p) => p && Number.isFinite(p.hour))
-              .map((p) => ({ hour: Math.max(0, Math.min(23, Math.round(p.hour))), symbol: String(p.symbol ?? "") })),
+              .map((p) => ({
+                hour: Math.max(0, Math.min(23, Math.round(p.hour))),
+                minute: normalizePeriodMinute(p.minute),
+                symbol: String(p.symbol ?? ""),
+                enabled: p.enabled !== false,
+              })),
           };
         }
       }
@@ -1080,12 +1095,32 @@
 
   // --- 設定ページ: 時限表示 ---
 
+  function sortPeriodsByStartTime() {
+    periodSettings.periods.sort((a, b) => (a.hour * 60 + a.minute) - (b.hour * 60 + b.minute));
+  }
+
   function renderPeriodSettingsUI() {
     periodEnabledToggle.checked = periodSettings.enabled;
     periodSettingsList.innerHTML = "";
     periodSettings.periods.forEach((period, idx) => {
       const row = document.createElement("div");
       row.className = "period-row";
+      row.classList.toggle("period-row-disabled", !period.enabled);
+
+      const top = document.createElement("div");
+      top.className = "period-row-top";
+
+      const enabledCheckbox = document.createElement("input");
+      enabledCheckbox.type = "checkbox";
+      enabledCheckbox.className = "period-enabled-checkbox";
+      enabledCheckbox.checked = period.enabled;
+      enabledCheckbox.setAttribute("aria-label", "この時限を表示する");
+      enabledCheckbox.addEventListener("change", () => {
+        period.enabled = enabledCheckbox.checked;
+        row.classList.toggle("period-row-disabled", !period.enabled);
+        savePeriodSettings();
+        refreshCalendarHours();
+      });
 
       const symbolInput = document.createElement("input");
       symbolInput.type = "text";
@@ -1096,24 +1131,6 @@
       symbolInput.addEventListener("change", () => {
         period.symbol = symbolInput.value;
         savePeriodSettings();
-        refreshCalendarHours();
-      });
-
-      const hourSelect = document.createElement("select");
-      hourSelect.className = "period-hour-select";
-      hourSelect.setAttribute("aria-label", "時限の開始時刻");
-      for (let h = 0; h < 24; h++) {
-        const opt = document.createElement("option");
-        opt.value = String(h);
-        opt.textContent = `${h}:00`;
-        if (h === period.hour) opt.selected = true;
-        hourSelect.appendChild(opt);
-      }
-      hourSelect.addEventListener("change", () => {
-        period.hour = Number(hourSelect.value);
-        periodSettings.periods.sort((a, b) => a.hour - b.hour);
-        savePeriodSettings();
-        renderPeriodSettingsUI();
         refreshCalendarHours();
       });
 
@@ -1129,7 +1146,53 @@
         refreshCalendarHours();
       });
 
-      row.append(symbolInput, hourSelect, deleteBtn);
+      top.append(enabledCheckbox, symbolInput, deleteBtn);
+
+      const timeRow = document.createElement("div");
+      timeRow.className = "period-row-time";
+
+      const hourSelect = document.createElement("select");
+      hourSelect.className = "period-hour-select";
+      hourSelect.setAttribute("aria-label", "時限の開始時(時)");
+      for (let h = 0; h < 24; h++) {
+        const opt = document.createElement("option");
+        opt.value = String(h);
+        opt.textContent = `${h}時`;
+        if (h === period.hour) opt.selected = true;
+        hourSelect.appendChild(opt);
+      }
+      hourSelect.addEventListener("change", () => {
+        period.hour = Number(hourSelect.value);
+        sortPeriodsByStartTime();
+        savePeriodSettings();
+        renderPeriodSettingsUI();
+        refreshCalendarHours();
+      });
+
+      const sep = document.createElement("span");
+      sep.className = "period-row-time-sep";
+      sep.textContent = ":";
+
+      const minuteSelect = document.createElement("select");
+      minuteSelect.className = "period-minute-select";
+      minuteSelect.setAttribute("aria-label", "時限の開始時(分・5分刻み)");
+      for (let m = 0; m < 60; m += 5) {
+        const opt = document.createElement("option");
+        opt.value = String(m);
+        opt.textContent = String(m).padStart(2, "0");
+        if (m === period.minute) opt.selected = true;
+        minuteSelect.appendChild(opt);
+      }
+      minuteSelect.addEventListener("change", () => {
+        period.minute = Number(minuteSelect.value);
+        sortPeriodsByStartTime();
+        savePeriodSettings();
+        renderPeriodSettingsUI();
+        refreshCalendarHours();
+      });
+
+      timeRow.append(hourSelect, sep, minuteSelect);
+      row.append(top, timeRow);
       periodSettingsList.appendChild(row);
     });
   }
@@ -1141,8 +1204,15 @@
   });
 
   periodAddBtn.addEventListener("click", () => {
-    const lastHour = periodSettings.periods.length ? periodSettings.periods[periodSettings.periods.length - 1].hour : 7;
-    periodSettings.periods.push({ hour: Math.min(23, lastHour + 1), symbol: String(periodSettings.periods.length) });
+    const last = periodSettings.periods[periodSettings.periods.length - 1];
+    const lastStart = last ? last.hour * 60 + last.minute : 7 * 60;
+    const nextStart = Math.min(23 * 60 + 55, lastStart + 60);
+    periodSettings.periods.push({
+      hour: Math.floor(nextStart / 60),
+      minute: nextStart % 60,
+      symbol: String(periodSettings.periods.length),
+      enabled: true,
+    });
     savePeriodSettings();
     renderPeriodSettingsUI();
     refreshCalendarHours();
@@ -3792,10 +3862,11 @@
       hoursEl.appendChild(label);
     }
     if (!periodSettings.enabled) return;
-    periodSettings.periods.forEach(({ hour, symbol }) => {
+    periodSettings.periods.forEach(({ hour, minute, symbol, enabled }) => {
+      if (!enabled) return;
       const label = document.createElement("div");
       label.className = "cal-period-label";
-      label.style.top = `${(hour + 0.5) * CAL_HOUR_H}px`;
+      label.style.top = `${minToPx(hour * 60 + minute)}px`;
       label.textContent = symbol;
       hoursEl.appendChild(label);
     });
