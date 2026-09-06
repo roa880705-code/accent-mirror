@@ -35,7 +35,7 @@
   }
 
   function freshItem(label) {
-    return { label: label || "", elapsedMs: 0, running: false, startedAt: null, planId: null };
+    return { label: label || "", elapsedMs: 0, running: false, startedAt: null, planId: null, showOnMonthly: false };
   }
 
   function loadState() {
@@ -57,6 +57,7 @@
           // all planned items whenever the list is sorted.
           parsed.items.forEach((it) => {
             if (it.planId === undefined) it.planId = null;
+            if (it.showOnMonthly === undefined) it.showOnMonthly = false;
           });
           return parsed;
         }
@@ -98,7 +99,9 @@
           Object.keys(parsed).forEach((dateStr) => {
             if (!Array.isArray(parsed[dateStr])) return;
             parsed[dateStr] = parsed[dateStr].map((it) =>
-              typeof it === "string" ? freshItem(it) : { ...it, planId: it.planId ?? null }
+              typeof it === "string"
+                ? freshItem(it)
+                : { ...it, planId: it.planId ?? null, showOnMonthly: it.showOnMonthly ?? false }
             );
           });
           return parsed;
@@ -292,19 +295,49 @@
     localStorage.setItem(PERIOD_SETTINGS_KEY, JSON.stringify(periodSettings));
   }
 
-  function dayTitleFor(dateStr) {
-    return dayTitles[dateStr] || "";
+  // マンスリーは1日に複数タイトルを持てるので配列で返す。単一文字列を
+  // 保存していた旧バージョンのデータも読み取れるよう吸収しておく。
+  function dayTitlesFor(dateStr) {
+    const v = dayTitles[dateStr];
+    if (Array.isArray(v)) return v;
+    if (typeof v === "string" && v) return [v];
+    return [];
   }
 
-  async function editDayTitle(dateStr) {
-    const current = dayTitleFor(dateStr);
-    const name = await openNameModal(current, "日付のタイトルを入力");
+  // ウィークリー/デイリーの日付ヘッダーは表示スペースが限られるので、
+  // 最初の1件だけを表示・編集する(複数タイトルの追加/個別編集はマンスリー
+  // 側でのみ行う)。
+  function primaryDayTitleFor(dateStr) {
+    return dayTitlesFor(dateStr)[0] || "";
+  }
+
+  async function addDayTitle(dateStr) {
+    const name = await openNameModal("", "日付のタイトルを入力");
     if (name === null) return;
     const trimmed = name.trim();
-    if (trimmed) dayTitles[dateStr] = trimmed;
+    if (!trimmed) return;
+    dayTitles[dateStr] = [...dayTitlesFor(dateStr), trimmed];
+    saveDayTitles();
+    renderCalendar();
+  }
+
+  async function editDayTitleAt(dateStr, index) {
+    const list = dayTitlesFor(dateStr);
+    const name = await openNameModal(list[index] || "", "日付のタイトルを入力");
+    if (name === null) return;
+    const trimmed = name.trim();
+    const next = list.slice();
+    if (trimmed) next[index] = trimmed;
+    else next.splice(index, 1);
+    if (next.length) dayTitles[dateStr] = next;
     else delete dayTitles[dateStr];
     saveDayTitles();
     renderCalendar();
+  }
+
+  function editPrimaryDayTitle(dateStr) {
+    if (dayTitlesFor(dateStr).length) editDayTitleAt(dateStr, 0);
+    else addDayTitle(dateStr);
   }
 
   // viewingDate is the date currently shown in the タスク list. It usually
@@ -1642,7 +1675,28 @@
       renderCalendar();
     });
 
-    actions.append(editBtn, delBtn);
+    // タスクは原則マンスリーに表示しないので、このブロックに紐づく項目
+    // (時間が決まっているタスク)だけ、マンスリー表示のオン/オフをここから
+    // 切り替えられるようにする。項目自体が見つからない(データ不整合)場合
+    // は表示しない。
+    const item = itemsArrayForDate(dateStr).find((it) => it.planId === plan.id);
+    let monthlyBtn = null;
+    if (item) {
+      monthlyBtn = document.createElement("button");
+      monthlyBtn.type = "button";
+      monthlyBtn.className = "btn btn-modal-cancel cal-plan-monthly-toggle";
+      monthlyBtn.textContent = item.showOnMonthly ? "マンスリーでは非表示" : "マンスリーにもタスクとして表示";
+      monthlyBtn.addEventListener("click", () => {
+        // toggleShowOnMonthly -> refreshTimerIfShowing は render() 経由で
+        // renderCalendar() まで届き、selectedDayDetail が無い間はこの
+        // パネル自体を空にしてしまう(renderCalendarDetail参照)ので、
+        // editBtn と同じくトグル後にパネルを丸ごと作り直して復元する。
+        toggleShowOnMonthly(dateStr, item);
+        showPlanDetail(dateStr, plan);
+      });
+    }
+
+    actions.append(editBtn, ...(monthlyBtn ? [monthlyBtn] : []), delBtn);
     calendarDetail.append(line, actions);
   }
 
@@ -2897,20 +2951,27 @@
   const somedayChoiceTitle = document.getElementById("somedayChoiceTitle");
   const somedayChoiceEditBtn = document.getElementById("somedayChoiceEditBtn");
   const somedayChoiceAddChildBtn = document.getElementById("somedayChoiceAddChildBtn");
+  const somedayChoiceMonthlyBtn = document.getElementById("somedayChoiceMonthlyBtn");
   const somedayChoiceDeleteBtn = document.getElementById("somedayChoiceDeleteBtn");
   const somedayChoiceCancelBtn = document.getElementById("somedayChoiceCancelBtn");
 
   function openTaskChoiceModal(task, opts) {
     const showAddChild = !!(opts && opts.showAddChild);
+    const showMonthlyToggle = !!(opts && opts.showMonthlyToggle);
     return new Promise((resolve) => {
       somedayChoiceTitle.textContent = `「${task.label}」を編集`;
       somedayChoiceAddChildBtn.hidden = !showAddChild;
+      somedayChoiceMonthlyBtn.hidden = !showMonthlyToggle;
+      if (showMonthlyToggle) {
+        somedayChoiceMonthlyBtn.textContent = opts.monthlyVisible ? "マンスリーでは非表示" : "マンスリーにもタスクとして表示";
+      }
       somedayChoiceModal.hidden = false;
 
       function cleanup(result) {
         somedayChoiceModal.hidden = true;
         somedayChoiceEditBtn.removeEventListener("click", onEdit);
         somedayChoiceAddChildBtn.removeEventListener("click", onAddChild);
+        somedayChoiceMonthlyBtn.removeEventListener("click", onMonthlyToggle);
         somedayChoiceDeleteBtn.removeEventListener("click", onDelete);
         somedayChoiceCancelBtn.removeEventListener("click", onCancel);
         somedayChoiceModal.removeEventListener("mousedown", onBackdrop);
@@ -2921,6 +2982,9 @@
       }
       function onAddChild() {
         cleanup("addChild");
+      }
+      function onMonthlyToggle() {
+        cleanup("toggleMonthly");
       }
       function onDelete() {
         cleanup("delete");
@@ -2934,6 +2998,7 @@
 
       somedayChoiceEditBtn.addEventListener("click", onEdit);
       somedayChoiceAddChildBtn.addEventListener("click", onAddChild);
+      somedayChoiceMonthlyBtn.addEventListener("click", onMonthlyToggle);
       somedayChoiceDeleteBtn.addEventListener("click", onDelete);
       somedayChoiceCancelBtn.addEventListener("click", onCancel);
       somedayChoiceModal.addEventListener("mousedown", onBackdrop);
@@ -3053,10 +3118,14 @@
   }
 
   // Regular tasks (ログ行/時間未定のタスク) never have subtasks of their
-  // own, so this is always a plain 変更修正/削除 choice — no addChild, no
-  // keep-vs-delete-all follow-up.
+  // own, so this is always 変更修正/マンスリー表示切替/削除 — no addChild,
+  // no keep-vs-delete-all follow-up.
   function promptRegularTaskEdit(dateStr, item) {
-    openTaskChoiceModal(item, { showAddChild: false }).then((choice) => {
+    openTaskChoiceModal(item, {
+      showAddChild: false,
+      showMonthlyToggle: true,
+      monthlyVisible: !!item.showOnMonthly,
+    }).then((choice) => {
       if (choice === "edit") {
         openNameModal(item.label).then((name) => {
           if (name === null) return;
@@ -3074,10 +3143,21 @@
           refreshTimerIfShowing(dateStr);
           renderCalendar();
         });
+      } else if (choice === "toggleMonthly") {
+        toggleShowOnMonthly(dateStr, item);
       } else if (choice === "delete") {
         deleteTaskItem(dateStr, item);
       }
     });
+  }
+
+  // タスク自身が原則マンスリーに出ない方針の例外を、ウィークリー/デイリー
+  // 側からタスクをタップして手動でオン/オフする経路。
+  function toggleShowOnMonthly(dateStr, item) {
+    item.showOnMonthly = !item.showOnMonthly;
+    persistItemsForDate(dateStr);
+    refreshTimerIfShowing(dateStr);
+    refreshAllMonthlyContent();
   }
 
   // Deletes a regular task outright: drops its plan block (if any) along
@@ -3381,10 +3461,13 @@
       const { task, targetCol, targetMonthlyCell, targetTaskList, clientY, overZone } = ctx;
 
       if (targetMonthlyCell) {
-        // マンスリーには時間軸がないので、常にその日の「時間未定」リストへ
+        // マンスリーには時間軸がないので、常にその日の「時間未定」リストへ。
+        // マンスリーの日付セルへ直接ドロップした場合だけ、そのままマンス
+        // リーにも表示する(タスクは原則マンスリーに出さない方針の例外)。
         const dateStr = targetMonthlyCell.dataset.date;
         const item = freshItem(task.label);
         item.somedayParentId = task.parentId || null;
+        item.showOnMonthly = true;
         ensureItemsArrayForDate(dateStr).push(item);
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
@@ -3677,13 +3760,13 @@
       // day title: a label on the date itself, separate from any plan or
       // task placed on it — shown right under the date, above the time grid
       const titleEl = document.createElement("span");
-      const dayTitle = dayTitleFor(dateStr);
+      const dayTitle = primaryDayTitleFor(dateStr);
       titleEl.className = dayTitle ? "cdh-title" : "cdh-title empty";
       titleEl.textContent = dayTitle || "+";
       titleEl.title = dayTitle ? "タップしてタイトルを編集" : "タップして日付にタイトルを追加";
       titleEl.addEventListener("click", (e) => {
         e.stopPropagation();
-        editDayTitle(dateStr);
+        editPrimaryDayTitle(dateStr);
       });
       header.appendChild(titleEl);
 
@@ -3907,8 +3990,12 @@
   const MC_EVENT_ROW_H = 11; // .mc-event: 0.5rem/1.3 line-height
   const MC_EVENT_GAP = 1; // gap between .mc-event rows
 
-  function maxEventsForCell() {
-    const avail = monthlyRowH - MC_CELL_PAD_V - MC_DATE_H - MC_BODY_GAP - MC_TITLE_H - MC_BODY_GAP;
+  // titleRowCount: 積み上げて表示しているタイトル行(実タイトル + 末尾の
+  // "+"追加行、または未登録時のプレースホルダー1行)の数。複数タイトルは
+  // その分だけ縦に伸びるので、イベント欄に残る高さもそれに応じて減る。
+  function maxEventsForCell(titleRowCount) {
+    const titleAreaH = titleRowCount * MC_TITLE_H + Math.max(0, titleRowCount - 1) * MC_BODY_GAP;
+    const avail = monthlyRowH - MC_CELL_PAD_V - MC_DATE_H - MC_BODY_GAP - titleAreaH - MC_BODY_GAP;
     if (avail <= 0) return 0;
     return Math.max(0, Math.floor((avail + MC_EVENT_GAP) / (MC_EVENT_ROW_H + MC_EVENT_GAP)));
   }
@@ -3936,11 +4023,12 @@
     goToPage(DAILY_PAGE);
   }
 
-  // Tasks already placed on a specific date, in time order (plans first,
-  // then time-undetermined ones) — shown right in the monthly cell so a
-  // scheduled day is readable without drilling into デイリー.
+  // タスクは原則マンスリーに表示しない — showOnMonthly が立っている項目
+  // (マンスリーの日付セルへ直接ドロップしたもの、またはウィークリー/
+  // デイリー側でタップして「マンスリーにも表示」を選んだもの)だけを拾う。
   function labelsForDate(dateStr) {
     return itemsArrayForDate(dateStr)
+      .filter((it) => it.showOnMonthly)
       .map((it) => labelOf(it, ""))
       .filter((label) => label);
   }
@@ -4001,23 +4089,48 @@
     }
     body.innerHTML = "";
 
-    const dayTitle = dayTitleFor(dateStr);
-    const titleEl = document.createElement("span");
-    titleEl.className = dayTitle ? "mc-day-title" : "mc-day-title empty";
-    titleEl.textContent = dayTitle || "+";
-    titleEl.title = dayTitle ? "タップしてタイトルを編集" : "タップして日付にタイトルを追加";
-    titleEl.addEventListener("click", (e) => {
-      e.stopPropagation();
-      editDayTitle(dateStr);
-    });
-    body.appendChild(titleEl);
+    const titles = dayTitlesFor(dateStr);
+    if (!titles.length) {
+      const placeholder = document.createElement("span");
+      placeholder.className = "mc-day-title empty";
+      placeholder.textContent = "+";
+      placeholder.title = "タップして日付にタイトルを追加";
+      placeholder.addEventListener("click", (e) => {
+        e.stopPropagation();
+        addDayTitle(dateStr);
+      });
+      body.appendChild(placeholder);
+    } else {
+      titles.forEach((title, idx) => {
+        const titleEl = document.createElement("span");
+        titleEl.className = "mc-day-title";
+        titleEl.textContent = title;
+        titleEl.title = "タップしてタイトルを編集";
+        titleEl.addEventListener("click", (e) => {
+          e.stopPropagation();
+          editDayTitleAt(dateStr, idx);
+        });
+        body.appendChild(titleEl);
+      });
+      // 1つ登録済みなら、さらに追加できるよう "+" だけの行を末尾に足す
+      const addEl = document.createElement("span");
+      addEl.className = "mc-day-title empty";
+      addEl.textContent = "+";
+      addEl.title = "タップしてタイトルを追加";
+      addEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        addDayTitle(dateStr);
+      });
+      body.appendChild(addEl);
+    }
+    const titleRowCount = titles.length ? titles.length + 1 : 1;
 
-    // shows as many events as actually fit next to the title
+    // shows as many events as actually fit next to the title(s)
     const labels = labelsForDate(dateStr);
     if (labels.length) {
       const list = document.createElement("div");
       list.className = "mc-events";
-      const maxEvents = maxEventsForCell();
+      const maxEvents = maxEventsForCell(titleRowCount);
       const showCount = labels.length > maxEvents ? Math.max(0, maxEvents - 1) : labels.length;
       labels.slice(0, showCount).forEach((label) => {
         const row = document.createElement("span");

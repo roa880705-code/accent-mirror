@@ -2090,10 +2090,12 @@ body {
 
 .cal-plan-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .cal-plan-edit,
+.cal-plan-monthly-toggle,
 .cal-plan-delete {
   padding: 5px 12px;
   font-size: 0.68rem;
