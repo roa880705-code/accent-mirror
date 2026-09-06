@@ -1562,6 +1562,7 @@ body {
   flex: 1;
   min-height: 0;
   display: flex;
+  gap: 8px;
 }
 
 .daily-notes-input {
@@ -1569,20 +1570,20 @@ body {
   min-width: 0;
   resize: none;
   box-sizing: border-box;
-  border: none;
-  border-left: 1px solid var(--line);
-  background: var(--card-bg);
+  border: 1px solid var(--panel-line);
+  border-radius: 7px;
+  background: var(--panel);
   color: var(--ink);
   font-family: inherit;
   /* iOS Safari auto-zooms on focus for any text input under 16px */
   font-size: 16px;
-  line-height: 1.05;
-  padding: 8px 10px;
+  line-height: 1.3;
+  padding: 5px 10px;
 }
 
 .daily-notes-input:focus {
   outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline-offset: 1px;
 }
 
 .calendar-day-col {
