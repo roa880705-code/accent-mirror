@@ -630,21 +630,21 @@ body {
 .side-btn-stack {
   flex: none;
   display: flex;
-  flex-direction: column;
-  gap: clamp(3px, 0.5vh, 4px);
+  flex-direction: row;
+  gap: clamp(3px, 1vw, 6px);
 }
 
 .side-btn {
   all: unset;
   box-sizing: border-box;
   flex: none;
-  width: clamp(76px, 20vw, 106px);
+  white-space: nowrap;
   text-align: center;
-  line-height: 1.15;
-  padding: clamp(3px, 0.6vh, 4px) clamp(4px, 1vw, 8px);
-  border-radius: 9px;
+  line-height: 1;
+  padding: clamp(2px, 0.5vh, 3px) clamp(6px, 1.6vw, 10px);
+  border-radius: 8px;
   font-weight: 700;
-  font-size: clamp(0.58rem, 1.3vw, 0.7rem);
+  font-size: clamp(0.55rem, 1.2vw, 0.66rem);
   background: var(--panel);
   color: var(--ink);
   border: 1px solid var(--panel-line);
