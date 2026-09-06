@@ -81,7 +81,7 @@
       items: [], // items are now meant to come from calendar plans (or the manual + button)
       sidework: freshItem("割込"),
       interrupt: freshItem("割込対応"),
-      chore: freshItem("予定外タスク"),
+      chore: freshItem("予定外"),
       segments: [],
     };
   }
@@ -534,7 +534,7 @@
       ...state.items.map((it, i) => ({ item: it, fallback: `タスク${i + 1}` })),
       { item: state.sidework, fallback: "割込" },
       { item: state.interrupt, fallback: "割込対応" },
-      { item: state.chore, fallback: "予定外タスク" },
+      { item: state.chore, fallback: "予定外" },
     ];
   }
 
@@ -859,7 +859,7 @@
 
   function fallbackLabelFor(item) {
     if (item === state.sidework) return "割込";
-    if (item === state.chore) return "予定外タスク";
+    if (item === state.chore) return "予定外";
     if (item === state.interrupt) return "割込対応";
     const idx = state.items.indexOf(item);
     return idx >= 0 ? `タスク${idx + 1}` : "無題";
