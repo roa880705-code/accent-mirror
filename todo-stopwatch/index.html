@@ -251,6 +251,16 @@
   <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="nameModalTitle">
     <h2 id="nameModalTitle">タスク名を入力</h2>
     <input id="nameModalInput" type="text" maxlength="24">
+    <div class="modal-duration" id="nameModalDateRange" hidden>
+      <label class="duration-field">
+        <span>開始日</span>
+        <input id="dateRangeStartInput" type="date">
+      </label>
+      <label class="duration-field">
+        <span>終了日</span>
+        <input id="dateRangeEndInput" type="date">
+      </label>
+    </div>
     <div class="modal-duration" id="nameModalDuration" hidden>
       <label class="duration-field">
         <span>時間</span>

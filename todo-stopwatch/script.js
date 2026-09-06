@@ -142,17 +142,48 @@
     return [];
   }
 
+  // 日付タイトルは他のカレンダーアプリの複数日イベントのように、開始日
+  // 〜終了日の範囲を持てる(時刻・終日設定は持たない、常に日付だけの
+  // イベント)。{id, label, start, end} のフラットな配列で保持し、ある
+  // 日付に該当するかは start <= dateStr <= end で判定する(dayTitlesForDate
+  // 参照)。旧バージョンは {dateStr: string | string[]} の形で保存していた
+  // ので、読み込み時に単日(start===end)のエントリへ移行する。
   function loadDayTitles() {
     try {
       const raw = localStorage.getItem(DAY_TITLES_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed
+            .filter((e) => e && typeof e.label === "string" && typeof e.start === "string" && typeof e.end === "string")
+            .map((e) => ({
+              id: e.id || `title_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+              label: e.label,
+              start: e.start,
+              end: e.end,
+            }));
+        }
+        if (parsed && typeof parsed === "object") {
+          const migrated = [];
+          Object.keys(parsed).forEach((dateStr) => {
+            const v = parsed[dateStr];
+            const titles = Array.isArray(v) ? v : typeof v === "string" && v ? [v] : [];
+            titles.forEach((label) => {
+              migrated.push({
+                id: `title_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                label,
+                start: dateStr,
+                end: dateStr,
+              });
+            });
+          });
+          return migrated;
+        }
       }
     } catch (e) {
       // corrupt storage, fall through to empty
     }
-    return {};
+    return [];
   }
 
   function loadBriefingMemos() {
@@ -258,7 +289,9 @@
   let plans = loadPlans();
   let someday = loadSomeday(); // tasks with no day or time assigned yet ("いつか")
   // day titles are a label on the DATE itself (e.g. "旅行"), distinct from
-  // any plan or task placed on that date — keyed by date string.
+  // any plan or task placed on that date — a flat array of {id, label,
+  // start, end}, since one title can span a range of dates (no time-of-day
+  // or all-day setting, always date-only).
   let dayTitles = loadDayTitles();
   // デイリーページ上部のブリーフィングメモ、およびスケジュール欄右半分の
   // 自由記述メモ。どちらも表示中の日付(dateStr)をキーに持つ。
@@ -327,35 +360,39 @@
     localStorage.setItem(PERIOD_SETTINGS_KEY, JSON.stringify(periodSettings));
   }
 
-  // マンスリーは1日に複数タイトルを持てるので配列で返す。単一文字列を
-  // 保存していた旧バージョンのデータも読み取れるよう吸収しておく。
-  function dayTitlesFor(dateStr) {
-    const v = dayTitles[dateStr];
-    if (Array.isArray(v)) return v;
-    if (typeof v === "string" && v) return [v];
-    return [];
+  // dayTitles(配列)のうち、この日付が start〜end の範囲に含まれるものだけ
+  // を返す — マンスリーの複数セル、ウィークリーの複数日ヘッダーどちらも
+  // 同じエントリを(範囲内なら)繰り返し表示する。
+  function dayTitleEntriesForDate(dateStr) {
+    return dayTitles.filter((e) => e.start <= dateStr && dateStr <= e.end);
   }
 
   async function addDayTitle(dateStr) {
-    const name = await openNameModal("", "日付のタイトルを入力");
-    if (name === null) return;
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    dayTitles[dateStr] = [...dayTitlesFor(dateStr), trimmed];
+    const result = await openDayTitleModal({ label: "", start: dateStr, end: dateStr });
+    if (result === null) return;
+    const label = result.label.trim();
+    if (!label) return;
+    dayTitles.push({
+      id: `title_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      label,
+      start: result.start,
+      end: result.end,
+    });
     saveDayTitles();
     renderCalendar();
   }
 
-  async function editDayTitleAt(dateStr, index) {
-    const list = dayTitlesFor(dateStr);
-    const name = await openNameModal(list[index] || "", "日付のタイトルを入力");
-    if (name === null) return;
-    const trimmed = name.trim();
-    const next = list.slice();
-    if (trimmed) next[index] = trimmed;
-    else next.splice(index, 1);
-    if (next.length) dayTitles[dateStr] = next;
-    else delete dayTitles[dateStr];
+  async function editDayTitleEntry(entry) {
+    const result = await openDayTitleModal(entry);
+    if (result === null) return;
+    const label = result.label.trim();
+    if (!label) {
+      dayTitles = dayTitles.filter((e) => e.id !== entry.id);
+    } else {
+      entry.label = label;
+      entry.start = result.start;
+      entry.end = result.end;
+    }
     saveDayTitles();
     renderCalendar();
   }
@@ -881,18 +918,26 @@
   const nameModalDuration = document.getElementById("nameModalDuration");
   const durationHoursInput = document.getElementById("durationHoursInput");
   const durationMinutesInput = document.getElementById("durationMinutesInput");
+  const nameModalDateRange = document.getElementById("nameModalDateRange");
+  const dateRangeStartInput = document.getElementById("dateRangeStartInput");
+  const dateRangeEndInput = document.getElementById("dateRangeEndInput");
   const nameModalOk = document.getElementById("nameModalOk");
   const nameModalCancel = document.getElementById("nameModalCancel");
 
-  function openModal({ title, showInput, showDuration, initialValue }) {
+  function openModal({ title, showInput, showDuration, showDateRange, initialValue, initialStart, initialEnd }) {
     return new Promise((resolve) => {
       nameModalTitle.textContent = title;
       nameModalInput.hidden = !showInput;
       nameModalDuration.hidden = !showDuration;
+      nameModalDateRange.hidden = !showDateRange;
       if (showInput) nameModalInput.value = initialValue || "";
       if (showDuration) {
         durationHoursInput.value = "0";
         durationMinutesInput.value = "0";
+      }
+      if (showDateRange) {
+        dateRangeStartInput.value = initialStart || todayStr();
+        dateRangeEndInput.value = initialEnd || initialStart || todayStr();
       }
       nameModal.hidden = false;
       if (showInput) {
@@ -909,6 +954,7 @@
         nameModal.hidden = true;
         nameModalInput.hidden = false;
         nameModalDuration.hidden = true;
+        nameModalDateRange.hidden = true;
         nameModalOk.removeEventListener("click", onOk);
         nameModalCancel.removeEventListener("click", onCancel);
         nameModal.removeEventListener("mousedown", onBackdrop);
@@ -916,7 +962,16 @@
         resolve(result);
       }
       function onOk() {
-        if (showInput) {
+        if (showDateRange) {
+          let start = dateRangeStartInput.value || initialStart || todayStr();
+          let end = dateRangeEndInput.value || start;
+          if (end < start) {
+            const t = start;
+            start = end;
+            end = t;
+          }
+          cleanup({ label: nameModalInput.value, start, end });
+        } else if (showInput) {
           cleanup(nameModalInput.value);
         } else if (showDuration) {
           const hours = Math.max(0, parseInt(durationHoursInput.value, 10) || 0);
@@ -927,7 +982,7 @@
         }
       }
       function onCancel() {
-        cleanup(showInput || showDuration ? null : false);
+        cleanup(showInput || showDuration || showDateRange ? null : false);
       }
       function onBackdrop(e) {
         if (e.target === nameModal) onCancel();
@@ -954,6 +1009,19 @@
 
   function openConfirmModal(message) {
     return openModal({ title: message, showInput: false });
+  }
+
+  // 日付タイトル(複数日にまたがれる、時刻・終日設定を持たない日付だけの
+  // イベント)の名前+開始日+終了日をまとめて入力する。
+  function openDayTitleModal(entry) {
+    return openModal({
+      title: "日付のタイトルを入力",
+      showInput: true,
+      showDateRange: true,
+      initialValue: entry.label || "",
+      initialStart: entry.start,
+      initialEnd: entry.end,
+    });
   }
 
   function openDurationModal(title) {
@@ -3903,15 +3971,15 @@
       // タップで各タイトルを編集、末尾の"+"で新規追加。
       const titlesEl = document.createElement("div");
       titlesEl.className = "cdh-titles";
-      const titles = dayTitlesFor(dateStr);
-      titles.forEach((title, idx) => {
+      const titles = dayTitleEntriesForDate(dateStr);
+      titles.forEach((entry) => {
         const chip = document.createElement("span");
         chip.className = "cdh-title-chip";
-        chip.textContent = title;
+        chip.textContent = entry.label;
         chip.title = "タップしてタイトルを編集";
         chip.addEventListener("click", (e) => {
           e.stopPropagation();
-          editDayTitleAt(dateStr, idx);
+          editDayTitleEntry(entry);
         });
         titlesEl.appendChild(chip);
       });
@@ -4279,7 +4347,7 @@
     }
     body.innerHTML = "";
 
-    const titles = dayTitlesFor(dateStr);
+    const titles = dayTitleEntriesForDate(dateStr);
     if (!titles.length) {
       const placeholder = document.createElement("span");
       placeholder.className = "mc-day-title empty";
@@ -4291,14 +4359,17 @@
       });
       body.appendChild(placeholder);
     } else {
-      titles.forEach((title, idx) => {
+      titles.forEach((entry) => {
         const titleEl = document.createElement("span");
         titleEl.className = "mc-day-title";
-        titleEl.textContent = title;
-        titleEl.title = "タップしてタイトルを編集";
+        titleEl.textContent = entry.label;
+        titleEl.title =
+          entry.start === entry.end
+            ? "タップしてタイトルを編集"
+            : `${entry.start}〜${entry.end}・タップしてタイトルを編集`;
         titleEl.addEventListener("click", (e) => {
           e.stopPropagation();
-          editDayTitleAt(dateStr, idx);
+          editDayTitleEntry(entry);
         });
         body.appendChild(titleEl);
       });
