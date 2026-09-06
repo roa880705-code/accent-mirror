@@ -3149,12 +3149,20 @@
   function toggleItemCompleted(dateStr, item) {
     captureUndoSnapshot();
     if (item.completed) {
+      // 完了にした時点でpriorityを一旦手放していたので、取り消す際は
+      // その時の状態を読み戻す — でないと元々最優先だったタスクが、
+      // 完了取り消し後は最優先から抜け落ちてただの今日中になってしまう
+      // (スケジュール済みはplanId/planをそもそも手放していないので、
+      // ここで特に何もしなくてもグリッドの元の場所へ戻る)。
+      item.priority = !!item.wasPriorityBeforeCompleted;
+      delete item.wasPriorityBeforeCompleted;
       item.completed = false;
     } else {
       stopIfRunning(item);
       // スケジュール済みのplanId/planはそのまま残す — グリッドのブロック
       // 自体は消さず、タスク名に取り消し線を引くだけで完了を表す
       // (renderCalendarのブロック描画側でcompletedを見て切り替える)。
+      item.wasPriorityBeforeCompleted = item.priority;
       item.priority = false;
       item.completed = true;
     }
