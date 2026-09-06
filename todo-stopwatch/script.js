@@ -943,15 +943,17 @@
   const nameModalDateRange = document.getElementById("nameModalDateRange");
   const dateRangeStartInput = document.getElementById("dateRangeStartInput");
   const dateRangeEndInput = document.getElementById("dateRangeEndInput");
+  const nameModalDelete = document.getElementById("nameModalDelete");
   const nameModalOk = document.getElementById("nameModalOk");
   const nameModalCancel = document.getElementById("nameModalCancel");
 
-  function openModal({ title, showInput, showDuration, showDateRange, initialValue, initialStart, initialEnd }) {
+  function openModal({ title, showInput, showDuration, showDateRange, showDelete, initialValue, initialStart, initialEnd }) {
     return new Promise((resolve) => {
       nameModalTitle.textContent = title;
       nameModalInput.hidden = !showInput;
       nameModalDuration.hidden = !showDuration;
       nameModalDateRange.hidden = !showDateRange;
+      nameModalDelete.hidden = !showDelete;
       if (showInput) nameModalInput.value = initialValue || "";
       if (showDuration) {
         durationHoursInput.value = "0";
@@ -977,7 +979,9 @@
         nameModalInput.hidden = false;
         nameModalDuration.hidden = true;
         nameModalDateRange.hidden = true;
+        nameModalDelete.hidden = true;
         nameModalOk.removeEventListener("click", onOk);
+        nameModalDelete.removeEventListener("click", onDelete);
         nameModalCancel.removeEventListener("click", onCancel);
         nameModal.removeEventListener("mousedown", onBackdrop);
         document.removeEventListener("keydown", onKeydown);
@@ -1003,6 +1007,12 @@
           cleanup(true);
         }
       }
+      // 削除は「名前欄を空にしてOKする」のと同じ扱い(既存の空欄=削除の
+      // 判定ロジックをそのまま使い回す)。
+      function onDelete() {
+        nameModalInput.value = "";
+        onOk();
+      }
       function onCancel() {
         cleanup(showInput || showDuration || showDateRange ? null : false);
       }
@@ -1019,6 +1029,7 @@
       }
 
       nameModalOk.addEventListener("click", onOk);
+      nameModalDelete.addEventListener("click", onDelete);
       nameModalCancel.addEventListener("click", onCancel);
       nameModal.addEventListener("mousedown", onBackdrop);
       document.addEventListener("keydown", onKeydown);
@@ -1040,6 +1051,7 @@
       title: "日付のタイトルを入力",
       showInput: true,
       showDateRange: true,
+      showDelete: !!entry.id,
       initialValue: entry.label || "",
       initialStart: entry.start,
       initialEnd: entry.end,
@@ -1519,8 +1531,7 @@
 
   function onCalendarHeaderClick(dateStr) {
     if (dateStr >= state.day) {
-      goToDate(dateStr);
-      goToPage(TASK_PAGE);
+      jumpDailyToDate(dateStr);
       return;
     }
     selectedDayDetail = selectedDayDetail === dateStr ? null : dateStr;
@@ -3822,50 +3833,94 @@
       if (d.getDay() === 6) header.classList.add("saturday");
       if (d.getDay() === 0) header.classList.add("sunday");
 
-      const weekdayEl = document.createElement("span");
-      weekdayEl.className = "cdh-weekday";
-      weekdayEl.textContent = WEEKDAYS[d.getDay()];
-      const dateEl = document.createElement("span");
-      dateEl.className = "cdh-date";
-      dateEl.textContent = String(d.getDate());
-      header.append(weekdayEl, dateEl);
+      if (CAL_DAYS === 1) {
+        // デイリーはすでに表示中の日付なので、この列はもう「タップして
+        // どこかへ飛ぶ」ナビゲーションを持たない — 曜日/日付circle/
+        // 下書きドットは表示せず、空いた高さでタイトルを縦に積んで
+        // 並べる(マンスリーのmc-day-titleと同じ見た目を再利用)。
+        const titles = dayTitleEntriesForDate(dateStr);
+        if (!titles.length) {
+          const placeholder = document.createElement("span");
+          placeholder.className = "mc-day-title empty";
+          placeholder.textContent = "+";
+          placeholder.title = "タップして日付にタイトルを追加";
+          placeholder.addEventListener("click", (e) => {
+            e.stopPropagation();
+            addDayTitle(dateStr);
+          });
+          header.appendChild(placeholder);
+        } else {
+          titles.forEach((entry) => {
+            const titleEl = document.createElement("span");
+            titleEl.className = "mc-day-title";
+            titleEl.textContent = entry.label;
+            titleEl.title =
+              entry.start === entry.end
+                ? "タップしてタイトルを編集"
+                : `${entry.start}〜${entry.end}・タップしてタイトルを編集`;
+            titleEl.addEventListener("click", (e) => {
+              e.stopPropagation();
+              editDayTitleEntry(entry);
+            });
+            header.appendChild(titleEl);
+          });
+          const addEl = document.createElement("span");
+          addEl.className = "mc-day-title empty";
+          addEl.textContent = "+";
+          addEl.title = "タップしてタイトルを追加";
+          addEl.addEventListener("click", (e) => {
+            e.stopPropagation();
+            addDayTitle(dateStr);
+          });
+          header.appendChild(addEl);
+        }
+      } else {
+        const weekdayEl = document.createElement("span");
+        weekdayEl.className = "cdh-weekday";
+        weekdayEl.textContent = WEEKDAYS[d.getDay()];
+        const dateEl = document.createElement("span");
+        dateEl.className = "cdh-date";
+        dateEl.textContent = String(d.getDate());
+        header.append(weekdayEl, dateEl);
 
-      // day title: 複数登録できるので、マンスリーの日付セルと同様に
-      // 「タスク」下部トレイのような横スクロールのチップ列として並べる —
-      // タップで各タイトルを編集、末尾の"+"で新規追加。
-      const titlesEl = document.createElement("div");
-      titlesEl.className = "cdh-titles";
-      const titles = dayTitleEntriesForDate(dateStr);
-      titles.forEach((entry) => {
-        const chip = document.createElement("span");
-        chip.className = "cdh-title-chip";
-        chip.textContent = entry.label;
-        chip.title = "タップしてタイトルを編集";
-        chip.addEventListener("click", (e) => {
-          e.stopPropagation();
-          editDayTitleEntry(entry);
+        // day title: 複数登録できるので、マンスリーの日付セルと同様に
+        // 「タスク」下部トレイのような横スクロールのチップ列として並べる —
+        // タップで各タイトルを編集、末尾の"+"で新規追加。ウィークリーの
+        // 日付をタップした場合はデイリーへ飛ぶ(jumpDailyToDate)。
+        const titlesEl = document.createElement("div");
+        titlesEl.className = "cdh-titles";
+        const titles = dayTitleEntriesForDate(dateStr);
+        titles.forEach((entry) => {
+          const chip = document.createElement("span");
+          chip.className = "cdh-title-chip";
+          chip.textContent = entry.label;
+          chip.title = "タップしてタイトルを編集";
+          chip.addEventListener("click", (e) => {
+            e.stopPropagation();
+            editDayTitleEntry(entry);
+          });
+          titlesEl.appendChild(chip);
         });
-        titlesEl.appendChild(chip);
-      });
-      const addTitleBtn = document.createElement("span");
-      addTitleBtn.className = "cdh-title-add";
-      addTitleBtn.textContent = "+";
-      addTitleBtn.title = titles.length ? "タップしてタイトルを追加" : "タップして日付にタイトルを追加";
-      addTitleBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        addDayTitle(dateStr);
-      });
-      titlesEl.appendChild(addTitleBtn);
-      header.appendChild(titlesEl);
+        const addTitleBtn = document.createElement("span");
+        addTitleBtn.className = "cdh-title-add";
+        addTitleBtn.textContent = "+";
+        addTitleBtn.title = titles.length ? "タップしてタイトルを追加" : "タップして日付にタイトルを追加";
+        addTitleBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          addDayTitle(dateStr);
+        });
+        titlesEl.appendChild(addTitleBtn);
+        header.appendChild(titlesEl);
 
-      const draft = drafts[dateStr];
-      if (dateStr > state.day && draft && draft.length) {
-        const dot = document.createElement("span");
-        dot.className = "cdh-dot";
-        header.appendChild(dot);
+        const draft = drafts[dateStr];
+        if (dateStr > state.day && draft && draft.length) {
+          const dot = document.createElement("span");
+          dot.className = "cdh-dot";
+          header.appendChild(dot);
+        }
+
+        header.addEventListener("click", () => onCalendarHeaderClick(dateStr));
       }
-
-      header.addEventListener("click", () => onCalendarHeaderClick(dateStr));
       calendarWeekHeader.appendChild(header);
 
       const dayCol = document.createElement("div");
@@ -4467,6 +4522,12 @@
     if (isCalendarPage(activePage) && !isCalendarPage(i) && selectedPlanId) {
       selectedPlanId = null;
       renderCalendar();
+    }
+    // ログは常に「開いたら今日」— 他のページから切り替えて入るたびに
+    // viewingDateを今日へ戻す(ページ内の日付ピッカーで別の日に移っても、
+    // 一度離れてまた開けばまた今日から)。
+    if (i === TASK_PAGE && activePage !== TASK_PAGE) {
+      goToDate(state.day);
     }
     if (isCalendarPage(i)) {
       const firstWeeklyVisit = i === WEEKLY_PAGE && !weeklyEverShown;
