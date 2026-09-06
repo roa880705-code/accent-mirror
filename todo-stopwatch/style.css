@@ -1745,12 +1745,11 @@ body {
 }
 
 /* 最優先のチップは、今日中(#calendarUnscheduledRow内の.cal-unscheduled-row)
-   と同じ、縦の余白を持たないコンパクトな大きさに揃える。ドラッグでの
-   並べ替えを持たないタップのみの置き場なので、掴めることを示すgrab
-   カーソルも出さない。 */
+   と同じ、縦の余白を持たないコンパクトな大きさに揃える。並べ替え/
+   スケジュールへのドラッグを持つのでcursorは基底の.cal-unplanned-chip
+   のgrabのまま(上書きしない)。 */
 #calendarPriorityList .cal-unplanned-chip {
   padding: 0 8px;
-  cursor: pointer;
 }
 
 .calendar-unplanned.drop-target {
@@ -2014,7 +2013,12 @@ body {
   align-items: stretch;
   overflow-x: visible;
   overflow-y: auto;
-  padding: 0;
+  /* overflow-x:visible above computes to auto anyway once overflow-y isn't
+     visible (spec behavior, not a bug) — so it clips on that axis too, same
+     as the y one. The child-count badge pokes past its own chip's top-right
+     corner (top:-3px, right:-6px), which without this clearance gets cut off
+     by this very edge on every row, not just the first. */
+  padding: 4px 8px 0 0;
 }
 
 .tasklist-list .cal-unplanned-chip {

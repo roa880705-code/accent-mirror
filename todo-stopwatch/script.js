@@ -2900,6 +2900,13 @@
     somedayLevelEls[0].lists.forEach((listEl) => renderSomedayListInto(listEl, topLevelSomeday()));
     renderSubtaskTrays();
     repositionSomedayConnectors();
+    // A box that just went from hidden to visible in this same pass (e.g. a
+    // task's first-ever child, or first-ever grandchild) can still report a
+    // stale chip position on THIS synchronous measurement, even though
+    // getBoundingClientRect is normally accurate immediately — re-measuring
+    // one frame later reliably corrects it, which is what actually chases
+    // down the "branch line drifts into a chip's own label" reports.
+    requestAnimationFrame(repositionSomedayConnectors);
   }
 
   // Hides every 子/孫/ひ孫タスク layer, leaving just いつか — used whenever
@@ -3186,8 +3193,11 @@
   // をここへドロップすると、階層から外れてフラットな1件として移ってくる。
   // 通常のitem(priority:trueのフラグ付き、planIdなし)として保存される
   // ので、ログでの並び順(最優先→スケジュール済み→今日中)の対象になる。
-  // ここでの並び順に意味はなく、子タスク追加のような掘り下げもない —
-  // タップは他の通常タスクと同じ変更修正/マンスリー切替/削除の三択。 ---
+  // 子タスク追加のような掘り下げは無いが、チップの操作自体はいつかと同じ
+  // (タップ=変更修正/マンスリー切替/削除の三択、長押し→ドラッグ=このトレイ
+  // 内での並べ替え、縦ドラッグ=グリッドへドロップしてスケジュール、または
+  // いつかトレイへ落として一段フラットな最優先タスクをいつかタスクへ戻す)
+  // — 詳細はstartPriorityChipDrag以下を参照。 ---
 
   function renderPriorityBox() {
     const dateStr = weekAnchor;
@@ -3207,14 +3217,12 @@
       const chip = document.createElement("button");
       chip.type = "button";
       chip.className = "cal-unplanned-chip";
+      chip.priorityItem = item;
       const label = document.createElement("span");
       label.className = "cal-unplanned-chip-label";
       label.textContent = labelOf(item, "最優先タスク");
       chip.appendChild(label);
-      chip.addEventListener("click", (e) => {
-        e.stopPropagation();
-        promptRegularTaskEdit(dateStr, item);
-      });
+      chip.addEventListener("pointerdown", (e) => startPriorityChipDrag(e, chip, item, dateStr));
       calendarPriorityList.appendChild(chip);
     });
   }
@@ -3235,6 +3243,281 @@
   }
 
   calendarPriorityAddBtn.addEventListener("click", addPriorityTask);
+
+  // A 最優先 chip's gesture is one of three things, disambiguated exactly
+  // like いつか's own chips (see onSomedayChipDragMove above):
+  //   - a quick mostly-horizontal swipe: scroll the tray (JS-driven, since
+  //     the shared .cal-unplanned-chip class sets touch-action:none for
+  //     いつか's benefit — without this, native scrolling can't start on a
+  //     touch that begins on the chip itself, which is most of the row)
+  //   - a quick mostly-vertical drag up: schedule it onto today's grid (or,
+  //     dropped on the いつか tray instead, demote it back to a plain いつか
+  //     task) — the same conversions 今日中 already does in
+  //     onDayUnscheduledDragEnd, since a 最優先 task is just another plain
+  //     item, not a いつか task with its own hierarchy
+  //   - a still, held press (CHIP_REORDER_LONGPRESS_MS) then a drag:
+  //     reorder the chip within this tray
+  let priorityDragCtx = null;
+
+  function startPriorityChipDrag(e, chip, item, dateStr) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.stopPropagation();
+    if (chipTrayMomentumCancel) {
+      chipTrayMomentumCancel();
+      chipTrayMomentumCancel = null;
+    }
+    const listEl = chip.parentElement;
+    priorityDragCtx = {
+      chip,
+      item,
+      dateStr,
+      listEl,
+      phase: "pending", // "pending" -> "schedule" | "reorder" | "scroll"
+      heldLongEnough: false,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startLeft: chip.offsetLeft,
+      startScrollLeft: listEl.scrollLeft,
+      targetCol: null,
+      clientY: e.clientY,
+      longPressTimer: null,
+      lastMoveTime: null,
+      lastScrollLeftSample: listEl.scrollLeft,
+      scrollVelocity: 0,
+    };
+    priorityDragCtx.longPressTimer = setTimeout(() => {
+      if (!priorityDragCtx || priorityDragCtx.phase !== "pending") return;
+      priorityDragCtx.longPressTimer = null;
+      priorityDragCtx.heldLongEnough = true;
+      priorityDragCtx.chip.classList.add("armed");
+      vibrate(10);
+    }, CHIP_REORDER_LONGPRESS_MS);
+    document.addEventListener("pointermove", onPriorityChipDragMove);
+    document.addEventListener("pointerup", onPriorityChipDragEnd);
+    document.addEventListener("pointercancel", onPriorityChipDragEnd);
+  }
+
+  function onPriorityChipDragMove(e) {
+    if (!priorityDragCtx) return;
+    const ctx = priorityDragCtx;
+
+    if (ctx.phase === "pending") {
+      const dx = e.clientX - ctx.startClientX;
+      const dy = e.clientY - ctx.startClientY;
+      if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
+      if (ctx.longPressTimer) {
+        clearTimeout(ctx.longPressTimer);
+        ctx.longPressTimer = null;
+      }
+      if (Math.abs(dx) > Math.abs(dy)) {
+        ctx.chip.classList.remove("armed");
+        if (ctx.heldLongEnough) {
+          ctx.phase = "reorder";
+          ctx.chip.classList.add("reordering");
+          ctx.chip.style.transition = "none";
+          vibrate(15);
+        } else {
+          ctx.phase = "scroll";
+        }
+      } else {
+        ctx.chip.classList.remove("armed");
+        ctx.phase = "schedule";
+        ctx.chip.classList.add("dragging");
+        vibrate(15);
+      }
+    }
+
+    if (ctx.phase === "scroll") {
+      e.preventDefault();
+      ctx.listEl.scrollLeft = ctx.startScrollLeft - (e.clientX - ctx.startClientX);
+      const now = performance.now();
+      if (ctx.lastMoveTime !== null) {
+        const dt = now - ctx.lastMoveTime;
+        if (dt > 0) ctx.scrollVelocity = (ctx.listEl.scrollLeft - ctx.lastScrollLeftSample) / dt;
+      }
+      ctx.lastMoveTime = now;
+      ctx.lastScrollLeftSample = ctx.listEl.scrollLeft;
+      return;
+    }
+
+    if (ctx.phase === "schedule") {
+      e.preventDefault();
+      showDragGhost(e.clientX, e.clientY, labelOf(ctx.item, "最優先タスク"));
+
+      const boxRect = calendarUnplannedBox.getBoundingClientRect();
+      const overBox = rectContains(boxRect, e.clientX, e.clientY);
+      calendarUnplannedBox.classList.toggle("drop-target", overBox);
+      ctx.overUnplannedBox = overBox;
+      if (overBox) {
+        Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+        ctx.targetCol = null;
+        clearDragPreview();
+        return;
+      }
+
+      const bodyRect = calendarWeekBody.getBoundingClientRect();
+      const cols = Array.from(calendarWeekGrid.children);
+      let targetCol = null;
+      for (const col of cols) {
+        if (col.dataset.date !== ctx.dateStr) continue;
+        const rect = col.getBoundingClientRect();
+        if (
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= Math.max(rect.top, bodyRect.top) &&
+          e.clientY <= Math.min(rect.bottom, bodyRect.bottom)
+        ) {
+          targetCol = col;
+          break;
+        }
+      }
+      cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
+      ctx.targetCol = targetCol;
+      ctx.clientY = e.clientY;
+
+      if (targetCol) {
+        const colRect = targetCol.getBoundingClientRect();
+        const relY = e.clientY - colRect.top;
+        const rawMin = pxToMin(relY);
+        let startMin = Math.round(rawMin / 15) * 15;
+        startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+        showDragPreview(targetCol, labelOf(ctx.item, "最優先タスク"), startMin, PLAN_DEFAULT_MIN);
+      } else {
+        clearDragPreview();
+      }
+      return;
+    }
+
+    if (ctx.phase === "reorder") {
+      e.preventDefault();
+      const desiredLeft = ctx.startLeft + (e.clientX - ctx.startClientX);
+      const currentLeft = ctx.chip.offsetLeft;
+      ctx.chip.style.transform = `translateX(${desiredLeft - currentLeft}px)`;
+
+      const chipRect = ctx.chip.getBoundingClientRect();
+      const chipCenter = chipRect.left + chipRect.width / 2;
+      const siblings = Array.from(ctx.listEl.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
+      const draggedIndex = siblings.indexOf(ctx.chip);
+      for (let j = 0; j < siblings.length; j++) {
+        const sib = siblings[j];
+        if (sib === ctx.chip) continue;
+        const sibRect = sib.getBoundingClientRect();
+        if (chipCenter > sibRect.left && chipCenter < sibRect.right) {
+          if (j < draggedIndex) {
+            ctx.listEl.insertBefore(ctx.chip, sib);
+          } else {
+            ctx.listEl.insertBefore(ctx.chip, sib.nextSibling);
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  function onPriorityChipDragEnd() {
+    if (!priorityDragCtx) return;
+    const ctx = priorityDragCtx;
+    document.removeEventListener("pointermove", onPriorityChipDragMove);
+    document.removeEventListener("pointerup", onPriorityChipDragEnd);
+    document.removeEventListener("pointercancel", onPriorityChipDragEnd);
+    if (ctx.longPressTimer) clearTimeout(ctx.longPressTimer);
+    ctx.chip.classList.remove("armed");
+    Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+    calendarUnplannedBox.classList.remove("drop-target");
+    clearDragPreview();
+    clearDragGhost();
+
+    if (ctx.phase === "pending") {
+      priorityDragCtx = null;
+      promptRegularTaskEdit(ctx.dateStr, ctx.item);
+      return;
+    }
+
+    if (ctx.phase === "scroll") {
+      const listEl = ctx.listEl;
+      const velocity = ctx.scrollVelocity;
+      priorityDragCtx = null;
+      chipTrayMomentumCancel = startMomentumScroll(
+        () => listEl.scrollLeft,
+        (v) => {
+          listEl.scrollLeft = v;
+        },
+        velocity
+      );
+      return;
+    }
+
+    if (ctx.phase === "reorder") {
+      ctx.chip.classList.remove("reordering");
+      ctx.chip.style.transition = "transform 0.15s ease";
+      ctx.chip.style.transform = "";
+      const domChips = Array.from(ctx.listEl.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
+      const orderedItems = domChips.map((n) => n.priorityItem);
+      const items = itemsArrayForDate(ctx.dateStr);
+      captureUndoSnapshot();
+      const reorderedSet = new Set(orderedItems);
+      let ri = 0;
+      const newOrder = items.map((it) => (reorderedSet.has(it) ? orderedItems[ri++] : it));
+      items.length = 0;
+      items.push(...newOrder);
+      persistItemsForDate(ctx.dateStr);
+      vibrate(15);
+      const chipRef = ctx.chip;
+      setTimeout(() => {
+        chipRef.style.transition = "";
+      }, 160);
+      priorityDragCtx = null;
+      return;
+    }
+
+    if (ctx.phase === "schedule") {
+      ctx.chip.classList.remove("dragging");
+      const { item, dateStr, targetCol, clientY, overUnplannedBox } = ctx;
+      priorityDragCtx = null;
+
+      if (overUnplannedBox) {
+        if (item.elapsedMs > 0 || item.running) {
+          // real recorded time exists: refuse the move so it isn't lost,
+          // いつか entries carry no time fields to hold it
+          vibrate([10, 30, 10]);
+          return;
+        }
+        captureUndoSnapshot();
+        const items = itemsArrayForDate(dateStr);
+        const idx = items.indexOf(item);
+        if (idx >= 0) items.splice(idx, 1);
+        someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: labelOf(item, "最優先タスク"), parentId: somedayRestoreParentId(item.somedayParentId) });
+        saveSomeday();
+        persistItemsForDate(dateStr);
+        refreshTimerIfShowing(dateStr);
+        vibrate(20);
+        renderCalendar();
+        return;
+      }
+
+      if (!targetCol) return;
+
+      const rect = targetCol.getBoundingClientRect();
+      const relY = clientY - rect.top;
+      const rawMin = pxToMin(relY);
+      let startMin = Math.round(rawMin / 15) * 15;
+      startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+      const endMin = startMin + PLAN_DEFAULT_MIN;
+      const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+      captureUndoSnapshot();
+      addPlan(dateStr, { id, label: labelOf(item, "最優先タスク"), startMin, endMin });
+      item.planId = id;
+      // 最優先とスケジュール済みは互いに排他(最優先は常にplanIdなしで
+      // 保存される前提)なので、スケジュールに乗せた時点でフラグを外す
+      item.priority = false;
+      sortItemsByPlan(dateStr);
+      persistItemsForDate(dateStr);
+      refreshTimerIfShowing(dateStr);
+      vibrate(20);
+      renderCalendar();
+    }
+  }
 
   let somedayDragCtx = null;
 
@@ -3817,6 +4100,14 @@
       calendarWeekLabel.textContent = `${start.getMonth() + 1}/${start.getDate()}(${WEEKDAYS[start.getDay()]})`;
       briefingMemoInput.value = briefingMemos[weekAnchor] || "";
       dailyNotesInput.value = dailyNotes[weekAnchor] || "";
+      // Setting .value moves the cursor to the end but leaves scrollTop
+      // wherever it last was (browsers don't reset it just because the value
+      // changed) — so revisiting a day whose memo overflows the box showed
+      // wherever the cursor/scroll happened to be left, not the first line.
+      briefingMemoInput.scrollTop = 0;
+      briefingMemoInput.setSelectionRange(0, 0);
+      dailyNotesInput.scrollTop = 0;
+      dailyNotesInput.setSelectionRange(0, 0);
       renderPriorityBox();
     } else {
       calendarWeekLabel.textContent = `${start.getMonth() + 1}/${start.getDate()} 〜 ${end.getMonth() + 1}/${end.getDate()}`;
