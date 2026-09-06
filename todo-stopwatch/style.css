@@ -331,6 +331,30 @@ body {
   display: none;
 }
 
+/* 設定タブに常時出す、クラウド同期(Googleログイン)の現在状態 — アクティブ
+   なタブの間しか出ない戻す/進むバッジと違い、これはどのタブを見ていても
+   常に見えている(ログイン状態はページ遷移と無関係に知りたい情報なので)。 */
+.tab-sync-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--muted);
+  border: 1.5px solid var(--panel);
+}
+
+.tab-sync-badge.signed-in {
+  background: var(--live);
+  border-color: var(--live-soft);
+}
+
+.tab-sync-badge[hidden] {
+  display: none;
+}
+
 .tab-btn.tab-monthly.active {
   background: var(--tab-monthly-soft);
   color: var(--tab-monthly);

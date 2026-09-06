@@ -636,6 +636,7 @@
   const totalTimeEl = document.getElementById("totalTime");
   const resetAllBtn = document.getElementById("resetAllBtn");
   const syncBtn = document.getElementById("syncBtn");
+  const settingsSyncBadge = document.getElementById("settingsSyncBadge");
   const periodEnabledToggle = document.getElementById("periodEnabledToggle");
   const periodSettingsList = document.getElementById("periodSettingsList");
   const periodAddBtn = document.getElementById("periodAddBtn");
@@ -1167,7 +1168,11 @@
   // を表示しない。
   if (window.AppSync?.isConfigured()) {
     syncBtn.hidden = false;
-    if (window.AppSync.isSignedIn()) {
+    const signedIn = window.AppSync.isSignedIn();
+    settingsSyncBadge.hidden = false;
+    settingsSyncBadge.classList.toggle("signed-in", signedIn);
+    settingsSyncBadge.title = signedIn ? "クラウド同期: ログイン中" : "クラウド同期: 未ログイン";
+    if (signedIn) {
       const email = window.AppSync.userEmail() || "";
       syncBtn.textContent = email ? `${email.split("@")[0]} ログアウト` : "ログアウト";
       syncBtn.addEventListener("click", async () => {
@@ -5196,7 +5201,7 @@
   buildRows();
   render();
   renderHistory();
-  goToPage(TASK_PAGE); // default to タスク on launch
+  goToPage(DAILY_PAGE); // default to デイリー on launch
 
   setInterval(() => {
     const rolled = rolloverIfNeeded();
