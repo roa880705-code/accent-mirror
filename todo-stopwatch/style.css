@@ -627,11 +627,11 @@ body {
   margin-bottom: clamp(2px, 0.5vh, 4px);
 }
 
-.side-btn-stack {
+.sidework-circle-row {
   flex: none;
   display: flex;
-  flex-direction: row;
-  gap: clamp(3px, 1vw, 6px);
+  align-items: center;
+  gap: clamp(4px, 1.5vw, 8px);
 }
 
 .side-btn {
@@ -641,10 +641,10 @@ body {
   white-space: nowrap;
   text-align: center;
   line-height: 1;
-  padding: clamp(2px, 0.5vh, 3px) clamp(6px, 1.6vw, 10px);
+  padding: clamp(2px, 0.5vh, 3px) clamp(5px, 1.4vw, 8px);
   border-radius: 8px;
   font-weight: 700;
-  font-size: clamp(0.55rem, 1.2vw, 0.66rem);
+  font-size: clamp(0.52rem, 1.1vw, 0.62rem);
   background: var(--panel);
   color: var(--ink);
   border: 1px solid var(--panel-line);
