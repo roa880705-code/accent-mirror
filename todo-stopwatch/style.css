@@ -1706,6 +1706,23 @@ body {
   user-select: none;
 }
 
+/* 最優先/今日中は、いつか系のような子タスク数バッジを持たないので、
+   バッジのクリアランス用に確保していた上側の余白は不要 — 他の行より
+   詰めて、デイリーページ全体の縦の余白を減らす。 */
+#calendarPriorityBox,
+#calendarUnscheduledRow {
+  padding-top: 6px;
+}
+
+/* 最優先のチップは、今日中(#calendarUnscheduledRow内の.cal-unscheduled-row)
+   と同じ、縦の余白を持たないコンパクトな大きさに揃える。ドラッグでの
+   並べ替えを持たないタップのみの置き場なので、掴めることを示すgrab
+   カーソルも出さない。 */
+#calendarPriorityList .cal-unplanned-chip {
+  padding: 0 8px;
+  cursor: pointer;
+}
+
 .calendar-unplanned.drop-target {
   background: var(--accent-soft);
 }
@@ -1821,12 +1838,6 @@ body {
 .cal-unplanned-chip-label {
   display: block;
   white-space: nowrap;
-}
-
-/* 最優先トレイのチップはドラッグでの並べ替えを持たない、タップのみの
-   フラットな置き場なので、掴めることを示すgrabカーソルは出さない。 */
-#calendarPriorityList .cal-unplanned-chip {
-  cursor: pointer;
 }
 
 /* small corner badge on every いつか/子/孫 task (not ひ孫, always a leaf)
