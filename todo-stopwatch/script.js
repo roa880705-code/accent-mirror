@@ -360,6 +360,12 @@
     if (state.day === today) return false;
 
     const wasFollowingToday = viewingDate === state.day;
+    // ウィークリー/デイリーの表示アンカーも、まだ(ロールオーバー前の)今日を
+    // 指していた分だけ今日側へ進める — 他の日付へ手動移動済みのアンカーは
+    // そのまま(勝手に今日へ引き戻さない)。
+    const dailyWasFollowingToday = dailyWeekAnchor === state.day;
+    const weeklyWasFollowingToday = weeklyWeekAnchor === state.day;
+    const weekAnchorWasFollowingToday = weekAnchor === state.day;
     const now = Date.now();
     closeRunningSegments(now);
     archiveDay(state.day);
@@ -375,6 +381,13 @@
       state.items.forEach((it) => {
         if (it.running) it.startedAt = now;
         it.elapsedMs = 0;
+        // a plan is filed under the date it was made for (plans[state.day]),
+        // which just got archived along with yesterday under that same old
+        // date key — carrying the old planId forward would leave the item
+        // pointing at a plan that doesn't exist under the new state.day,
+        // making it invisible in today's schedule (neither a block nor
+        // listed under 時間未定) while still showing up here in ログ.
+        it.planId = null;
       });
     }
     if (state.sidework.running) state.sidework.startedAt = now;
@@ -388,6 +401,9 @@
     saveState();
 
     if (wasFollowingToday) viewingDate = today;
+    if (dailyWasFollowingToday) dailyWeekAnchor = today;
+    if (weeklyWasFollowingToday) weeklyWeekAnchor = today;
+    if (weekAnchorWasFollowingToday) weekAnchor = today;
     return true;
   }
 
@@ -1198,6 +1214,33 @@
     plans[dateStr] = plans[dateStr].filter((p) => p.id !== id);
     if (!plans[dateStr].length) delete plans[dateStr];
     savePlans();
+  }
+
+  // A past version of rolloverIfNeeded() carried an item's planId forward
+  // into the new day untouched, even though the plan itself stayed filed
+  // under the OLD date in `plans` — leaving the item pointing at a plan
+  // that plansForDate(item's own date) can never find. Such an item is
+  // invisible in the schedule entirely (not a block, and dayUnscheduled's
+  // `!it.planId` check excludes it from 時間未定 too, since the field is
+  // still truthy) while still showing up as a normal ログ row. Run once at
+  // boot to unlink any item already stuck like this from past sessions.
+  function unlinkOrphanedPlanIds() {
+    let changed = false;
+    function fix(items, dateStr) {
+      const dayPlans = plansForDate(dateStr);
+      items.forEach((item) => {
+        if (item.planId && !dayPlans.some((p) => p.id === item.planId)) {
+          item.planId = null;
+          changed = true;
+        }
+      });
+    }
+    fix(state.items, state.day);
+    Object.keys(drafts).forEach((d) => fix(drafts[d], d));
+    if (changed) {
+      saveState();
+      saveDrafts();
+    }
   }
 
   // --- keeping a date's timer list and that date's plans in sync ---
@@ -4167,6 +4210,7 @@
     }
   }
 
+  unlinkOrphanedPlanIds();
   rolloverIfNeeded();
   sortItemsByPlan(state.day);
   dayPicker.value = viewingDate;
