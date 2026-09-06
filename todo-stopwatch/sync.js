@@ -31,6 +31,52 @@
   // the tab is hidden/closed so nothing sits unsynced for long.
   const PUSH_THROTTLE_MS = 8000;
 
+  // Tracks, per key, the local time of the last edit (editedAt) versus the
+  // last time we know this device's copy matched the server (syncedAt) —
+  // written synchronously to localStorage so it survives an immediate
+  // refresh, even though the actual push is throttled/async. Without this, a
+  // boot-time initialSync() has no way to tell "local is newer, don't
+  // overwrite it" from "local is stale, cloud should win", and a refresh
+  // within the throttle window (or a push cut off by navigation) would
+  // silently discard the not-yet-pushed edit.
+  const SYNC_META_KEY = "todoStopwatch:syncMeta:v1";
+
+  function loadMeta() {
+    try {
+      return JSON.parse(localStorage.getItem(SYNC_META_KEY)) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveMeta(meta) {
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify(meta));
+  }
+
+  function markEdited(syncKey) {
+    const meta = loadMeta();
+    meta[syncKey] = { ...meta[syncKey], editedAt: Date.now() };
+    saveMeta(meta);
+  }
+
+  // `atLeast` pins syncedAt to the specific edit this push/pull actually
+  // covers (not "now") — otherwise a push that was already in flight when a
+  // newer edit landed would, on completing, mark the NEWER edit as synced
+  // too, even though only the older value made it to the server.
+  function markSynced(syncKey, atLeast) {
+    const meta = loadMeta();
+    const prevSyncedAt = (meta[syncKey] && meta[syncKey].syncedAt) || 0;
+    const ts = atLeast != null ? atLeast : Date.now();
+    meta[syncKey] = { ...meta[syncKey], syncedAt: Math.max(prevSyncedAt, ts) };
+    saveMeta(meta);
+  }
+
+  function hasUnsyncedLocalEdit(syncKey) {
+    const entry = loadMeta()[syncKey];
+    if (!entry || !entry.editedAt) return false;
+    return !entry.syncedAt || entry.editedAt > entry.syncedAt;
+  }
+
   const configured = !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
   let client = null;
   let session = null;
@@ -41,7 +87,7 @@
     console.log("[AppSync]", ...args);
   }
 
-  async function upsertKey(syncKey, value) {
+  async function upsertKey(syncKey, value, editedAtSnapshot) {
     if (!client || !session || value === undefined) return;
     try {
       // supabase-js resolves this even on a server-side rejection (e.g. an
@@ -54,6 +100,7 @@
         updated_at: new Date().toISOString(),
       });
       if (error) throw error;
+      markSynced(syncKey, editedAtSnapshot);
     } catch (err) {
       log("push failed for", syncKey, err);
     }
@@ -61,9 +108,10 @@
 
   async function pushKey(syncKey) {
     const value = pending[syncKey];
+    const editedAtSnapshot = (loadMeta()[syncKey] || {}).editedAt;
     delete pending[syncKey];
     delete timers[syncKey];
-    await upsertKey(syncKey, value);
+    await upsertKey(syncKey, value, editedAtSnapshot);
   }
 
   function schedulePush(syncKey) {
@@ -105,6 +153,16 @@
   // alone — with no further edit — is enough to seed the cloud (several of
   // these keys are only ever saved on an explicit user edit, so waiting for
   // "the next save call" could mean waiting forever).
+  //
+  // This same function also runs on every ordinary boot of an already
+  // signed-in device (see init() below), where "cloud wins" is the wrong
+  // default: if this device has a local edit that hasn't been confirmed
+  // pushed yet (hasUnsyncedLocalEdit), pulling remote here would silently
+  // discard it — e.g. an edit followed by an immediate refresh, before the
+  // throttled push fires. So for any key with an unsynced local edit, this
+  // device's copy wins instead and is pushed up, same as the "cloud has
+  // nothing yet" case.
+  //
   // Guards against overlapping calls — onAuthStateChange can fire more than
   // once for what is effectively the same sign-in (e.g. an immediate
   // INITIAL_SESSION event alongside the explicit check in init()), and
@@ -116,22 +174,25 @@
     if (syncInFlight) return syncInFlight;
     syncInFlight = (async () => {
       const remote = await pullAll();
-      const seeds = [];
+      const pushes = [];
       Object.entries(LOCAL_KEY_MAP).forEach(([syncKey, localKey]) => {
-        if (Object.prototype.hasOwnProperty.call(remote, syncKey)) {
+        const remoteHasKey = Object.prototype.hasOwnProperty.call(remote, syncKey);
+        if (remoteHasKey && !hasUnsyncedLocalEdit(syncKey)) {
           localStorage.setItem(localKey, JSON.stringify(remote[syncKey]));
+          markSynced(syncKey, Date.now());
         } else {
           const raw = localStorage.getItem(localKey);
           if (raw !== null) {
             try {
-              seeds.push(upsertKey(syncKey, JSON.parse(raw)));
+              const editedAtSnapshot = (loadMeta()[syncKey] || {}).editedAt;
+              pushes.push(upsertKey(syncKey, JSON.parse(raw), editedAtSnapshot));
             } catch (err) {
               log("seed parse failed for", syncKey, err);
             }
           }
         }
       });
-      await Promise.all(seeds);
+      await Promise.all(pushes);
     })();
     try {
       await syncInFlight;
@@ -172,6 +233,7 @@
     // a no-op when sync isn't configured or no one is signed in.
     markDirty(syncKey, value) {
       if (!configured || !session) return;
+      markEdited(syncKey);
       pending[syncKey] = value;
       schedulePush(syncKey);
     },
