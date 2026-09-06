@@ -268,6 +268,7 @@ body {
 
 .tab-btn {
   all: unset;
+  position: relative;
   flex: 1;
   box-sizing: border-box;
   text-align: center;
@@ -279,6 +280,30 @@ body {
   cursor: pointer;
   background: var(--panel);
   border: 1.5px solid var(--panel-line);
+}
+
+/* 月/週/日は、すでに選択中の状態でもう一度タップするとそのページでの
+   直前の操作を1つ取り消せる — このバッジは「今それができる(取り消せる
+   操作がある)」ことを示す小さな印。アクティブなタブにしか出さない
+   (非アクティブなタブをタップするのは普通に画面遷移するだけなので)。 */
+.tab-undo-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.tab-undo-badge[hidden] {
+  display: none;
 }
 
 .tab-btn.tab-monthly.active {

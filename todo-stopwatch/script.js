@@ -396,6 +396,7 @@
     if (result === null) return;
     const label = result.label.trim();
     if (!label) return;
+    captureUndoSnapshot("dayTitles");
     dayTitles.push({
       id: `title_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       label,
@@ -410,6 +411,7 @@
     const result = await openDayTitleModal(entry);
     if (result === null) return;
     const label = result.label.trim();
+    captureUndoSnapshot("dayTitles");
     if (!label) {
       dayTitles = dayTitles.filter((e) => e.id !== entry.id);
     } else {
@@ -1597,6 +1599,7 @@
   async function renamePlan(dateStr, plan) {
     const name = await openNameModal(plan.label);
     if (name === null) return;
+    captureUndoSnapshot();
     plan.label = name.trim() || plan.label;
     savePlans();
     const items = itemsArrayForDate(dateStr);
@@ -1631,6 +1634,7 @@
     delBtn.className = "btn btn-modal-cancel cal-plan-delete";
     delBtn.textContent = "削除";
     delBtn.addEventListener("click", () => {
+      captureUndoSnapshot();
       removePlan(dateStr, plan.id);
       selectedPlanId = null;
       const items = itemsArrayForDate(dateStr);
@@ -1897,6 +1901,7 @@
     // 名前入力ダイアログは挟まず、まず仮の名前「予定」で即登録する。あとで
     // ブロックをタップすれば名前編集画面が開く(onPlanBlockClick参照)し、
     // 長押しすれば名前が仮のままでも普通に時間帯を移動できる。
+    captureUndoSnapshot();
     const label = "予定";
     const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
@@ -2106,6 +2111,8 @@
       return;
     }
 
+    captureUndoSnapshot();
+
     if (overDayUnscheduled) {
       // send it back to this same day's own "time undetermined" list — the
       // item stays right where it is, just loses its scheduled time
@@ -2241,6 +2248,7 @@
     planResizeCtx = null;
 
     if (previewEndMin !== plan.endMin) {
+      captureUndoSnapshot();
       vibrate(20);
       plan.endMin = previewEndMin;
       savePlans();
@@ -2443,6 +2451,7 @@
         vibrate([10, 30, 10]);
         return;
       }
+      captureUndoSnapshot();
       const items = itemsArrayForDate(dateStr);
       const idx = items.indexOf(item);
       if (idx >= 0) items.splice(idx, 1);
@@ -2465,6 +2474,7 @@
     const endMin = startMin + PLAN_DEFAULT_MIN;
     const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
+    captureUndoSnapshot();
     addPlan(dateStr, { id, label: labelOf(item, "予定"), startMin, endMin });
     item.planId = id;
     vibrate(20);
@@ -2927,6 +2937,7 @@
     if (name === null) return;
     const label = name.trim();
     if (!label) return;
+    captureUndoSnapshot();
     someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId: null });
     saveSomeday();
     renderSomedayList();
@@ -3000,6 +3011,7 @@
       if (name === null) return;
       const label = name.trim();
       if (!label) return;
+      captureUndoSnapshot();
       task.label = label;
       saveSomeday();
       renderSomedayList();
@@ -3066,6 +3078,7 @@
   // whole branch.
   function confirmDeleteSomedayTask(task) {
     if (!isParentTask(task.id)) {
+      captureUndoSnapshot();
       removeSomedayTaskPromotingChildren(task.id);
       saveSomeday();
       renderSomedayList();
@@ -3073,8 +3086,10 @@
     }
     openSomedayDeleteChildrenModal().then((choice) => {
       if (choice === "keep") {
+        captureUndoSnapshot();
         removeSomedayTaskPromotingChildren(task.id);
       } else if (choice === "all") {
+        captureUndoSnapshot();
         removeSomedayTaskAndDescendants(task.id);
       } else {
         return;
@@ -3096,6 +3111,7 @@
           if (name === null) return;
           const label = name.trim();
           if (!label) return;
+          captureUndoSnapshot();
           someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId: task.id });
           saveSomeday();
           activateSomedayChain(depth, task.id);
@@ -3121,6 +3137,7 @@
           if (name === null) return;
           const label = name.trim();
           if (!label) return;
+          captureUndoSnapshot();
           item.label = label;
           if (item.planId) {
             const plan = plansForDate(dateStr).find((p) => p.id === item.planId);
@@ -3144,6 +3161,7 @@
   // タスク自身が原則マンスリーに出ない方針の例外を、ウィークリー/デイリー
   // 側からタスクをタップして手動でオン/オフする経路。
   function toggleShowOnMonthly(dateStr, item) {
+    captureUndoSnapshot();
     item.showOnMonthly = !item.showOnMonthly;
     persistItemsForDate(dateStr);
     refreshTimerIfShowing(dateStr);
@@ -3154,6 +3172,7 @@
   // with the item itself, rather than the more conservative "unschedule"
   // flow elsewhere that keeps the item when it already has recorded time.
   function deleteTaskItem(dateStr, item) {
+    captureUndoSnapshot();
     if (item.planId) removePlan(dateStr, item.planId);
     const items = itemsArrayForDate(dateStr);
     const idx = items.indexOf(item);
@@ -3205,6 +3224,7 @@
     if (name === null) return;
     const label = name.trim();
     if (!label) return;
+    captureUndoSnapshot();
     const item = freshItem(label);
     item.priority = true;
     ensureItemsArrayForDate(weekAnchor).push(item);
@@ -3520,6 +3540,10 @@
       ctx.chip.classList.remove("dragging");
       somedayDragCtx = null;
       const { task, targetCol, targetMonthlyCell, targetTaskList, targetPriorityList, clientY, overZone } = ctx;
+
+      if (targetCol || targetMonthlyCell || targetTaskList || targetPriorityList) {
+        captureUndoSnapshot();
+      }
 
       if (targetMonthlyCell) {
         // マンスリーには時間軸がないので、常にその日の「時間未定」リストへ。
@@ -4472,10 +4496,98 @@
   const TASK_PAGE = 5;
   const pagesTrack = document.getElementById("pagesTrack");
   const tabBtns = Array.from(document.querySelectorAll(".tab-btn"));
+  const monthlyUndoBadge = document.getElementById("monthlyUndoBadge");
+  const weeklyUndoBadge = document.getElementById("weeklyUndoBadge");
+  const dailyUndoBadge = document.getElementById("dailyUndoBadge");
   let activePage = 0;
 
   function isCalendarPage(i) {
     return i === WEEKLY_PAGE || i === DAILY_PAGE;
+  }
+
+  function isUndoablePage(i) {
+    return i === MONTHLY_PAGE || i === WEEKLY_PAGE || i === DAILY_PAGE;
+  }
+
+  // --- 月/週/日: 操作を1つ戻す ---
+  // 個々の操作ごとに専用の「逆操作」を書く代わりに、操作の直前の関連
+  // データをまるごと複製してページごとのスタックに積んでおき、そのページ
+  // のタブを(既にアクティブな状態で)もう一度タップしたら1件popして
+  // そのまま上書き復元する方式。ブリーフィングメモ/メモ欄の自由入力は
+  // テキストフィールド自体のブラウザ標準undoに任せ、この仕組みの対象外
+  // とする。
+  //
+  // スナップショットは対象を2系統に分けている(全部まとめて1つの巨大な
+  // スナップショットにはしない): "schedule"(タイマー項目/下書き/予定/
+  // いつか — これらは互いに絡み合って一緒に変化するので1セットにする)
+  // と "dayTitles"(日付タイトルのみ、他とは無関係に変化する)。分けて
+  // いないと、例えば月で日付タイトルを編集した後に週で何か操作して
+  // それを戻すと、途中で挟まっていた月のタイトル編集まで(無関係なのに)
+  // 巻き戻ってしまう。
+  const UNDO_MAX_DEPTH = 20;
+  const undoStacks = { [MONTHLY_PAGE]: [], [WEEKLY_PAGE]: [], [DAILY_PAGE]: [] };
+
+  function snapshotUndoData(scope) {
+    if (scope === "dayTitles") {
+      return { scope, dayTitles: JSON.parse(JSON.stringify(dayTitles)) };
+    }
+    return {
+      scope: "schedule",
+      items: JSON.parse(JSON.stringify(state.items)),
+      drafts: JSON.parse(JSON.stringify(drafts)),
+      plans: JSON.parse(JSON.stringify(plans)),
+      someday: JSON.parse(JSON.stringify(someday)),
+    };
+  }
+
+  // 月/週/日いずれかを表示中に、実際にデータを変更する直前で呼ぶ。今
+  // アクティブなページが対象外(設定/タスク一覧/ログなど)なら何もしない
+  // — その操作は「戻す」の対象にならない。scopeは"schedule"(既定)か
+  // "dayTitles"。
+  function captureUndoSnapshot(scope = "schedule") {
+    if (!isUndoablePage(activePage)) return;
+    const stack = undoStacks[activePage];
+    stack.push(snapshotUndoData(scope));
+    if (stack.length > UNDO_MAX_DEPTH) stack.shift();
+    updateUndoBadges();
+  }
+
+  function restoreUndoData(snap) {
+    if (snap.scope === "dayTitles") {
+      dayTitles = snap.dayTitles;
+      saveDayTitles();
+      return;
+    }
+    state.items = snap.items;
+    drafts = snap.drafts;
+    plans = snap.plans;
+    someday = snap.someday;
+    saveState();
+    saveDrafts();
+    savePlans();
+    saveSomeday();
+  }
+
+  function performUndo(page) {
+    const stack = undoStacks[page];
+    if (!stack.length) {
+      vibrate([10, 30, 10]);
+      return;
+    }
+    restoreUndoData(stack.pop());
+    buildRows();
+    render();
+    renderCalendar();
+    updateUndoBadges();
+    vibrate(20);
+  }
+
+  // アクティブなタブにだけ、そのページで戻せる操作がある間だけバッジを
+  // 出す(非アクティブなタブのタップは普通の画面遷移でしかないため)。
+  function updateUndoBadges() {
+    monthlyUndoBadge.hidden = !(activePage === MONTHLY_PAGE && undoStacks[MONTHLY_PAGE].length > 0);
+    weeklyUndoBadge.hidden = !(activePage === WEEKLY_PAGE && undoStacks[WEEKLY_PAGE].length > 0);
+    dailyUndoBadge.hidden = !(activePage === DAILY_PAGE && undoStacks[DAILY_PAGE].length > 0);
   }
 
   // Swaps the calendarWeekGrid-etc. pointers (see their declaration above)
@@ -4549,6 +4661,7 @@
     activePage = i;
     tabBtns.forEach((b, idx) => b.classList.toggle("active", idx === i));
     updateHeaderForTab();
+    updateUndoBadges();
   }
 
   function goToPage(i) {
@@ -4556,7 +4669,18 @@
     setActiveTab(i);
   }
 
-  tabBtns.forEach((btn, i) => btn.addEventListener("click", () => goToPage(i)));
+  tabBtns.forEach((btn, i) =>
+    btn.addEventListener("click", () => {
+      // 月/週/日は、すでにそのページを表示中に同じタブをもう一度タップ
+      // すると、そのページでの直前の操作を1つ取り消す(通常の画面遷移は
+      // 行わない)。
+      if (i === activePage && isUndoablePage(i)) {
+        performUndo(i);
+        return;
+      }
+      goToPage(i);
+    })
+  );
 
   // --- swipe navigation (回転什器のように左右にスライドすると隣の月/週/日) ---
   // One shared horizontal-swipe detector, delegated from pagesTrack, covers
