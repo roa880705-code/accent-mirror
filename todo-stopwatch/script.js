@@ -70,6 +70,11 @@
             if (it.showOnMonthly === undefined) it.showOnMonthly = false;
             if (it.priority === undefined) it.priority = false;
           });
+          // 予定外タスクのデフォルト名を「予定外タスク」→「予定外」に短縮
+          // した際、旧デフォルトのままだった(=一度も自分で名前を変えて
+          // いない)既存ユーザーの保存済みラベルだけ、一度だけ新表記へ
+          // 移行する — 自分で別の名前に変えていた場合はそのまま触らない。
+          if (parsed.chore.label === "予定外タスク") parsed.chore.label = "予定外";
           return parsed;
         }
       }
