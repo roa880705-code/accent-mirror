@@ -1746,7 +1746,11 @@
     calendarDetail.append(line, actions);
   }
 
-  // タップ(=ドラッグせずに指を離した)は、そのまま名前編集画面を開く。
+  // タップ(=ドラッグせずに指を離した)は、他のタスク種別(最優先/今日中/
+  // いつか)と同じく編集/完了/削除の選択肢を出す(showPlanDetail)。以前は
+  // ここで直接名前編集を開いていたが、それだと選択肢パネル(特に完了)へ
+  // 辿り着く前に毎回リネームダイアログを閉じる一手間が挟まり、完了が
+  // 実質見つけにくくなっていた — 名前を変えたい時はパネルの「編集」から。
   // 時間帯の移動は長押しの後にドラッグして行う(startPlanDrag/onPlanDragMove
   // 側の処理)ので、こちらはタップの場合にしか呼ばれない。
   function onPlanBlockClick(e, dateStr, plan) {
@@ -1756,7 +1760,7 @@
     }
     selectedPlanId = plan.id;
     renderCalendar();
-    renamePlan(dateStr, plan).then(() => showPlanDetail(dateStr, plan));
+    showPlanDetail(dateStr, plan);
   }
 
   // --- plan creation (long-press on empty grid space) ---
