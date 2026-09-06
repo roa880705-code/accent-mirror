@@ -306,6 +306,31 @@ body {
   display: none;
 }
 
+/* 「戻す」で失われた操作を、対象が画面外(見えない範囲)でも取り戻せる
+   ように — 戻すバッジと違い、こちらはそれ自体がタップ可能なボタン
+   (タブ本体をタップした時の「戻す」とは独立して動く)。左上に置いて
+   右上の戻すバッジと重ならないようにする。 */
+.tab-redo-badge {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.tab-redo-badge[hidden] {
+  display: none;
+}
+
 .tab-btn.tab-monthly.active {
   background: var(--tab-monthly-soft);
   color: var(--tab-monthly);

@@ -4987,6 +4987,9 @@
   const monthlyUndoBadge = document.getElementById("monthlyUndoBadge");
   const weeklyUndoBadge = document.getElementById("weeklyUndoBadge");
   const dailyUndoBadge = document.getElementById("dailyUndoBadge");
+  const monthlyRedoBadge = document.getElementById("monthlyRedoBadge");
+  const weeklyRedoBadge = document.getElementById("weeklyRedoBadge");
+  const dailyRedoBadge = document.getElementById("dailyRedoBadge");
   let activePage = 0;
 
   function isCalendarPage(i) {
@@ -4997,7 +5000,7 @@
     return i === MONTHLY_PAGE || i === WEEKLY_PAGE || i === DAILY_PAGE;
   }
 
-  // --- 月/週/日: 操作を1つ戻す ---
+  // --- 月/週/日: 操作を1つ戻す/進める ---
   // 個々の操作ごとに専用の「逆操作」を書く代わりに、操作の直前の関連
   // データをまるごと複製してページごとのスタックに積んでおき、そのページ
   // のタブを(既にアクティブな状態で)もう一度タップしたら1件popして
@@ -5012,8 +5015,17 @@
   // いないと、例えば月で日付タイトルを編集した後に週で何か操作して
   // それを戻すと、途中で挟まっていた月のタイトル編集まで(無関係なのに)
   // 巻き戻ってしまう。
+  //
+  // 「戻す」だけだと、変更が画面の見えている範囲の外(スクロールした
+  // 先や、いつかの掘り下げた階層など)で起きていた場合、戻した瞬間に
+  // 何が起きたのか確認しづらい — 「進む」で戻す前の状態へすぐ復帰できる
+  // ようにしておけば、少なくとも比較しながら確認する手段が残る。戻す
+  // 操作をした分だけ「進む」スタックに積み、逆に新しい操作(captureUndo
+  // Snapshot)が入った時点でそのページの「進む」履歴は破棄する(戻した
+  // 後に別の変更をしたら、その先の「進む」はもう意味を持たないため)。
   const UNDO_MAX_DEPTH = 20;
   const undoStacks = { [MONTHLY_PAGE]: [], [WEEKLY_PAGE]: [], [DAILY_PAGE]: [] };
+  const redoStacks = { [MONTHLY_PAGE]: [], [WEEKLY_PAGE]: [], [DAILY_PAGE]: [] };
 
   function snapshotUndoData(scope) {
     if (scope === "dayTitles") {
@@ -5037,6 +5049,8 @@
     const stack = undoStacks[activePage];
     stack.push(snapshotUndoData(scope));
     if (stack.length > UNDO_MAX_DEPTH) stack.shift();
+    // 新しい操作が入った時点で、この先の「進む」は無意味になる
+    redoStacks[activePage].length = 0;
     updateUndoBadges();
   }
 
@@ -5062,7 +5076,12 @@
       vibrate([10, 30, 10]);
       return;
     }
-    restoreUndoData(stack.pop());
+    const undone = stack.pop();
+    // 戻す直前の(=今まさに手放す)状態を「進む」用に積んでおく
+    const redoStack = redoStacks[page];
+    redoStack.push(snapshotUndoData(undone.scope));
+    if (redoStack.length > UNDO_MAX_DEPTH) redoStack.shift();
+    restoreUndoData(undone);
     buildRows();
     render();
     renderCalendar();
@@ -5070,12 +5089,36 @@
     vibrate(20);
   }
 
-  // アクティブなタブにだけ、そのページで戻せる操作がある間だけバッジを
-  // 出す(非アクティブなタブのタップは普通の画面遷移でしかないため)。
+  function performRedo(page) {
+    const stack = redoStacks[page];
+    if (!stack.length) {
+      vibrate([10, 30, 10]);
+      return;
+    }
+    const redone = stack.pop();
+    // 進む前の(=今まさに手放す)状態を「戻す」用に積み直しておく —
+    // 進めた後にもう一度「戻す」でこの操作自体を打ち消せるように
+    const undoStack = undoStacks[page];
+    undoStack.push(snapshotUndoData(redone.scope));
+    if (undoStack.length > UNDO_MAX_DEPTH) undoStack.shift();
+    restoreUndoData(redone);
+    buildRows();
+    render();
+    renderCalendar();
+    updateUndoBadges();
+    vibrate(20);
+  }
+
+  // アクティブなタブにだけ、そのページで戻せる/進められる操作がある間
+  // だけバッジを出す(非アクティブなタブのタップは普通の画面遷移でしか
+  // ないため)。
   function updateUndoBadges() {
     monthlyUndoBadge.hidden = !(activePage === MONTHLY_PAGE && undoStacks[MONTHLY_PAGE].length > 0);
     weeklyUndoBadge.hidden = !(activePage === WEEKLY_PAGE && undoStacks[WEEKLY_PAGE].length > 0);
     dailyUndoBadge.hidden = !(activePage === DAILY_PAGE && undoStacks[DAILY_PAGE].length > 0);
+    monthlyRedoBadge.hidden = !(activePage === MONTHLY_PAGE && redoStacks[MONTHLY_PAGE].length > 0);
+    weeklyRedoBadge.hidden = !(activePage === WEEKLY_PAGE && redoStacks[WEEKLY_PAGE].length > 0);
+    dailyRedoBadge.hidden = !(activePage === DAILY_PAGE && redoStacks[DAILY_PAGE].length > 0);
   }
 
   // Swaps the calendarWeekGrid-etc. pointers (see their declaration above)
@@ -5169,6 +5212,19 @@
       goToPage(i);
     })
   );
+
+  // 「進む」バッジ自体は独立したボタン — タブ本体の「戻す」クリックへ
+  // 伝播させない(伝播すると、進んだ直後にもう一度戻ってしまう)。
+  [
+    [MONTHLY_PAGE, monthlyRedoBadge],
+    [WEEKLY_PAGE, weeklyRedoBadge],
+    [DAILY_PAGE, dailyRedoBadge],
+  ].forEach(([page, badge]) => {
+    badge.addEventListener("click", (e) => {
+      e.stopPropagation();
+      performRedo(page);
+    });
+  });
 
   // --- swipe navigation (回転什器のように左右にスライドすると隣の月/週/日) ---
   // One shared horizontal-swipe detector, delegated from pagesTrack, covers
