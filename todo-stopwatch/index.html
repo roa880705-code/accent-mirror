@@ -160,16 +160,19 @@
             <div class="calendar-week-header" id="calendarWeekHeader"></div>
             <textarea id="briefingMemoInput" class="briefing-memo-input" placeholder="ブリーフィングメモ" maxlength="200"></textarea>
           </div>
+          <div class="calendar-unplanned" id="calendarPriorityBox">
+            <span class="calendar-unplanned-title">最優先</span>
+            <div class="calendar-unplanned-list" id="calendarPriorityList"></div>
+            <button type="button" class="calendar-someday-add" id="calendarPriorityAddBtn" aria-label="最優先タスクを追加">＋</button>
+          </div>
           <div class="calendar-schedule-row">
-            <div class="calendar-schedule-left">
-              <div class="calendar-week-body" id="calendarWeekBody">
-                <div class="calendar-hours" id="calendarHours"></div>
-                <div class="calendar-week-grid" id="calendarWeekGrid"></div>
-              </div>
-              <div class="unscheduled-week-row" id="calendarUnscheduledRow"></div>
+            <div class="calendar-week-body" id="calendarWeekBody">
+              <div class="calendar-hours" id="calendarHours"></div>
+              <div class="calendar-week-grid" id="calendarWeekGrid"></div>
             </div>
             <textarea id="dailyNotesInput" class="daily-notes-input" placeholder="メモ"></textarea>
           </div>
+          <div class="calendar-unplanned" id="calendarUnscheduledRow"></div>
           <div class="calendar-unplanned" id="calendarUnplannedBox">
             <span class="calendar-unplanned-title">タスク</span>
             <div class="calendar-unplanned-list" id="calendarUnplannedList"></div>

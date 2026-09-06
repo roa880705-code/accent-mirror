@@ -1339,7 +1339,7 @@ body {
 .briefing-memo-input {
   flex: 1;
   min-width: 0;
-  height: 96px;
+  height: 75px;
   resize: none;
   text-align: left;
   font-family: inherit;
@@ -1438,8 +1438,20 @@ body {
 /* day title: separate from any plan/task on the date, so it's shown filled
    solid to read as a title, sitting right under the date and above the
    scrollable hour grid below it */
-.calendar-day-header .cdh-title {
+/* 日付タイトルは複数登録できるので、下部のタスクトレイと同じ横スクロール
+   のチップ列として並べる。日付ヘッダー自体は幅が限られる(特にウィーク
+   リーの7列)ので、ネイティブスクロールで見せる。 */
+.cdh-titles {
   max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow-x: auto;
+  padding: 1px 0;
+}
+
+.cdh-title-chip {
+  flex: none;
   box-sizing: border-box;
   padding: 2px 7px;
   border-radius: 999px;
@@ -1448,15 +1460,19 @@ body {
   color: #fff;
   background: var(--accent);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  cursor: pointer;
 }
 
-.calendar-day-header .cdh-title.empty {
-  background: transparent;
+.cdh-title-add {
+  all: unset;
+  flex: none;
+  box-sizing: border-box;
+  padding: 1px 6px;
+  border-radius: 999px;
   border: 1.5px dashed var(--line);
   color: var(--muted);
-  padding: 1px 6px;
+  font-size: 0.58rem;
+  cursor: pointer;
 }
 
 .calendar-day-header .cdh-dot {
@@ -1557,7 +1573,7 @@ body {
 /* デイリーの時間軸グリッド(#calendarWeekBody、スクロールする)と、その
    右のメモ欄をこの行で横に並べる。メモ欄はこの行の外にある
    calendar-week-body の内部スクロールに巻き込まれず、画面に見えている
-   範囲の高さで固定される。 */
+   範囲の高さで固定される(=下の今日中トレイの高さは含まない)。 */
 .calendar-schedule-row {
   flex: 1;
   min-height: 0;
@@ -1565,12 +1581,12 @@ body {
   gap: 8px;
 }
 
-.calendar-schedule-left {
+/* IDセレクタで .calendar-week-body の flex-basis だけデイリー側に上書き
+   (メモ欄より2文字分ぶん広く配分)。ウィークリー側の#weeklyWeekBodyは
+   同じ行に他の兄弟を持たない一人っ子なので、基準値に関わらずflex-grow:1
+   で常に行の幅いっぱいに広がり、この上書きの影響を受けない。 */
+#calendarWeekBody {
   flex: 1 1 calc(50% + 32px);
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
 }
 
 .daily-notes-input {
@@ -1785,7 +1801,6 @@ body {
   box-sizing: border-box;
   display: inline-block;
   flex: none;
-  max-width: 120px;
   padding: 5px 10px;
   border-radius: 999px;
   font-size: 0.65rem;
@@ -1839,9 +1854,13 @@ body {
    lives here instead */
 .cal-unplanned-chip-label {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 最優先トレイのチップはドラッグでの並べ替えを持たない、タップのみの
+   フラットな置き場なので、掴めることを示すgrabカーソルは出さない。 */
+#calendarPriorityList .cal-unplanned-chip {
+  cursor: pointer;
 }
 
 /* small corner badge on every いつか/子/孫 task (not ひ孫, always a leaf)
@@ -2066,6 +2085,20 @@ body {
   justify-content: center;
   font-size: 0.58rem;
   color: var(--muted);
+}
+
+/* デイリー専用の「今日中」トレイ(#calendarUnscheduledRow、class=
+   calendar-unplanned)では、列を持たず下部のタスクと同じ横スクロール
+   チップ列として並べるので、ウィークリー側(.cal-unscheduled-day内、
+   縦積みの短冊)とは見た目を変える。クラス名自体はドラッグ関連の
+   JS(armed/dragging等)を共有するためそのまま。 */
+.calendar-unplanned .cal-unscheduled-row {
+  height: auto;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  font-size: 0.65rem;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .calendar-detail {

@@ -13,6 +13,7 @@
   const DAY_TITLES_KEY = "todoStopwatch:dayTitles:v1";
   const BRIEFING_MEMO_KEY = "todoStopwatch:briefingMemo:v1";
   const DAILY_NOTES_KEY = "todoStopwatch:dailyNotes:v1";
+  const PRIORITY_TASKS_KEY = "todoStopwatch:priorityTasks:v1";
   // 端末ローカルの表示設定(今のところ同期はしない)。
   const PERIOD_SETTINGS_KEY = "todoStopwatch:periodSettings:v1";
   const MAX_HISTORY = 60;
@@ -180,6 +181,22 @@
     return {};
   }
 
+  // 「最優先」タスク: デイリーページ限定、日付ごとにフラットな(階層を
+  // 持たない)リストを持つ。いつか/子/孫/ひ孫の末端タスクをこのトレイへ
+  // ドロップすると、そちらから外れてここに移る(あるいは"+"から直接追加)。
+  function loadPriorityTasks() {
+    try {
+      const raw = localStorage.getItem(PRIORITY_TASKS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      // corrupt storage, fall through to empty
+    }
+    return {};
+  }
+
   // 学校の時限表示のデフォルト: 8-9時を0限、9-13時を1-4限、13-14時は
   // 昼休みで表示なし、14-20時を5-10限として、各時間枠の開始時に振る。
   // 設定ページ(時限表示のオン/オフ、各時限ごとの記号・開始時刻・
@@ -247,6 +264,7 @@
   // 自由記述メモ。どちらも表示中の日付(dateStr)をキーに持つ。
   let briefingMemos = loadBriefingMemos();
   let dailyNotes = loadDailyNotes();
+  let priorityTasks = loadPriorityTasks();
   let periodSettings = loadPeriodSettings();
 
   function saveState() {
@@ -289,6 +307,20 @@
     window.AppSync?.markDirty("dailyNotes:v1", dailyNotes);
   }
 
+  function savePriorityTasks() {
+    localStorage.setItem(PRIORITY_TASKS_KEY, JSON.stringify(priorityTasks));
+    window.AppSync?.markDirty("priorityTasks:v1", priorityTasks);
+  }
+
+  function priorityTasksForDate(dateStr) {
+    return priorityTasks[dateStr] || [];
+  }
+
+  function ensurePriorityTasksArrayForDate(dateStr) {
+    if (!priorityTasks[dateStr]) priorityTasks[dateStr] = [];
+    return priorityTasks[dateStr];
+  }
+
   // 端末ごとの表示設定なので、他の設定と違いデバイス間の同期はしない
   // (markDirtyを呼ばない)。
   function savePeriodSettings() {
@@ -302,13 +334,6 @@
     if (Array.isArray(v)) return v;
     if (typeof v === "string" && v) return [v];
     return [];
-  }
-
-  // ウィークリー/デイリーの日付ヘッダーは表示スペースが限られるので、
-  // 最初の1件だけを表示・編集する(複数タイトルの追加/個別編集はマンスリー
-  // 側でのみ行う)。
-  function primaryDayTitleFor(dateStr) {
-    return dayTitlesFor(dateStr)[0] || "";
   }
 
   async function addDayTitle(dateStr) {
@@ -333,11 +358,6 @@
     else delete dayTitles[dateStr];
     saveDayTitles();
     renderCalendar();
-  }
-
-  function editPrimaryDayTitle(dateStr) {
-    if (dayTitlesFor(dateStr).length) editDayTitleAt(dateStr, 0);
-    else addDayTitle(dateStr);
   }
 
   // viewingDate is the date currently shown in the タスク list. It usually
@@ -555,6 +575,10 @@
   let calendarUnplannedBox = dailyUnplannedBoxEl;
   const calendarUnplannedList = document.getElementById("calendarUnplannedList");
   const calendarSomedayAddBtn = document.getElementById("calendarSomedayAddBtn");
+  // 最優先タスク欄(デイリーページ限定、階層を持たないフラットなトレイ)
+  const calendarPriorityBox = document.getElementById("calendarPriorityBox");
+  const calendarPriorityList = document.getElementById("calendarPriorityList");
+  const calendarPriorityAddBtn = document.getElementById("calendarPriorityAddBtn");
   const calendarSubtaskBox = document.getElementById("calendarSubtaskBox");
   const calendarSubtaskList = document.getElementById("calendarSubtaskList");
   const calendarGrandchildBox = document.getElementById("calendarGrandchildBox");
@@ -1937,6 +1961,18 @@
     renderCalendar();
   }
 
+  function rectContains(rect, x, y) {
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  }
+
+  // ウィークリーは日付ごとの列(.cal-unscheduled-day)を、列を持たない
+  // デイリーの「今日中」トレイ(calendarUnscheduledRow自身、
+  // dataset.dateが表示中の唯一の日付)は空配列を返す — 呼び出し側は、
+  // これが空なら calendarUnscheduledRow 自身を1つのゾーンとして扱う。
+  function unscheduledZoneCols() {
+    return Array.from(calendarUnscheduledRow.children).filter((c) => c.classList.contains("cal-unscheduled-day"));
+  }
+
   // --- plan drag-to-move ---
 
   let planDragCtx = null;
@@ -2024,29 +2060,31 @@
       planDragCtx.overDayUnscheduled = false;
       Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
       Array.from(calendarUnscheduledRow.children).forEach((c) => c.classList.remove("drop-target"));
+      calendarUnscheduledRow.classList.remove("drop-target");
       return;
     }
 
     // 「時間未定」への割り当て判定: 時間軸グリッドとは別の、常時表示の
-    // 専用行(calendarUnscheduledRow)の、この予定と同じ日付の列だけを見る
+    // 専用行(calendarUnscheduledRow)の、この予定と同じ日付の列だけを見る。
+    // 列を持たないデイリーの「今日中」トレイでは、列の代わりにトレイ自身
+    // (dataset.dateが表示中の唯一の日付)を対象にする。
     let overDayUnscheduled = false;
-    const unschedCols = Array.from(calendarUnscheduledRow.children).filter((c) =>
-      c.classList.contains("cal-unscheduled-day")
-    );
-    for (const col of unschedCols) {
-      if (col.dataset.date !== planDragCtx.dateStr) continue;
-      const rect = col.getBoundingClientRect();
-      if (
-        e.clientX >= rect.left &&
-        e.clientX <= rect.right &&
-        e.clientY >= rect.top &&
-        e.clientY <= rect.bottom
-      ) {
-        overDayUnscheduled = true;
-        break;
+    const unschedCols = unscheduledZoneCols();
+    if (unschedCols.length) {
+      for (const col of unschedCols) {
+        if (col.dataset.date !== planDragCtx.dateStr) continue;
+        if (rectContains(col.getBoundingClientRect(), e.clientX, e.clientY)) {
+          overDayUnscheduled = true;
+          break;
+        }
       }
+      unschedCols.forEach((c) => c.classList.toggle("drop-target", overDayUnscheduled && c.dataset.date === planDragCtx.dateStr));
+    } else {
+      overDayUnscheduled =
+        calendarUnscheduledRow.dataset.date === planDragCtx.dateStr &&
+        rectContains(calendarUnscheduledRow.getBoundingClientRect(), e.clientX, e.clientY);
+      calendarUnscheduledRow.classList.toggle("drop-target", overDayUnscheduled);
     }
-    unschedCols.forEach((c) => c.classList.toggle("drop-target", overDayUnscheduled && c.dataset.date === planDragCtx.dateStr));
     planDragCtx.overDayUnscheduled = overDayUnscheduled;
     if (overDayUnscheduled) {
       Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
@@ -2107,6 +2145,7 @@
     calendarUnplannedBox.classList.remove("drop-target");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
     Array.from(calendarUnscheduledRow.children).forEach((c) => c.classList.remove("drop-target"));
+    calendarUnscheduledRow.classList.remove("drop-target");
     planDragCtx = null;
 
     if (scrolling) return; // was just scrolling the grid past this block
@@ -3173,6 +3212,75 @@
     renderCalendar();
   }
 
+  // --- 最優先タスク欄(デイリーページ限定): いつか/子/孫/ひ孫の末端タスク
+  // をここへドロップすると、階層から外れてフラットな1件として移ってくる。
+  // ここでの並び順に意味はなく、子タスク追加のような掘り下げもない —
+  // タップは常に変更修正/削除の二択だけ。 ---
+
+  function renderPriorityBox() {
+    const dateStr = weekAnchor;
+    calendarPriorityBox.hidden = dateStr < state.day;
+    if (calendarPriorityBox.hidden) return;
+
+    calendarPriorityList.innerHTML = "";
+    const tasks = priorityTasksForDate(dateStr);
+    if (!tasks.length) {
+      const empty = document.createElement("span");
+      empty.className = "calendar-unplanned-empty";
+      empty.textContent = "最優先のタスクなし";
+      calendarPriorityList.appendChild(empty);
+      return;
+    }
+    tasks.forEach((task) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "cal-unplanned-chip";
+      const label = document.createElement("span");
+      label.className = "cal-unplanned-chip-label";
+      label.textContent = task.label;
+      chip.appendChild(label);
+      chip.addEventListener("click", (e) => {
+        e.stopPropagation();
+        promptPriorityTaskEdit(dateStr, task);
+      });
+      calendarPriorityList.appendChild(chip);
+    });
+  }
+
+  function promptPriorityTaskEdit(dateStr, task) {
+    openTaskChoiceModal(task, { showAddChild: false }).then((choice) => {
+      if (choice === "edit") {
+        openNameModal(task.label).then((name) => {
+          if (name === null) return;
+          const label = name.trim();
+          if (!label) return;
+          task.label = label;
+          savePriorityTasks();
+          renderPriorityBox();
+        });
+      } else if (choice === "delete") {
+        const list = priorityTasksForDate(dateStr);
+        const idx = list.indexOf(task);
+        if (idx >= 0) list.splice(idx, 1);
+        savePriorityTasks();
+        renderPriorityBox();
+      }
+    });
+  }
+
+  async function addPriorityTask() {
+    const name = await openNameModal("");
+    if (name === null) return;
+    const label = name.trim();
+    if (!label) return;
+    const list = ensurePriorityTasksArrayForDate(weekAnchor);
+    list.push({ id: `priority_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label });
+    savePriorityTasks();
+    renderPriorityBox();
+  }
+
+  calendarPriorityAddBtn.addEventListener("click", addPriorityTask);
+
   let somedayDragCtx = null;
 
   function startSomedayChipDrag(e, chip, task) {
@@ -3306,31 +3414,35 @@
       }
 
       // 「時間未定」への割り当て判定: 時間軸グリッドとは別の、常時表示の
-      // 専用行(calendarUnscheduledRow)の各列を独立してチェックする
+      // 専用行(calendarUnscheduledRow)の各列を独立してチェックする。
+      // 列を持たないデイリーの「今日中」トレイでは、列の代わりにトレイ
+      // 自身(dataset.dateが表示中の唯一の日付)を対象にする。
+      const unschedCols = unscheduledZoneCols();
       if (!targetCol) {
-        const unschedCols = Array.from(calendarUnscheduledRow.children).filter((c) =>
-          c.classList.contains("cal-unscheduled-day")
-        );
-        for (const col of unschedCols) {
-          if (col.dataset.date < state.day) continue;
-          const rect = col.getBoundingClientRect();
-          if (
-            e.clientX >= rect.left &&
-            e.clientX <= rect.right &&
-            e.clientY >= rect.top &&
-            e.clientY <= rect.bottom
-          ) {
-            targetCol = col;
-            overZone = true;
-            break;
+        if (unschedCols.length) {
+          for (const col of unschedCols) {
+            if (col.dataset.date < state.day) continue;
+            if (rectContains(col.getBoundingClientRect(), e.clientX, e.clientY)) {
+              targetCol = col;
+              overZone = true;
+              break;
+            }
           }
+        } else if (
+          calendarUnscheduledRow.dataset.date >= state.day &&
+          rectContains(calendarUnscheduledRow.getBoundingClientRect(), e.clientX, e.clientY)
+        ) {
+          targetCol = calendarUnscheduledRow;
+          overZone = true;
         }
       }
 
       cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol && !overZone));
-      Array.from(calendarUnscheduledRow.children).forEach((c) =>
-        c.classList.toggle("drop-target", c === targetCol && overZone)
-      );
+      if (unschedCols.length) {
+        unschedCols.forEach((c) => c.classList.toggle("drop-target", c === targetCol && overZone));
+      } else {
+        calendarUnscheduledRow.classList.toggle("drop-target", targetCol === calendarUnscheduledRow);
+      }
       ctx.targetCol = targetCol;
       ctx.overZone = overZone;
       ctx.clientY = e.clientY;
@@ -3374,6 +3486,18 @@
       monthlyCells.forEach((c) => c.classList.toggle("drop-target", c === targetMonthlyCell));
       ctx.targetMonthlyCell = targetMonthlyCell;
       if (targetMonthlyCell) return;
+
+      // Still nothing — we may be over デイリー専用の「最優先」トレイ(階層
+      // を持たないフラットな置き場)。表示中の日付が今日以降のときだけ
+      // ドロップ先として有効。
+      let targetPriorityList = false;
+      if (weekAnchor >= state.day) {
+        const priorityRect = calendarPriorityBox.getBoundingClientRect();
+        targetPriorityList = rectContains(priorityRect, e.clientX, e.clientY);
+      }
+      calendarPriorityBox.classList.toggle("drop-target", targetPriorityList);
+      ctx.targetPriorityList = targetPriorityList;
+      if (targetPriorityList) return;
 
       // Still nothing — we may be on the ログ page instead, where dropping
       // onto the task list adds it as a plain task with no time set, same
@@ -3431,7 +3555,9 @@
     ctx.chip.classList.remove("armed");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
     Array.from(document.querySelectorAll(".cal-unscheduled-day.drop-target")).forEach((z) => z.classList.remove("drop-target"));
+    calendarUnscheduledRow.classList.remove("drop-target");
     Array.from(document.querySelectorAll(".monthly-cell.drop-target")).forEach((c) => c.classList.remove("drop-target"));
+    calendarPriorityBox.classList.remove("drop-target");
     listWrap.classList.remove("drop-target");
     clearDragPreview();
     clearDragGhost();
@@ -3458,7 +3584,7 @@
     if (ctx.phase === "schedule") {
       ctx.chip.classList.remove("dragging");
       somedayDragCtx = null;
-      const { task, targetCol, targetMonthlyCell, targetTaskList, clientY, overZone } = ctx;
+      const { task, targetCol, targetMonthlyCell, targetTaskList, targetPriorityList, clientY, overZone } = ctx;
 
       if (targetMonthlyCell) {
         // マンスリーには時間軸がないので、常にその日の「時間未定」リストへ。
@@ -3487,6 +3613,20 @@
         ensureItemsArrayForDate(dateStr).push(item);
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
+        removeSomedayTaskPromotingChildren(task.id);
+        saveSomeday();
+        vibrate(20);
+        renderCalendar();
+        return;
+      }
+
+      if (targetPriorityList) {
+        // 最優先トレイへ落とした場合は、階層から完全に外れてフラットな
+        // 最優先タスクとして移る(子タスクがあれば通常の昇格処理で救う)。
+        const dateStr = weekAnchor;
+        const list = ensurePriorityTasksArrayForDate(dateStr);
+        list.push({ id: `priority_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: task.label });
+        savePriorityTasks();
         removeSomedayTaskPromotingChildren(task.id);
         saveSomeday();
         vibrate(20);
@@ -3710,6 +3850,7 @@
       calendarWeekLabel.textContent = `${start.getMonth() + 1}/${start.getDate()}(${WEEKDAYS[start.getDay()]})`;
       briefingMemoInput.value = briefingMemos[weekAnchor] || "";
       dailyNotesInput.value = dailyNotes[weekAnchor] || "";
+      renderPriorityBox();
     } else {
       calendarWeekLabel.textContent = `${start.getMonth() + 1}/${start.getDate()} 〜 ${end.getMonth() + 1}/${end.getDate()}`;
     }
@@ -3757,18 +3898,33 @@
       dateEl.textContent = String(d.getDate());
       header.append(weekdayEl, dateEl);
 
-      // day title: a label on the date itself, separate from any plan or
-      // task placed on it — shown right under the date, above the time grid
-      const titleEl = document.createElement("span");
-      const dayTitle = primaryDayTitleFor(dateStr);
-      titleEl.className = dayTitle ? "cdh-title" : "cdh-title empty";
-      titleEl.textContent = dayTitle || "+";
-      titleEl.title = dayTitle ? "タップしてタイトルを編集" : "タップして日付にタイトルを追加";
-      titleEl.addEventListener("click", (e) => {
-        e.stopPropagation();
-        editPrimaryDayTitle(dateStr);
+      // day title: 複数登録できるので、マンスリーの日付セルと同様に
+      // 「タスク」下部トレイのような横スクロールのチップ列として並べる —
+      // タップで各タイトルを編集、末尾の"+"で新規追加。
+      const titlesEl = document.createElement("div");
+      titlesEl.className = "cdh-titles";
+      const titles = dayTitlesFor(dateStr);
+      titles.forEach((title, idx) => {
+        const chip = document.createElement("span");
+        chip.className = "cdh-title-chip";
+        chip.textContent = title;
+        chip.title = "タップしてタイトルを編集";
+        chip.addEventListener("click", (e) => {
+          e.stopPropagation();
+          editDayTitleAt(dateStr, idx);
+        });
+        titlesEl.appendChild(chip);
       });
-      header.appendChild(titleEl);
+      const addTitleBtn = document.createElement("span");
+      addTitleBtn.className = "cdh-title-add";
+      addTitleBtn.textContent = "+";
+      addTitleBtn.title = titles.length ? "タップしてタイトルを追加" : "タップして日付にタイトルを追加";
+      addTitleBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        addDayTitle(dateStr);
+      });
+      titlesEl.appendChild(addTitleBtn);
+      header.appendChild(titlesEl);
 
       const draft = drafts[dateStr];
       if (dateStr > state.day && draft && draft.length) {
@@ -3873,32 +4029,66 @@
     // その下の常時表示の行にまとめて描画する。列の横幅は各日の
     // calendar-day-col と揃うよう、同じ gutter+flex 構成を使う。
     calendarUnscheduledRow.innerHTML = "";
-    const unschedGutter = document.createElement("div");
-    unschedGutter.className = "cal-gutter-spacer";
-    calendarUnscheduledRow.appendChild(unschedGutter);
-    dayDates.forEach((dateStr) => {
-      const col = document.createElement("div");
-      col.className = "cal-unscheduled-day";
-      col.dataset.date = dateStr;
+    if (CAL_DAYS === 1) {
+      // デイリー専用の「今日中」トレイ: 表示中の1日しかないので列分けせず、
+      // 下部のタスクトレイと同じ横スクロールのチップ列として並べる。
+      // dataset.dateはドラッグ判定(findUnscheduledZone*)がこのトレイ全体を
+      // 「この日付のゾーン」として認識するために使う。
+      const dateStr = dayDates[0];
+      calendarUnscheduledRow.dataset.date = dateStr;
+      const title = document.createElement("span");
+      title.className = "calendar-unplanned-title";
+      title.textContent = "今日中";
+      calendarUnscheduledRow.appendChild(title);
+
+      const list = document.createElement("div");
+      list.className = "calendar-unplanned-list";
       if (dateStr >= state.day) {
         const unscheduledForDay = dayUnscheduled[dateStr];
         if (unscheduledForDay.length) {
           unscheduledForDay.forEach((item, idx) => {
-            const row = document.createElement("div");
-            row.className = "cal-unscheduled-row";
-            row.textContent = labelOf(item, `タスク${idx + 1}`);
-            row.addEventListener("pointerdown", (e) => startDayUnscheduledDrag(e, row, item, dateStr));
-            col.appendChild(row);
+            const chip = document.createElement("div");
+            chip.className = "cal-unscheduled-row";
+            chip.textContent = labelOf(item, `タスク${idx + 1}`);
+            chip.addEventListener("pointerdown", (e) => startDayUnscheduledDrag(e, chip, item, dateStr));
+            list.appendChild(chip);
           });
         } else {
           const empty = document.createElement("span");
-          empty.className = "cal-unscheduled-empty";
+          empty.className = "calendar-unplanned-empty";
           empty.textContent = "時間未定のタスクなし";
-          col.appendChild(empty);
+          list.appendChild(empty);
         }
       }
-      calendarUnscheduledRow.appendChild(col);
-    });
+      calendarUnscheduledRow.appendChild(list);
+    } else {
+      const unschedGutter = document.createElement("div");
+      unschedGutter.className = "cal-gutter-spacer";
+      calendarUnscheduledRow.appendChild(unschedGutter);
+      dayDates.forEach((dateStr) => {
+        const col = document.createElement("div");
+        col.className = "cal-unscheduled-day";
+        col.dataset.date = dateStr;
+        if (dateStr >= state.day) {
+          const unscheduledForDay = dayUnscheduled[dateStr];
+          if (unscheduledForDay.length) {
+            unscheduledForDay.forEach((item, idx) => {
+              const row = document.createElement("div");
+              row.className = "cal-unscheduled-row";
+              row.textContent = labelOf(item, `タスク${idx + 1}`);
+              row.addEventListener("pointerdown", (e) => startDayUnscheduledDrag(e, row, item, dateStr));
+              col.appendChild(row);
+            });
+          } else {
+            const empty = document.createElement("span");
+            empty.className = "cal-unscheduled-empty";
+            empty.textContent = "時間未定のタスクなし";
+            col.appendChild(empty);
+          }
+        }
+        calendarUnscheduledRow.appendChild(col);
+      });
+    }
 
     tickCalendarLive();
 
@@ -4383,7 +4573,7 @@
   // text inputs (whose native drag-to-select must not be hijacked).
   const SWIPE_NAV_EXCLUDE =
     ".calendar-day-col, .row-handle, .cal-unplanned-chip, .cal-plan-block, " +
-    ".cal-plan-resize-handle, .cal-unscheduled-row, .calendar-unplanned, input, textarea";
+    ".cal-plan-resize-handle, .cal-unscheduled-row, .calendar-unplanned, .cdh-titles, input, textarea";
 
   function swipeToAdjacentPeriod(delta) {
     // delta: +1 = 次(未来)側, -1 = 前(過去)側
