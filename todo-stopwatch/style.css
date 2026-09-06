@@ -2054,6 +2054,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* matches .calendar-day-col's own border-left above, so the day
+     boundaries visually line up between the grid and this row */
+  border-left: 1px solid var(--line);
 }
 
 .cal-unscheduled-day.drop-target {

@@ -2014,6 +2014,22 @@
     planDragCtx.overUnplannedBox = overBox;
     if (overBox) {
       planDragCtx.overDayUnscheduled = false;
+      planDragCtx.overPriorityBox = false;
+      Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+      Array.from(calendarUnscheduledRow.children).forEach((c) => c.classList.remove("drop-target"));
+      calendarUnscheduledRow.classList.remove("drop-target");
+      calendarPriorityBox.classList.remove("drop-target");
+      return;
+    }
+
+    // デイリー限定の「最優先」トレイへドロップした場合は、スケジュールを
+    // 外してフラットな最優先タスクへ変える(過去の日はこの箱自体が非表示
+    // なので、rectが取れずここには来ない)。
+    const overPriorityBox = rectContains(calendarPriorityBox.getBoundingClientRect(), e.clientX, e.clientY);
+    calendarPriorityBox.classList.toggle("drop-target", overPriorityBox);
+    planDragCtx.overPriorityBox = overPriorityBox;
+    if (overPriorityBox) {
+      planDragCtx.overDayUnscheduled = false;
       Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
       Array.from(calendarUnscheduledRow.children).forEach((c) => c.classList.remove("drop-target"));
       calendarUnscheduledRow.classList.remove("drop-target");
@@ -2092,13 +2108,14 @@
 
   function onPlanDragEnd(e) {
     if (!planDragCtx) return;
-    const { block, dateStr, plan, duration, moved, scrolling, timer, hoverDate, previewStartMin, overUnplannedBox, overDayUnscheduled } = planDragCtx;
+    const { block, dateStr, plan, duration, moved, scrolling, timer, hoverDate, previewStartMin, overUnplannedBox, overDayUnscheduled, overPriorityBox } = planDragCtx;
     if (timer) clearTimeout(timer);
     document.removeEventListener("pointermove", onPlanDragMove);
     document.removeEventListener("pointerup", onPlanDragEnd);
     document.removeEventListener("pointercancel", onPlanDragEnd);
     block.classList.remove("dragging", "armed");
     calendarUnplannedBox.classList.remove("drop-target");
+    calendarPriorityBox.classList.remove("drop-target");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
     Array.from(calendarUnscheduledRow.children).forEach((c) => c.classList.remove("drop-target"));
     calendarUnscheduledRow.classList.remove("drop-target");
@@ -2112,6 +2129,30 @@
     }
 
     captureUndoSnapshot();
+
+    if (overPriorityBox) {
+      // 最優先は常にplanIdなしのフラットなitemという前提(最優先チップ側の
+      // スケジュール変換と対称)なので、外した予定は削除してitemを最優先
+      // フラグ付きに戻す。
+      vibrate(20);
+      removePlan(dateStr, plan.id);
+      const items = itemsArrayForDate(dateStr);
+      const idx = items.findIndex((it) => it.planId === plan.id);
+      if (idx >= 0) {
+        items[idx].planId = null;
+        items[idx].priority = true;
+      } else {
+        // a plan with no linked item becomes a fresh 最優先 item
+        const item = freshItem(plan.label);
+        item.priority = true;
+        items.push(item);
+      }
+      sortItemsByPlan(dateStr);
+      persistItemsForDate(dateStr);
+      refreshTimerIfShowing(dateStr);
+      renderCalendar();
+      return;
+    }
 
     if (overDayUnscheduled) {
       // send it back to this same day's own "time undetermined" list — the
