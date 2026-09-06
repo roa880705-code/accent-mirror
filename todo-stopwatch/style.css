@@ -422,6 +422,83 @@ body {
   color: var(--muted);
 }
 
+.settings-section-note {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.settings-toggle-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.period-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.period-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.period-symbol-input {
+  width: 44px;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 6px;
+  padding: 5px 6px;
+  text-align: center;
+}
+
+.period-hour-select {
+  flex: none;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 6px;
+  padding: 5px 6px;
+}
+
+.period-delete-btn {
+  all: unset;
+  box-sizing: border-box;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.period-delete-btn:hover {
+  color: var(--danger);
+}
+
 /* --- sidework bar (fixed, top of timer tab) --- */
 
 .sidework-bar {

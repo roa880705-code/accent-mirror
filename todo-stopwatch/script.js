@@ -13,6 +13,8 @@
   const DAY_TITLES_KEY = "todoStopwatch:dayTitles:v1";
   const BRIEFING_MEMO_KEY = "todoStopwatch:briefingMemo:v1";
   const DAILY_NOTES_KEY = "todoStopwatch:dailyNotes:v1";
+  // 端末ローカルの表示設定(今のところ同期はしない)。
+  const PERIOD_SETTINGS_KEY = "todoStopwatch:periodSettings:v1";
   const MAX_HISTORY = 60;
   const MAX_COUNT = 40;
   const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
@@ -175,6 +177,46 @@
     return {};
   }
 
+  // 学校の時限表示のデフォルト: 8-9時を0限、9-13時を1-4限、13-14時は
+  // 昼休みで表示なし、14-20時を5-10限として、各時間枠の開始時に振る。
+  // 設定ページ(時限表示のオン/オフ、各時限の記号と開始時刻)で編集できる。
+  const DEFAULT_PERIOD_SETTINGS = {
+    enabled: true,
+    periods: [
+      { hour: 8, symbol: "0" },
+      { hour: 9, symbol: "1" },
+      { hour: 10, symbol: "2" },
+      { hour: 11, symbol: "3" },
+      { hour: 12, symbol: "4" },
+      { hour: 14, symbol: "5" },
+      { hour: 15, symbol: "6" },
+      { hour: 16, symbol: "7" },
+      { hour: 17, symbol: "8" },
+      { hour: 18, symbol: "9" },
+      { hour: 19, symbol: "10" },
+    ],
+  };
+
+  function loadPeriodSettings() {
+    try {
+      const raw = localStorage.getItem(PERIOD_SETTINGS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && Array.isArray(parsed.periods)) {
+          return {
+            enabled: parsed.enabled !== false,
+            periods: parsed.periods
+              .filter((p) => p && Number.isFinite(p.hour))
+              .map((p) => ({ hour: Math.max(0, Math.min(23, Math.round(p.hour))), symbol: String(p.symbol ?? "") })),
+          };
+        }
+      }
+    } catch (e) {
+      // corrupt storage, fall through to defaults
+    }
+    return { enabled: true, periods: DEFAULT_PERIOD_SETTINGS.periods.map((p) => ({ ...p })) };
+  }
+
   let state = loadState();
   let history = loadHistory();
   let drafts = loadDrafts();
@@ -187,6 +229,7 @@
   // 自由記述メモ。どちらも表示中の日付(dateStr)をキーに持つ。
   let briefingMemos = loadBriefingMemos();
   let dailyNotes = loadDailyNotes();
+  let periodSettings = loadPeriodSettings();
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -226,6 +269,12 @@
   function saveDailyNotes() {
     localStorage.setItem(DAILY_NOTES_KEY, JSON.stringify(dailyNotes));
     window.AppSync?.markDirty("dailyNotes:v1", dailyNotes);
+  }
+
+  // 端末ごとの表示設定なので、他の設定と違いデバイス間の同期はしない
+  // (markDirtyを呼ばない)。
+  function savePeriodSettings() {
+    localStorage.setItem(PERIOD_SETTINGS_KEY, JSON.stringify(periodSettings));
   }
 
   function dayTitleFor(dateStr) {
@@ -414,6 +463,9 @@
   const totalTimeEl = document.getElementById("totalTime");
   const resetAllBtn = document.getElementById("resetAllBtn");
   const syncBtn = document.getElementById("syncBtn");
+  const periodEnabledToggle = document.getElementById("periodEnabledToggle");
+  const periodSettingsList = document.getElementById("periodSettingsList");
+  const periodAddBtn = document.getElementById("periodAddBtn");
   const appHeaderEl = document.querySelector(".app-header");
   const breakdownEl = document.getElementById("breakdown");
   const historyEl = document.getElementById("history");
@@ -1026,6 +1078,78 @@
     }
   }
 
+  // --- 設定ページ: 時限表示 ---
+
+  function renderPeriodSettingsUI() {
+    periodEnabledToggle.checked = periodSettings.enabled;
+    periodSettingsList.innerHTML = "";
+    periodSettings.periods.forEach((period, idx) => {
+      const row = document.createElement("div");
+      row.className = "period-row";
+
+      const symbolInput = document.createElement("input");
+      symbolInput.type = "text";
+      symbolInput.className = "period-symbol-input";
+      symbolInput.maxLength = 3;
+      symbolInput.value = period.symbol;
+      symbolInput.setAttribute("aria-label", "時限の表示記号");
+      symbolInput.addEventListener("change", () => {
+        period.symbol = symbolInput.value;
+        savePeriodSettings();
+        refreshCalendarHours();
+      });
+
+      const hourSelect = document.createElement("select");
+      hourSelect.className = "period-hour-select";
+      hourSelect.setAttribute("aria-label", "時限の開始時刻");
+      for (let h = 0; h < 24; h++) {
+        const opt = document.createElement("option");
+        opt.value = String(h);
+        opt.textContent = `${h}:00`;
+        if (h === period.hour) opt.selected = true;
+        hourSelect.appendChild(opt);
+      }
+      hourSelect.addEventListener("change", () => {
+        period.hour = Number(hourSelect.value);
+        periodSettings.periods.sort((a, b) => a.hour - b.hour);
+        savePeriodSettings();
+        renderPeriodSettingsUI();
+        refreshCalendarHours();
+      });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "period-delete-btn";
+      deleteBtn.setAttribute("aria-label", "この時限を削除");
+      deleteBtn.textContent = "×";
+      deleteBtn.addEventListener("click", () => {
+        periodSettings.periods.splice(idx, 1);
+        savePeriodSettings();
+        renderPeriodSettingsUI();
+        refreshCalendarHours();
+      });
+
+      row.append(symbolInput, hourSelect, deleteBtn);
+      periodSettingsList.appendChild(row);
+    });
+  }
+
+  periodEnabledToggle.addEventListener("change", () => {
+    periodSettings.enabled = periodEnabledToggle.checked;
+    savePeriodSettings();
+    refreshCalendarHours();
+  });
+
+  periodAddBtn.addEventListener("click", () => {
+    const lastHour = periodSettings.periods.length ? periodSettings.periods[periodSettings.periods.length - 1].hour : 7;
+    periodSettings.periods.push({ hour: Math.min(23, lastHour + 1), symbol: String(periodSettings.periods.length) });
+    savePeriodSettings();
+    renderPeriodSettingsUI();
+    refreshCalendarHours();
+  });
+
+  renderPeriodSettingsUI();
+
   // --- breakdown page ---
 
   function renderBreakdown() {
@@ -1132,21 +1256,6 @@
   // page is currently active without needing to know which one that is.
   let CAL_DAYS = 1;
   const CAL_PALETTE = ["#b8672a", "#3e8c4e", "#5b7596", "#a3651f", "#7a6ba8", "#3f7a75", "#ab3d3d", "#62744c"];
-  // 学校の時限表示: 8-9時を0限、9-13時を1-4限、13-14時は昼休みで表示なし、
-  // 14-20時を5-10限として、各時間枠の中央にマークする。
-  const PERIOD_LABELS = [
-    { hour: 8, symbol: "0" },
-    { hour: 9, symbol: "1" },
-    { hour: 10, symbol: "2" },
-    { hour: 11, symbol: "3" },
-    { hour: 12, symbol: "4" },
-    { hour: 14, symbol: "5" },
-    { hour: 15, symbol: "6" },
-    { hour: 16, symbol: "7" },
-    { hour: 17, symbol: "8" },
-    { hour: 18, symbol: "9" },
-    { hour: 19, symbol: "10" },
-  ];
 
   // Grid block positions are pixel-based (not %) because the grid's total
   // height isn't always exactly 24h anymore — it grows to fit today's
@@ -3682,13 +3791,21 @@
       label.textContent = `${h}:00`;
       hoursEl.appendChild(label);
     }
-    PERIOD_LABELS.forEach(({ hour, symbol }) => {
+    if (!periodSettings.enabled) return;
+    periodSettings.periods.forEach(({ hour, symbol }) => {
       const label = document.createElement("div");
       label.className = "cal-period-label";
       label.style.top = `${(hour + 0.5) * CAL_HOUR_H}px`;
       label.textContent = symbol;
       hoursEl.appendChild(label);
     });
+  }
+
+  // 設定ページで時限表示のオン/オフや各時限を編集した後、両ページ
+  // (デイリー/ウィークリー)の時間軸ラベルを一括で作り直す。
+  function refreshCalendarHours() {
+    initCalendarHours(dailyHoursEl);
+    initCalendarHours(weeklyHoursEl);
   }
 
   // --- monthly calendar page (Monday-start; exactly the weeks the current
