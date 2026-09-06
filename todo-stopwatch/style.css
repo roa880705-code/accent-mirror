@@ -25,6 +25,8 @@
   --tab-history-soft: #e3e9da;
   --tab-tasklist: #a24b6f;
   --tab-tasklist-soft: #f1dde6;
+  --tab-settings: #5c6558;
+  --tab-settings-soft: #e3e5e0;
   --daycycle-night: #d8d8dd;
   --daycycle-morning: #f7ddc0;
   --daycycle-day: #f8f0bf;
@@ -58,6 +60,8 @@
   --tab-history-soft: #262f1c;
   --tab-tasklist: #d98fb0;
   --tab-tasklist-soft: #3a2230;
+  --tab-settings: #93a08c;
+  --tab-settings-soft: #232a20;
   --daycycle-night: #191f1a;
   --daycycle-morning: #3a2c1c;
   --daycycle-day: #38381d;
@@ -92,6 +96,8 @@
     --tab-history-soft: #262f1c;
     --tab-tasklist: #d98fb0;
     --tab-tasklist-soft: #3a2230;
+    --tab-settings: #93a08c;
+    --tab-settings-soft: #232a20;
     --daycycle-night: #191f1a;
     --daycycle-morning: #3a2c1c;
     --daycycle-day: #38381d;
@@ -260,26 +266,6 @@ body {
   gap: 6px;
 }
 
-.settings-btn {
-  all: unset;
-  flex: 0.5;
-  box-sizing: border-box;
-  text-align: center;
-  padding: clamp(4px, 1vh, 7px) 4px;
-  border-radius: 7px;
-  font-size: clamp(0.68rem, 1.5vw, 0.8rem);
-  font-weight: 600;
-  color: var(--muted);
-  cursor: pointer;
-  background: var(--panel);
-  border: 1.5px solid var(--panel-line);
-}
-
-.settings-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
 .tab-btn {
   all: unset;
   flex: 1;
@@ -323,6 +309,12 @@ body {
   background: var(--tab-tasklist-soft);
   color: var(--tab-tasklist);
   border-color: var(--tab-tasklist);
+}
+
+.tab-btn.tab-settings.active {
+  background: var(--tab-settings-soft);
+  color: var(--tab-settings);
+  border-color: var(--tab-settings);
 }
 
 .tab-btn:focus-visible {
@@ -394,6 +386,40 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* --- 設定ページ: 最初はヘッダーに間借りしていたGoogle同期と全リセットを
+   移しただけの、素朴な縦積みのセクション一覧。今後、時限表示のオン/オフ
+   や時限の時間帯設定などをここに追加していく想定。 --- */
+
+.settings-page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 2.5vh, 20px);
+  padding: clamp(8px, 2vh, 16px) 4px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding-bottom: clamp(10px, 2.5vh, 20px);
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-section:last-child {
+  border-bottom: none;
+}
+
+.settings-section-title {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
 }
 
 /* --- sidework bar (fixed, top of timer tab) --- */

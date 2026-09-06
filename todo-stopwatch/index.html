@@ -9,7 +9,7 @@
 <body>
 <div class="wrap">
   <nav class="tabs" id="tabs">
-    <button class="settings-btn" type="button" id="settingsTabBtn">設定</button>
+    <button class="tab-btn tab-settings" type="button" id="settingsTabBtn">設定</button>
     <button class="tab-btn tab-tasklist" type="button">タスク</button>
     <button class="tab-btn tab-monthly" type="button">月</button>
     <button class="tab-btn tab-weekly" type="button">週</button>
@@ -23,17 +23,27 @@
       <span id="draftBadge" class="draft-badge" hidden>下書き編集中</span>
     </div>
     <div class="header-right">
-      <button id="syncBtn" class="btn btn-sync" type="button" hidden></button>
       <div class="total-panel">
         <span class="caption">合計</span>
         <span class="value" id="totalTime">00:00:00</span>
       </div>
-      <button id="resetAllBtn" class="btn btn-reset-all">全リセット</button>
     </div>
   </header>
 
   <div class="pages" id="pages">
     <div class="pages-track" id="pagesTrack">
+      <section class="page">
+        <div class="settings-page">
+          <div class="settings-section">
+            <h2 class="settings-section-title">アカウント</h2>
+            <button id="syncBtn" class="btn btn-sync" type="button" hidden></button>
+          </div>
+          <div class="settings-section">
+            <h2 class="settings-section-title">データ</h2>
+            <button id="resetAllBtn" class="btn btn-reset-all" type="button">全リセット</button>
+          </div>
+        </div>
+      </section>
       <section class="page">
         <div class="tasklist-page">
           <div class="calendar-unplanned tasklist-box" id="tasklistUnplannedBox">

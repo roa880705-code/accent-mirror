@@ -3969,18 +3969,20 @@
   initMonthlyCalendar();
 
   // --- tabs / paging ---
-  // Page order: 0 タスク(縦一覧), 1 マンスリー, 2 ウィークリー, 3 デイリー,
-  // 4 ログ(タブ名は「ログ」、内部の命名は昔ながらの TASK_PAGE のまま)。
+  // Page order: 0 設定, 1 タスク(縦一覧), 2 マンスリー, 3 ウィークリー,
+  // 4 デイリー, 5 ログ(タブ名は「ログ」、内部の命名は昔ながらの
+  // TASK_PAGE のまま)。
   // Switching PAGES (tabs) is tap-only: goToPage() slides pagesTrack via a
   // CSS transform instead of relying on native horizontal scrolling. Swiping
   // left/right instead advances the content WITHIN whichever page is active
   // (next/prev month/week/day) — see the swipe-navigation block below.
 
-  const TASKLIST_PAGE = 0;
-  const MONTHLY_PAGE = 1;
-  const WEEKLY_PAGE = 2;
-  const DAILY_PAGE = 3;
-  const TASK_PAGE = 4;
+  const SETTINGS_PAGE = 0;
+  const TASKLIST_PAGE = 1;
+  const MONTHLY_PAGE = 2;
+  const WEEKLY_PAGE = 3;
+  const DAILY_PAGE = 4;
+  const TASK_PAGE = 5;
   const pagesTrack = document.getElementById("pagesTrack");
   const tabBtns = Array.from(document.querySelectorAll(".tab-btn"));
   let activePage = 0;
