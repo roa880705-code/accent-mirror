@@ -3799,9 +3799,15 @@
     }
 
     calendarWeekHeader.innerHTML = "";
-    const spacer = document.createElement("div");
-    spacer.className = "cal-gutter-spacer";
-    calendarWeekHeader.appendChild(spacer);
+    if (CAL_DAYS !== 1) {
+      // ウィークリーは下の時間軸グリッド(左に時刻のgutterがある)と日付列
+      // の横位置を揃えるための余白。デイリーはこの行がグリッドと揃う
+      // 必要のない独立した固定幅の列なので不要(付けると日付タイトルの
+      // 列がその分だけ右にずれてしまう)。
+      const spacer = document.createElement("div");
+      spacer.className = "cal-gutter-spacer";
+      calendarWeekHeader.appendChild(spacer);
+    }
 
     calendarWeekGrid.innerHTML = "";
     calendarLiveBlocks = [];
