@@ -2383,6 +2383,10 @@ body {
   padding: 4px 0;
 }
 
+.unscheduled-week-row[hidden] {
+  display: none;
+}
+
 .cal-unscheduled-day {
   box-sizing: border-box;
   flex: 1 1 0;
