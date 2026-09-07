@@ -1898,6 +1898,15 @@ body {
   color: #fff;
 }
 
+/* .cal-child-count-badge normally hangs slightly outside its container
+   (fine on the borderless いつか chip it was designed for), but .cal-plan-block
+   clips overflow for its own text ellipsis — so here it has to stay fully
+   inside the block's box instead, or that overflow:hidden cuts it off. */
+.cal-plan-block .cal-child-count-badge {
+  top: 1px;
+  right: 1px;
+}
+
 .cal-plan-resize-handle {
   position: absolute;
   z-index: 12;
@@ -2504,6 +2513,20 @@ body {
 .cal-plan-child-label.done {
   text-decoration: line-through;
   color: var(--muted);
+}
+
+.cal-plan-child-addsub {
+  flex: none;
+  border: 1px solid var(--line);
+  background: var(--card-bg);
+  color: var(--muted);
+  border-radius: 999px;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+  font-size: 0.68rem;
+  padding: 0;
+  cursor: pointer;
 }
 
 .cal-plan-child-remove {

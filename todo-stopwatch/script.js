@@ -2016,10 +2016,13 @@
     }
   }
 
-  // 予定にぶら下げる子タスク: 今はこのパネルからフラットに追加するだけ
-  // だが、要素の形(id/parentId)はいつかツリーと揃えてあるので、将来
-  // 「いつかの親タスクを子孫ごとスケジュールにはめ込む」機能が来た時に、
+  // 予定にぶら下げる子タスク: 要素の形(id/parentId)はいつかツリーと揃えて
+  // あり、深さも同じ3段(子/孫/ひ孫)まで対応しているので、将来「いつかの
+  // 親タスクを子孫ごとスケジュールにはめ込む」機能が来た時に、そのツリーを
   // そのままコピーしてこられる下地になっている。
+  const PLAN_CHILD_MAX_DEPTH = 3; // 子=1, 孫=2, ひ孫=3(いつかツリーのSOMEDAY_MAX_DEPTHと同じ深さ)
+  const PLAN_CHILD_LABELS = ["子タスク名を入力", "孫タスク名を入力", "ひ孫タスク名を入力"];
+
   function planLeafChildCount(plan) {
     const children = plan.children || [];
     if (!children.length) return 0;
@@ -2027,60 +2030,111 @@
     return children.filter((c) => !parentIds.has(c.id)).length;
   }
 
+  function planChildrenOf(plan, parentId) {
+    return (plan.children || []).filter((c) => (c.parentId || null) === parentId);
+  }
+
+  // 対象とその子孫(孫・ひ孫...)をまとめて削除する — いつかツリーの
+  // removeSomedayTaskAndDescendantsと同じ考え方。
+  function removePlanChildAndDescendants(plan, id) {
+    const idsToRemove = new Set([id]);
+    let added = true;
+    while (added) {
+      added = false;
+      (plan.children || []).forEach((c) => {
+        if (c.parentId && idsToRemove.has(c.parentId) && !idsToRemove.has(c.id)) {
+          idsToRemove.add(c.id);
+          added = true;
+        }
+      });
+    }
+    plan.children = (plan.children || []).filter((c) => !idsToRemove.has(c.id));
+  }
+
+  function addPlanChildToTree(plan, parentId, label) {
+    if (!plan.children) plan.children = [];
+    plan.children.push({
+      id: `planchild_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      label,
+      parentId,
+      done: false,
+    });
+  }
+
+  function appendPlanChildRows(section, dateStr, plan, child, depth) {
+    const row = document.createElement("div");
+    row.className = "cal-plan-child-row";
+    row.style.paddingLeft = `${(depth - 1) * 14}px`;
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.checked = !!child.done;
+    check.addEventListener("change", () => {
+      captureUndoSnapshot();
+      child.done = check.checked;
+      savePlans();
+      // renderCalendar() ends by re-running renderCalendarDetail(), which
+      // hides/clears calendarDetail whenever no day-history is selected —
+      // so it must run BEFORE showPlanDetail, not after, or it wipes the
+      // panel we just meant to refresh.
+      renderCalendar();
+      showPlanDetail(dateStr, plan);
+    });
+    const label = document.createElement("span");
+    label.className = "cal-plan-child-label";
+    label.textContent = child.label;
+    label.classList.toggle("done", !!child.done);
+    row.append(check, label);
+
+    if (depth < PLAN_CHILD_MAX_DEPTH) {
+      const addSubBtn = document.createElement("button");
+      addSubBtn.type = "button";
+      addSubBtn.className = "cal-plan-child-addsub";
+      addSubBtn.textContent = "+";
+      addSubBtn.title = "サブタスクを追加";
+      addSubBtn.addEventListener("click", () => {
+        openNameModal("", PLAN_CHILD_LABELS[depth]).then((name) => {
+          if (name === null || !name.trim()) return;
+          captureUndoSnapshot();
+          addPlanChildToTree(plan, child.id, name.trim());
+          savePlans();
+          renderCalendar();
+          showPlanDetail(dateStr, plan);
+        });
+      });
+      row.appendChild(addSubBtn);
+    }
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "cal-plan-child-remove";
+    removeBtn.textContent = "×";
+    removeBtn.addEventListener("click", () => {
+      captureUndoSnapshot();
+      removePlanChildAndDescendants(plan, child.id);
+      savePlans();
+      renderCalendar();
+      showPlanDetail(dateStr, plan);
+    });
+    row.appendChild(removeBtn);
+
+    section.appendChild(row);
+    planChildrenOf(plan, child.id).forEach((grandchild) => appendPlanChildRows(section, dateStr, plan, grandchild, depth + 1));
+  }
+
   function buildPlanChildrenSection(dateStr, plan) {
     const section = document.createElement("div");
     section.className = "cal-plan-children";
-    (plan.children || []).forEach((child) => {
-      const row = document.createElement("div");
-      row.className = "cal-plan-child-row";
-      const check = document.createElement("input");
-      check.type = "checkbox";
-      check.checked = !!child.done;
-      check.addEventListener("change", () => {
-        captureUndoSnapshot();
-        child.done = check.checked;
-        savePlans();
-        // renderCalendar() ends by re-running renderCalendarDetail(), which
-        // hides/clears calendarDetail whenever no day-history is selected —
-        // so it must run BEFORE showPlanDetail, not after, or it wipes the
-        // panel we just meant to refresh.
-        renderCalendar();
-        showPlanDetail(dateStr, plan);
-      });
-      const label = document.createElement("span");
-      label.className = "cal-plan-child-label";
-      label.textContent = child.label;
-      label.classList.toggle("done", !!child.done);
-      const removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "cal-plan-child-remove";
-      removeBtn.textContent = "×";
-      removeBtn.addEventListener("click", () => {
-        captureUndoSnapshot();
-        plan.children = plan.children.filter((c) => c.id !== child.id);
-        savePlans();
-        renderCalendar();
-        showPlanDetail(dateStr, plan);
-      });
-      row.append(check, label, removeBtn);
-      section.appendChild(row);
-    });
+    planChildrenOf(plan, null).forEach((child) => appendPlanChildRows(section, dateStr, plan, child, 1));
 
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.className = "btn btn-modal-cancel cal-plan-child-add";
     addBtn.textContent = "+ 子タスク追加";
     addBtn.addEventListener("click", () => {
-      openNameModal("", "子タスク名を入力").then((name) => {
+      openNameModal("", PLAN_CHILD_LABELS[0]).then((name) => {
         if (name === null || !name.trim()) return;
         captureUndoSnapshot();
-        if (!plan.children) plan.children = [];
-        plan.children.push({
-          id: `planchild_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          label: name.trim(),
-          parentId: null,
-          done: false,
-        });
+        addPlanChildToTree(plan, null, name.trim());
         savePlans();
         renderCalendar();
         showPlanDetail(dateStr, plan);
