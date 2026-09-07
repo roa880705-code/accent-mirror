@@ -1907,6 +1907,21 @@ body {
   right: 1px;
 }
 
+/* 予定の前後に確保した移動時間(バッファ)を示す細い「幹」。本体の
+   .cal-plan-block はここから右へ張り出す形になり、全体で左に90度倒した
+   Tの字のような形になる — 予定名は無いが時間帯は押さえてあることを、
+   控えめな見た目で示す。 */
+.cal-plan-buffer-spine {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
 .cal-plan-resize-handle {
   position: absolute;
   z-index: 12;
@@ -2485,6 +2500,37 @@ body {
 .cal-block-detail {
   font-size: 0.75rem;
   font-weight: 600;
+}
+
+/* 移動時間バッファの簡易入力欄。設定方法は後で作り直す前提の暫定UI。 */
+.cal-plan-buffer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cal-plan-buffer-caption {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.cal-plan-buffer-field {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.7rem;
+}
+
+.cal-plan-buffer-input {
+  width: 42px;
+  padding: 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--card-bg);
+  color: var(--ink);
+  font-size: 0.7rem;
+  text-align: right;
 }
 
 /* 予定詳細パネル(calendarDetail)自体の高さをドラッグで調整するための

@@ -2422,6 +2422,58 @@
 
     actions.append(editBtn, ...(monthlyBtn ? [monthlyBtn] : []), ...(completeBtn ? [completeBtn] : []), delBtn);
 
+    // 移動時間バッファ(前後)の入力欄 — 設定方法は後で作り直す前提の、
+    // 今はとりあえず動かすための簡易UI(数値入力2つ)。
+    const bufferRow = document.createElement("div");
+    bufferRow.className = "cal-plan-buffer-row";
+    const bufferCaption = document.createElement("span");
+    bufferCaption.className = "cal-plan-buffer-caption";
+    bufferCaption.textContent = "移動時間";
+    bufferRow.appendChild(bufferCaption);
+
+    function buildBufferField(labelText, currentValue, onCommit) {
+      const field = document.createElement("label");
+      field.className = "cal-plan-buffer-field";
+      const labelEl = document.createElement("span");
+      labelEl.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = "0";
+      input.step = "5";
+      input.inputMode = "numeric";
+      input.className = "cal-plan-buffer-input";
+      input.placeholder = "0";
+      input.value = currentValue || "";
+      input.addEventListener("change", () => onCommit(Math.max(0, parseInt(input.value, 10) || 0)));
+      field.append(labelEl, input, document.createTextNode("分"));
+      return field;
+    }
+
+    bufferRow.appendChild(
+      buildBufferField("前", plan.beforeBufferMin, (val) => {
+        captureUndoSnapshot();
+        // 開始時刻より前(=0時より前)にはみ出さないよう抑える
+        const clamped = Math.min(val, plan.startMin);
+        if (clamped > 0) plan.beforeBufferMin = clamped;
+        else delete plan.beforeBufferMin;
+        savePlans();
+        renderCalendar();
+        showPlanDetail(dateStr, plan);
+      })
+    );
+    bufferRow.appendChild(
+      buildBufferField("後", plan.afterBufferMin, (val) => {
+        captureUndoSnapshot();
+        // 終了時刻より後(=24時より後)にはみ出さないよう抑える
+        const clamped = Math.min(val, 1440 - plan.endMin);
+        if (clamped > 0) plan.afterBufferMin = clamped;
+        else delete plan.afterBufferMin;
+        savePlans();
+        renderCalendar();
+        showPlanDetail(dateStr, plan);
+      })
+    );
+
     // パネル(calendarDetail)自体の高さをドラッグで調整できるつまみ。
     // sticky化したヘッダーの中に置くので、ツリーをスクロールしていても
     // 常に掴める位置に残る。
@@ -2434,7 +2486,7 @@
     // 編集/マンスリー表示/完了などへその都度スクロールし直さずに済む。
     const header = document.createElement("div");
     header.className = "cal-plan-detail-header";
-    header.append(resizeHandle, line, actions);
+    header.append(resizeHandle, line, bufferRow, actions);
     calendarDetail.append(header, childrenSection);
   }
 
@@ -2503,6 +2555,8 @@
   // user shift their finger sideways to see the block they're holding
   // without immediately bumping it onto the next day
   const PLAN_DRAG_H_TOLERANCE = 32;
+  // 移動時間バッファ(前後30分など)を示す細い「幹」の幅
+  const PLAN_BUFFER_SPINE_W = 7;
 
   // shared with the swipe-navigation block further down: how much a drag
   // must favor the horizontal axis before it's read as a swipe rather than a
@@ -5422,15 +5476,49 @@
       }
 
       if (dateStr >= state.day) {
-        layoutSegments(plansForDate(dateStr).map((p) => ({ startMs: p.startMin, endMs: p.endMin, ref: p }))).forEach(
-          ({ seg, col, colCount }) => {
+        // 前後の移動時間バッファも「その時間帯を占有している」ものとして
+        // 重なり判定(layoutSegments)に含める — 他の予定が移動時間へ
+        // めり込まず、正しく横に並んで避けてくれるようにするため。
+        layoutSegments(
+          plansForDate(dateStr).map((p) => ({
+            startMs: p.startMin - (p.beforeBufferMin || 0),
+            endMs: p.endMin + (p.afterBufferMin || 0),
+            ref: p,
+          }))
+        ).forEach(({ seg, col, colCount }) => {
             const p = seg.ref;
+            const hasBuffer = (p.beforeBufferMin || 0) > 0 || (p.afterBufferMin || 0) > 0;
+
+            // 前後に移動時間があるものは、Tの字を左に90度倒した形にする:
+            // 細い「幹」が前バッファ〜本体〜後バッファの全区間を貫き、
+            // 本体(cal-plan-block)だけがそこから右へ張り出す幅広い箱に
+            // なる — 幹の部分は「予定名は無いが時間は押さえてある」こと
+            // を示す控えめな見た目。
+            if (hasBuffer) {
+              const spine = document.createElement("div");
+              spine.className = "cal-plan-buffer-spine";
+              const bufferStartMin = p.startMin - (p.beforeBufferMin || 0);
+              const bufferEndMin = p.endMin + (p.afterBufferMin || 0);
+              spine.style.top = `${minToPx(bufferStartMin)}px`;
+              spine.style.height = `${minToPx(Math.max(1, bufferEndMin - bufferStartMin))}px`;
+              spine.style.left = `calc(${(col / colCount) * 100}% + 1px)`;
+              spine.style.width = `${PLAN_BUFFER_SPINE_W}px`;
+              dayCol.appendChild(spine);
+            }
+
+            const blockLeftCss = hasBuffer
+              ? `calc(${(col / colCount) * 100}% + ${PLAN_BUFFER_SPINE_W + 2}px)`
+              : `calc(${(col / colCount) * 100}% + 1px)`;
+            const blockWidthCss = hasBuffer
+              ? `calc(${(1 / colCount) * 100}% - ${PLAN_BUFFER_SPINE_W + 4}px)`
+              : `calc(${(1 / colCount) * 100}% - 2px)`;
+
             const block = document.createElement("div");
             block.className = "cal-plan-block";
             block.style.top = `${minToPx(p.startMin)}px`;
             block.style.height = `${minToPx(Math.max(1, p.endMin - p.startMin))}px`;
-            block.style.left = `calc(${(col / colCount) * 100}% + 1px)`;
-            block.style.width = `calc(${(1 / colCount) * 100}% - 2px)`;
+            block.style.left = blockLeftCss;
+            block.style.width = blockWidthCss;
             block.appendChild(document.createTextNode(p.label));
             const timeEl = document.createElement("span");
             timeEl.className = "cal-plan-time";
@@ -5458,7 +5546,9 @@
               const handle = document.createElement("div");
               handle.className = "cal-plan-resize-handle";
               handle.style.top = `${minToPx(p.endMin)}px`;
-              handle.style.left = `calc(${(col / colCount) * 100}% + ${(1 / colCount) * 50}%)`;
+              // 本体(block)の実際の中心に合わせる — バッファがある時は
+              // block自体が幹の分だけ右へずれて細くなっているため。
+              handle.style.left = `calc(${blockLeftCss} + ${blockWidthCss} / 2)`;
               handle.addEventListener("pointerdown", (e) => startPlanResize(e, block, handle, dayCol, dateStr, p));
               dayCol.appendChild(handle);
             }
