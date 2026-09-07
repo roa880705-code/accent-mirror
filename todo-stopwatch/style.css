@@ -545,6 +545,79 @@ body {
   cursor: pointer;
 }
 
+.settings-announcements-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.settings-announcement-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border-radius: 8px;
+}
+
+.settings-announcement-date {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.settings-announcement-text {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.settings-faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.settings-faq-item {
+  padding: 8px 10px;
+  background: var(--panel);
+  border-radius: 8px;
+}
+
+.settings-faq-question {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.settings-faq-question::-webkit-details-marker {
+  display: none;
+}
+
+.settings-faq-question::before {
+  content: "Q";
+  flex: none;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.settings-faq-answer {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
 .period-settings-list {
   display: flex;
   flex-direction: column;
@@ -2576,6 +2649,12 @@ body {
   color: var(--ink);
   font-size: 0.7rem;
   text-align: right;
+}
+
+.cal-plan-buffer-clear {
+  padding: 3px 10px;
+  font-size: 0.68rem;
+  border-radius: 999px;
 }
 
 /* 予定詳細パネル(calendarDetail)自体の高さをドラッグで調整するための

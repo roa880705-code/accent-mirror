@@ -804,6 +804,8 @@
   const resetAllBtn = document.getElementById("resetAllBtn");
   const syncBtn = document.getElementById("syncBtn");
   const settingsSyncBadge = document.getElementById("settingsSyncBadge");
+  const settingsAnnouncementsList = document.getElementById("settingsAnnouncementsList");
+  const settingsFaqList = document.getElementById("settingsFaqList");
   const periodEnabledToggle = document.getElementById("periodEnabledToggle");
   const periodSettingsList = document.getElementById("periodSettingsList");
   const periodAddBtn = document.getElementById("periodAddBtn");
@@ -1598,6 +1600,65 @@
   });
 
   renderPeriodSettingsUI();
+
+  // --- 設定ページ: お知らせ ---
+  // アップデートのたびにここへ1件追記していく、簡易な更新履歴。新しい
+  // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
+  // なく、開発側が更新を伝えるための一方向の掲示板。
+  const ANNOUNCEMENTS = [
+    { date: "2026-09-07", text: "バッファ(移動時間)の設定に「クリア」ボタンを追加しました。前後どちらも一度で未設定に戻せます。" },
+    { date: "2026-09-07", text: "設定ページに「お知らせ」と「よくある質問」を追加しました。" },
+    { date: "2026-09-07", text: "いつか・今日中・最優先の並べ替え中、指をトレイの端に置き続けると自動でスクロールするようにしました。可視範囲外にあった項目も、そのまま1回のドラッグで並べ替えられます。" },
+    { date: "2026-09-07", text: "予定とバッファ(前後の移動時間)の見た目を、継ぎ目の無い1つの輪郭にまとめました。" },
+    { date: "2026-09-07", text: "予定の前後に確保する「バッファ」(移動時間)を、本体の外に細い帯として表示できるようにしました。" },
+    { date: "2026-09-07", text: "予定の子タスクを、タスク一覧と同じ横並び表示(常時全展開)で確認できるようにしました。" },
+    { date: "2026-09-07", text: "子タスクを持つタスクや予定も、家系ごとスケジュールへドラッグできるようにしました。" },
+  ];
+
+  function renderSettingsAnnouncements() {
+    settingsAnnouncementsList.innerHTML = "";
+    ANNOUNCEMENTS.forEach(({ date, text }) => {
+      const item = document.createElement("div");
+      item.className = "settings-announcement-item";
+      const dateEl = document.createElement("span");
+      dateEl.className = "settings-announcement-date";
+      dateEl.textContent = date;
+      const textEl = document.createElement("p");
+      textEl.className = "settings-announcement-text";
+      textEl.textContent = text;
+      item.append(dateEl, textEl);
+      settingsAnnouncementsList.appendChild(item);
+    });
+  }
+  renderSettingsAnnouncements();
+
+  // --- 設定ページ: よくある質問 ---
+  const FAQ_ITEMS = [
+    { q: "最優先・今日中・いつか・スケジュールは何が違いますか?", a: "「最優先」「今日中」は時間を決めずに今日やることを置いておく場所、「スケジュール」(ウィークリー/デイリー)は時間を決めて配置した予定です。「いつか」はまだ日程が決まっていないタスクの置き場で、いつか欄からスケジュールへドラッグすると時間付きの予定になります。" },
+    { q: "子タスクはどうやって追加しますか?", a: "いつか欄や予定詳細のタスクを長押しせずに軽くタップすると、変更・削除に加えて「子タスクを追加」の選択肢が出ます。子タスク・孫タスク・ひ孫タスクまで階層を持たせられます。" },
+    { q: "タスクの並び順はどうやって変えますか?", a: "チップを長押しして保持してから、横方向にドラッグすると並べ替えられます。保持後は指が多少上下にぶれても並べ替えのまま続けられ、トレイの端まで持っていくと自動でスクロールして見えていなかった項目も並べ替え対象にできます。" },
+    { q: "バッファ(移動時間)とは何ですか?どう設定しますか?", a: "予定の前後に確保しておきたい移動時間などの余白です。予定をタップして詳細を開くと「バッファ」欄があり、前後それぞれ何分か入力できます。不要になったら「クリア」で一括で外せます。" },
+    { q: "時限・時間割の設定はどこでしますか?", a: "設定ページの「時限表示」でコマ(時限)ごとの時刻・記号・表示位置を登録し、「時間割」で曜日ごとの科目名を入力します。ウィークリー/デイリーの「時間割」ボタンで、その日の表示オン/オフを切り替えられます。" },
+    { q: "他の端末でも同じデータを見られますか?", a: "「アカウント」からGoogleアカウントでログインすると、その端末のデータがクラウドへ同期され、同じアカウントでログインした他の端末でも同じ内容を見られます。ログインしていない場合、データはその端末のブラウザだけに保存されます。" },
+    { q: "うっかり操作を間違えたら元に戻せますか?", a: "直前の操作は「元に戻す」で取り消せます(対応する操作の直後に表示されるボタン、または該当ページのUndo操作から)。誤って削除・移動してしまった場合はすぐに試してみてください。" },
+  ];
+
+  function renderSettingsFaq() {
+    settingsFaqList.innerHTML = "";
+    FAQ_ITEMS.forEach(({ q, a }) => {
+      const item = document.createElement("details");
+      item.className = "settings-faq-item";
+      const summary = document.createElement("summary");
+      summary.className = "settings-faq-question";
+      summary.textContent = q;
+      const answer = document.createElement("p");
+      answer.className = "settings-faq-answer";
+      answer.textContent = a;
+      item.append(summary, answer);
+      settingsFaqList.appendChild(item);
+    });
+  }
+  renderSettingsFaq();
 
   // --- 設定ページ: 時間割 ---
 
@@ -2477,6 +2538,22 @@
         showPlanDetail(dateStr, plan);
       })
     );
+
+    if (plan.beforeBufferMin || plan.afterBufferMin) {
+      const bufferClearBtn = document.createElement("button");
+      bufferClearBtn.type = "button";
+      bufferClearBtn.className = "btn btn-modal-cancel cal-plan-buffer-clear";
+      bufferClearBtn.textContent = "クリア";
+      bufferClearBtn.addEventListener("click", () => {
+        captureUndoSnapshot();
+        delete plan.beforeBufferMin;
+        delete plan.afterBufferMin;
+        savePlans();
+        renderCalendar();
+        showPlanDetail(dateStr, plan);
+      });
+      bufferRow.appendChild(bufferClearBtn);
+    }
 
     // パネル(calendarDetail)自体の高さをドラッグで調整できるつまみ。
     // sticky化したヘッダーの中に置くので、ツリーをスクロールしていても
