@@ -21,6 +21,9 @@
   const TIMETABLE_VISIBLE_KEY = "todoStopwatch:timetableVisible:v1";
   // 端末ローカルの表示設定(今のところ同期はしない)。
   const PERIOD_SETTINGS_KEY = "todoStopwatch:periodSettings:v1";
+  // 「今週中」欄: 週(月曜日の日付文字列)ごとに持つ、階層を持たないフラット
+  // なタスク一覧。いつか(無期限)と今日中(その日限定)の中間の置き場。
+  const THIS_WEEK_TASKS_KEY = "todoStopwatch:thisWeekTasks:v1";
   const MAX_HISTORY = 60;
   const MAX_COUNT = 40;
   const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
@@ -142,6 +145,19 @@
   function loadPlans() {
     try {
       const raw = localStorage.getItem(PLANS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      // corrupt storage, fall through to empty
+    }
+    return {};
+  }
+
+  function loadThisWeekTasks() {
+    try {
+      const raw = localStorage.getItem(THIS_WEEK_TASKS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
@@ -397,6 +413,7 @@
   let drafts = loadDrafts();
   let plans = loadPlans();
   let someday = loadSomeday(); // tasks with no day or time assigned yet ("いつか")
+  let thisWeekTasks = loadThisWeekTasks(); // { [その週の月曜日]: [{label, memo}, ...] } ("今週中")
   // day titles are a label on the DATE itself (e.g. "旅行"), distinct from
   // any plan or task placed on that date — a flat array of {id, label,
   // start, end}, since one title can span a range of dates (no time-of-day
@@ -433,6 +450,25 @@
   function saveSomeday() {
     localStorage.setItem(SOMEDAY_KEY, JSON.stringify(someday));
     window.AppSync?.markDirty("someday:v1", someday);
+  }
+
+  function saveThisWeekTasks() {
+    localStorage.setItem(THIS_WEEK_TASKS_KEY, JSON.stringify(thisWeekTasks));
+    window.AppSync?.markDirty("thisWeekTasks:v1", thisWeekTasks);
+  }
+
+  function itemsArrayForWeek(weekStart) {
+    return thisWeekTasks[weekStart] || [];
+  }
+
+  function ensureItemsArrayForWeek(weekStart) {
+    if (!thisWeekTasks[weekStart]) thisWeekTasks[weekStart] = [];
+    return thisWeekTasks[weekStart];
+  }
+
+  function persistItemsForWeek(weekStart) {
+    if (thisWeekTasks[weekStart] && !thisWeekTasks[weekStart].length) delete thisWeekTasks[weekStart];
+    saveThisWeekTasks();
   }
 
   function saveDayTitles() {
@@ -731,10 +767,12 @@
     const wasFollowingToday = viewingDate === state.day;
     // ウィークリー/デイリーの表示アンカーも、まだ(ロールオーバー前の)今日を
     // 指していた分だけ今日側へ進める — 他の日付へ手動移動済みのアンカーは
-    // そのまま(勝手に今日へ引き戻さない)。
+    // そのまま(勝手に今日へ引き戻さない)。ウィークリーは月曜始まりの暦週
+    // 固定なので、日付そのものではなく「今日を含む週の月曜日」で比較する。
     const dailyWasFollowingToday = dailyWeekAnchor === state.day;
-    const weeklyWasFollowingToday = weeklyWeekAnchor === state.day;
-    const weekAnchorWasFollowingToday = weekAnchor === state.day;
+    const weeklyWasFollowingToday = weeklyWeekAnchor === mondayOfWeek(state.day);
+    const weekAnchorWasFollowingToday =
+      activePage === WEEKLY_PAGE ? weekAnchor === mondayOfWeek(state.day) : weekAnchor === state.day;
     const now = Date.now();
     closeRunningSegments(now);
     archiveDay(state.day);
@@ -791,8 +829,8 @@
 
     if (wasFollowingToday) viewingDate = today;
     if (dailyWasFollowingToday) dailyWeekAnchor = today;
-    if (weeklyWasFollowingToday) weeklyWeekAnchor = today;
-    if (weekAnchorWasFollowingToday) weekAnchor = today;
+    if (weeklyWasFollowingToday) weeklyWeekAnchor = mondayOfWeek(today);
+    if (weekAnchorWasFollowingToday) weekAnchor = activePage === WEEKLY_PAGE ? mondayOfWeek(today) : today;
     return true;
   }
 
@@ -830,6 +868,13 @@
   const dailyWeekGridEl = document.getElementById("calendarWeekGrid");
   const dailyDetailEl = document.getElementById("calendarDetail");
   const dailyUnscheduledRowEl = document.getElementById("calendarUnscheduledRow");
+  // 「今週中」欄: いつかと違い週によって内容が変わるが、いつかと同じく
+  // ウィークリー/デイリー両方に常に存在する固定の実体を直接参照する
+  // (swap不要 — レンダリング側でどちらにも同じ内容を書き込む)。
+  const weeklyThisWeekList = document.getElementById("weeklyThisWeekList");
+  const weeklyThisWeekAddBtn = document.getElementById("weeklyThisWeekAddBtn");
+  const dailyThisWeekList = document.getElementById("calendarThisWeekList");
+  const dailyThisWeekAddBtn = document.getElementById("calendarThisWeekAddBtn");
   const briefingMemoInput = document.getElementById("briefingMemoInput");
   const dailyNotesInput = document.getElementById("dailyNotesInput");
   const weeklyWeekLabelEl = document.getElementById("weeklyWeekLabel");
@@ -1654,6 +1699,8 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-07", text: "ウィークリーページを月曜始まり(月〜日)の表示に変更しました。" },
+    { date: "2026-09-07", text: "ウィークリーページとデイリーページに、今日中といつかの間に「今週中」欄を追加しました。今週やりたいタスクを横スクロールの一覧で管理できます(スケジュールへのドラッグ登録はまだ未対応です)。" },
     { date: "2026-09-07", text: "マンスリー/ウィークリー/デイリー/ログのページ下部にある欄の表記を「タスク」から「いつか」に戻しました(タスク一覧ページ自体の表記は変更していません)。" },
     { date: "2026-09-07", text: "予定詳細パネルを整理しました。名前欄は直接入力で変更でき、メモ欄は常時表示・バッファ横いっぱいに広く使えるようになり、ボタンは左側にまとめました。" },
     { date: "2026-09-07", text: "予定・タスクをタップした際の編集メニューから、それぞれに自由記述の「メモ」を追加・編集できるようにしました。" },
@@ -1914,7 +1961,7 @@
   // separately in dailyWeekAnchor/weeklyWeekAnchor while the other is active.
   let weekAnchor = state.day;
   let dailyWeekAnchor = state.day;
-  let weeklyWeekAnchor = state.day; // ウィークリーは曜日固定ではなく、本日を1番左にした5日間表示
+  let weeklyWeekAnchor = mondayOfWeek(state.day); // ウィークリーは月曜始まりの暦週固定(月〜日)で表示
   let monthAnchor = state.day; // any date string within the displayed month (マンスリーカレンダー)
   let selectedDayDetail = null; // date string whose textual summary is shown below the grid
   let selectedPlanId = null; // plan currently tapped; shows a resize handle on its block
@@ -2043,6 +2090,16 @@
   function parseDateStr(dateStr) {
     const [y, m, d] = dateStr.split("-").map(Number);
     return new Date(y, m - 1, d);
+  }
+
+  // ウィークリーは月曜始まりの暦週固定(月〜日)で表示するので、任意の
+  // 日付からその週の月曜日を求める。Date.getDay()は0=日..6=土なので、
+  // 月曜からの経過日数は(dow+6)%7。
+  function mondayOfWeek(dateStr) {
+    const d = parseDateStr(dateStr);
+    const diff = (d.getDay() + 6) % 7;
+    d.setDate(d.getDate() - diff);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   }
 
   function shiftCalendarWeek(delta) {
@@ -4156,8 +4213,10 @@
     const editing = !!selectedPlanId;
     calendarUnscheduledRow.hidden = editing;
     calendarUnplannedBox.hidden = editing;
-    if (!editing) return;
     const prefix = calendarUnplannedBox.id === "weeklyUnplannedBox" ? "weekly" : "calendar";
+    const thisWeekBox = document.getElementById(`${prefix}ThisWeekBox`);
+    if (thisWeekBox) thisWeekBox.hidden = editing;
+    if (!editing) return;
     ["SomedayTree", "SubtaskConnector", "SubtaskBox", "GrandchildConnector", "GrandchildBox", "GreatGrandchildConnector", "GreatGrandchildBox"].forEach(
       (suffix) => {
         const el = document.getElementById(`${prefix}${suffix}`);
@@ -4619,6 +4678,117 @@
     renderCalendar();
   }
 
+  // 「今週中」欄: いつか(無期限・階層あり)と今日中(その日限定・フラット)
+  // の中間の置き場として、その週限定・フラットなタスク一覧を持つ。
+  // 現在表示中の週(ウィークリーはweekAnchor自身が既に月曜日、デイリーは
+  // 表示中の日を含む週の月曜日)をキーに使う。
+  function currentWeekStartKey() {
+    return mondayOfWeek(weekAnchor);
+  }
+
+  function renderThisWeekTray() {
+    const weekStart = currentWeekStartKey();
+    const items = itemsArrayForWeek(weekStart);
+    [weeklyThisWeekList, dailyThisWeekList].forEach((list) => {
+      list.innerHTML = "";
+      if (!items.length) {
+        const empty = document.createElement("span");
+        empty.className = "calendar-unplanned-empty";
+        empty.textContent = "今週中のタスクなし";
+        list.appendChild(empty);
+        return;
+      }
+      items.forEach((item) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "cal-unplanned-chip";
+        chip.trayItem = item;
+        const label = document.createElement("span");
+        label.className = "cal-unplanned-chip-label";
+        label.textContent = labelOf(item, "今週中タスク");
+        chip.appendChild(label);
+        chip.addEventListener("pointerdown", (e) => startTrayItemDrag(e, chip, item, weekStart, "cal-unplanned-chip", "今週中タスク", "week"));
+        list.appendChild(chip);
+      });
+    });
+  }
+
+  async function addThisWeekTask() {
+    const weekStart = currentWeekStartKey();
+    const name = await openNameModal("");
+    if (name === null) return;
+    const label = name.trim();
+    if (!label) return;
+    captureUndoSnapshot();
+    ensureItemsArrayForWeek(weekStart).push({ label });
+    persistItemsForWeek(weekStart);
+    renderCalendar();
+  }
+  weeklyThisWeekAddBtn.addEventListener("click", addThisWeekTask);
+  dailyThisWeekAddBtn.addEventListener("click", addThisWeekTask);
+
+  // いつかの完了(completeSomedayTask)と同じ扱い: 階層/置き場から外れて
+  // 今日のログに完了実績として残る。
+  function completeThisWeekTask(weekStart, item) {
+    captureUndoSnapshot();
+    const items = itemsArrayForWeek(weekStart);
+    const idx = items.indexOf(item);
+    if (idx >= 0) items.splice(idx, 1);
+    persistItemsForWeek(weekStart);
+    const logItem = freshItem(item.label);
+    logItem.completed = true;
+    ensureItemsArrayForDate(state.day).push(logItem);
+    sortItemsByPlan(state.day);
+    persistItemsForDate(state.day);
+    refreshTimerIfShowing(state.day);
+    vibrate(20);
+    renderCalendar();
+  }
+
+  // タップ(=ドラッグせずに指を離した)時の選択肢。子タスクの概念が無い
+  // ので変更修正/メモ/完了/削除のみ(promptRegularTaskEditのマンスリー
+  // 表示トグルに相当するものは無い — 今週中タスクは特定の日付を持たない
+  // ため)。
+  function promptWeeklyTaskEdit(weekStart, item) {
+    openTaskChoiceModal(item, {
+      showAddChild: false,
+      showComplete: true,
+      completeLabel: "完了",
+      showMemo: true,
+    }).then((choice) => {
+      if (choice === "edit") {
+        openNameModal(item.label).then((name) => {
+          if (name === null) return;
+          const label = name.trim();
+          if (!label) return;
+          captureUndoSnapshot();
+          item.label = label;
+          persistItemsForWeek(weekStart);
+          renderCalendar();
+        });
+      } else if (choice === "memo") {
+        openMemoModal(item.memo).then((text) => {
+          if (text === null) return;
+          captureUndoSnapshot();
+          const trimmed = text.trim();
+          if (trimmed) item.memo = trimmed;
+          else delete item.memo;
+          persistItemsForWeek(weekStart);
+          renderCalendar();
+        });
+      } else if (choice === "complete") {
+        completeThisWeekTask(weekStart, item);
+      } else if (choice === "delete") {
+        captureUndoSnapshot();
+        const items = itemsArrayForWeek(weekStart);
+        const idx = items.indexOf(item);
+        if (idx >= 0) items.splice(idx, 1);
+        persistItemsForWeek(weekStart);
+        renderCalendar();
+      }
+    });
+  }
+
   // 最優先チップ/今日中(デイリー)行、どちらの横スクロールトレイの
   // チップも、いつかのチップ(onSomedayChipDragMove参照)と同じ3通りの
   // ジェスチャーを持つ — itemClass/fallbackLabelだけがトレイごとに違う
@@ -4632,7 +4802,10 @@
   //     このトレイ内での並べ替え
   let trayDragCtx = null;
 
-  function startTrayItemDrag(e, chip, item, dateStr, itemClass, fallbackLabel) {
+  // scopeTypeは"day"(既定、itemsArrayForDate/persistItemsForDateで永続化
+  // する今日中・最優先)か"week"(itemsArrayForWeek/persistItemsForWeekで
+  // 永続化する今週中 — スケジュールへの持ち上げにはまだ対応しない)。
+  function startTrayItemDrag(e, chip, item, dateStr, itemClass, fallbackLabel, scopeType = "day") {
     if (e.button !== undefined && e.button !== 0) return;
     e.stopPropagation();
     if (chipTrayMomentumCancel) {
@@ -4644,6 +4817,7 @@
       chip,
       item,
       dateStr,
+      scopeType,
       listEl,
       itemClass,
       fallbackLabel,
@@ -4713,29 +4887,34 @@
         clearTimeout(ctx.longPressTimer);
         ctx.longPressTimer = null;
       }
-      if (ctx.heldLongEnough && Math.abs(dy) <= Math.abs(dx) * CHIP_HOLD_LIFT_AXIS_RATIO) {
-        // 既に長押しで保持済みで、かつ縦方向の動きが横方向よりはるかに
-        // 大きいわけではない(=保持した指のちょっとしたぶれの範囲)なら
-        // 並べ替えの継続として扱う — スケジュール内で予定を動かす時と
-        // 同様、保持した指が上下に少しずれても「持ち上げ(スケジュール
-        // 化)」には化けないようにして、指で画面が見づらくなるのを防ぐ。
-        ctx.chip.classList.remove("armed");
-        ctx.phase = "reorder";
-        ctx.chip.classList.add("reordering");
-        ctx.chip.style.transition = "none";
-        vibrate(15);
-        startChipReorderAutoScroll(ctx, () => runTrayReorderStep(ctx));
-      } else if (!ctx.heldLongEnough && Math.abs(dx) > Math.abs(dy)) {
+      if (!ctx.heldLongEnough && Math.abs(dx) > Math.abs(dy)) {
         ctx.chip.classList.remove("armed");
         ctx.phase = "scroll";
       } else {
-        // 保持済みでも、明確に縦方向優位な動きは引き続き「スケジュール
-        // へ持ち上げ」として機能させる(長押し後にそのまま上へ運んで
-        // 予定へ落とす操作を壊さないため)。
-        ctx.chip.classList.remove("armed");
-        ctx.phase = "schedule";
-        ctx.chip.classList.add("dragging");
-        vibrate(15);
+        // heldLongEnoughなら縦方向が横方向よりはるかに大きい場合だけ、
+        // そうでなければ常に、「縦寄りの動き」とみなす。scopeTypeが
+        // "day"(今日中/最優先)ならスケジュールへの持ち上げ、"week"
+        // (今週中、まだスケジュール対応なし)なら並べ替えの継続として
+        // 扱う。保持済みで縦寄りでない(=保持した指のちょっとしたぶれの
+        // 範囲)場合も並べ替えの継続 — スケジュール内で予定を動かす時と
+        // 同様、保持した指が上下に少しずれても「持ち上げ」には化けない
+        // ようにして、指で画面が見づらくなるのを防ぐ。
+        const liftedVertically = ctx.heldLongEnough
+          ? Math.abs(dy) > Math.abs(dx) * CHIP_HOLD_LIFT_AXIS_RATIO
+          : Math.abs(dx) <= Math.abs(dy);
+        if (ctx.scopeType !== "week" && liftedVertically) {
+          ctx.chip.classList.remove("armed");
+          ctx.phase = "schedule";
+          ctx.chip.classList.add("dragging");
+          vibrate(15);
+        } else {
+          ctx.chip.classList.remove("armed");
+          ctx.phase = "reorder";
+          ctx.chip.classList.add("reordering");
+          ctx.chip.style.transition = "none";
+          vibrate(15);
+          startChipReorderAutoScroll(ctx, () => runTrayReorderStep(ctx));
+        }
       }
     }
 
@@ -4835,7 +5014,8 @@
 
     if (ctx.phase === "pending") {
       trayDragCtx = null;
-      promptRegularTaskEdit(ctx.dateStr, ctx.item);
+      if (ctx.scopeType === "week") promptWeeklyTaskEdit(ctx.dateStr, ctx.item);
+      else promptRegularTaskEdit(ctx.dateStr, ctx.item);
       return;
     }
 
@@ -4859,14 +5039,21 @@
       ctx.chip.style.transform = "";
       const domChips = Array.from(ctx.listEl.children).filter((n) => n.classList.contains(ctx.itemClass));
       const orderedItems = domChips.map((n) => n.trayItem);
-      const items = itemsArrayForDate(ctx.dateStr);
+      const items = ctx.scopeType === "week" ? itemsArrayForWeek(ctx.dateStr) : itemsArrayForDate(ctx.dateStr);
       captureUndoSnapshot();
       const reorderedSet = new Set(orderedItems);
       let ri = 0;
       const newOrder = items.map((it) => (reorderedSet.has(it) ? orderedItems[ri++] : it));
       items.length = 0;
       items.push(...newOrder);
-      persistItemsForDate(ctx.dateStr);
+      if (ctx.scopeType === "week") {
+        persistItemsForWeek(ctx.dateStr);
+        // 今週中はウィークリー/デイリー両方に同じ内容を独立して描画して
+        // いるので、ドラッグが起きた側だけでなくもう片方も揃え直す。
+        renderThisWeekTray();
+      } else {
+        persistItemsForDate(ctx.dateStr);
+      }
       vibrate(15);
       const chipRef = ctx.chip;
       setTimeout(() => {
@@ -6003,6 +6190,7 @@
 
     tickCalendarLive();
 
+    renderThisWeekTray();
     renderSomedayList();
     applyCalendarPlanEditingVisibility();
     renderCalendarDetail();
@@ -6564,7 +6752,7 @@
     else if (activePage === DAILY_PAGE) dailyWeekAnchor = weekAnchor;
 
     if (target === WEEKLY_PAGE) {
-      CAL_DAYS = 5;
+      CAL_DAYS = 7;
       calendarWeekLabel = weeklyWeekLabelEl;
       calendarWeekHeader = weeklyWeekHeaderEl;
       calendarWeekBody = weeklyWeekBodyEl;
