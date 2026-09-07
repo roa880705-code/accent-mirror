@@ -701,6 +701,7 @@
   let calendarUnplannedBox = dailyUnplannedBoxEl;
   const calendarUnplannedList = document.getElementById("calendarUnplannedList");
   const calendarSomedayAddBtn = document.getElementById("calendarSomedayAddBtn");
+  const calendarSomedayExpandAllBtn = document.getElementById("calendarSomedayExpandAllBtn");
   // 最優先タスク欄(デイリーページ限定、階層を持たないフラットなトレイ)
   const calendarPriorityBox = document.getElementById("calendarPriorityBox");
   const calendarPriorityList = document.getElementById("calendarPriorityList");
@@ -716,6 +717,7 @@
   const weeklyUnplannedBoxEl = document.getElementById("weeklyUnplannedBox");
   const weeklyUnplannedList = document.getElementById("weeklyUnplannedList");
   const weeklySomedayAddBtn = document.getElementById("weeklySomedayAddBtn");
+  const weeklySomedayExpandAllBtn = document.getElementById("weeklySomedayExpandAllBtn");
   const weeklySubtaskBox = document.getElementById("weeklySubtaskBox");
   const weeklySubtaskList = document.getElementById("weeklySubtaskList");
   const weeklyGrandchildBox = document.getElementById("weeklyGrandchildBox");
@@ -731,6 +733,7 @@
   const monthlyNextBtn = document.getElementById("monthlyNextBtn");
   const monthlyUnplannedList = document.getElementById("monthlyUnplannedList");
   const monthlySomedayAddBtn = document.getElementById("monthlySomedayAddBtn");
+  const monthlySomedayExpandAllBtn = document.getElementById("monthlySomedayExpandAllBtn");
   const monthlySubtaskBox = document.getElementById("monthlySubtaskBox");
   const monthlySubtaskList = document.getElementById("monthlySubtaskList");
   const monthlyGrandchildBox = document.getElementById("monthlyGrandchildBox");
@@ -740,6 +743,7 @@
   const taskUnplannedBox = document.getElementById("taskUnplannedBox");
   const taskUnplannedList = document.getElementById("taskUnplannedList");
   const taskSomedayAddBtn = document.getElementById("taskSomedayAddBtn");
+  const taskSomedayExpandAllBtn = document.getElementById("taskSomedayExpandAllBtn");
   const taskSubtaskBox = document.getElementById("taskSubtaskBox");
   const taskSubtaskList = document.getElementById("taskSubtaskList");
   const taskGrandchildBox = document.getElementById("taskGrandchildBox");
@@ -748,6 +752,7 @@
   const taskGreatGrandchildList = document.getElementById("taskGreatGrandchildList");
   const tasklistUnplannedList = document.getElementById("tasklistUnplannedList");
   const tasklistSomedayAddBtn = document.getElementById("tasklistSomedayAddBtn");
+  const tasklistSomedayExpandAllBtn = document.getElementById("tasklistSomedayExpandAllBtn");
   const tasklistSubtaskBox = document.getElementById("tasklistSubtaskBox");
   const tasklistSubtaskList = document.getElementById("tasklistSubtaskList");
   const tasklistGrandchildBox = document.getElementById("tasklistGrandchildBox");
@@ -2560,6 +2565,14 @@
   // depth-(i+1) tray; e.g. activeSomedayIds[0] drives 子タスク's contents.
   let activeSomedayIds = [null, null, null];
 
+  // 「全展開」: オフの間は上のactiveSomedayIdsに従い、各階層で選んだ1つの
+  // 親の子だけを表示する。オンの間は列構成(いつか|子|孫|ひ孫)自体は
+  // 変えず、各列の中身を「その階層で子を持つ全ての親」の子(親ごとの
+  // 見出しで区切ってまとめたもの)に差し替える — 5ページ共通の1つの
+  // グローバルな状態(同じいつかデータを見ているだけなので、ページごとに
+  // 独立させる理由が無い)。
+  let somedayExpandAll = false;
+
   // Every tray level, across all four pages it's duplicated onto — used to
   // drive rendering/visibility generically instead of hand-listing every
   // list/box combination at each call site. Index 0 is いつか itself
@@ -2734,6 +2747,21 @@
   // render, plus on scroll/resize since a chip's on-screen position shifts
   // independently of any data change.
   function repositionSomedayConnectors() {
+    if (somedayExpandAll) {
+      // 全展開中は各階層に複数の親が同時にアクティブになるため、1本の
+      // 連結線が1つの親から伸びる前提の既存ロジックとは噛み合わない —
+      // 親子関係は各グループの見出し(someday-group-header)で示すので、
+      // 連結線はここでは出さない。
+      somedayConnectorEls.forEach((row) => row.forEach((el) => {
+        el.innerHTML = "";
+        el.hidden = true;
+      }));
+      tasklistConnectorEls.forEach((el) => {
+        el.innerHTML = "";
+        el.hidden = true;
+      });
+      return;
+    }
     for (let depth = 0; depth < somedayConnectorEls.length; depth++) {
       const parentId = activeSomedayIds[depth];
       const parentTask = parentId ? someday.find((t) => t.id === parentId) : null;
@@ -2843,9 +2871,120 @@
     return sourceParentId && someday.some((t) => t.id === sourceParentId) ? sourceParentId : null;
   }
 
+  // --- ドラッグでの配置転換(子↔親の入れ替え) ---
+  // 「子から親への配置転換」(トップレベルへの昇格)、「親の状態から他の
+  // 親の子への配置転換」(既存の親付きタスクを、その子孫ごと別の親の下へ
+  // 移動)の両方を、いつかチップの長押し→ドラッグ(reorderフェーズ)から
+  // 続けて行えるようにする(onSomedayChipDragMove/End参照)。
+
+  // taskId自身のサブツリー(子孫)の最大の深さ — 子を持たない葉なら0。
+  function subtreeMaxDepth(taskId) {
+    const children = childrenOf(taskId);
+    if (!children.length) return 0;
+    return 1 + Math.max(...children.map((c) => subtreeMaxDepth(c.id)));
+  }
+
+  // ancestorId が taskId の祖先(親、親の親、…)かどうか — これが真の
+  // 相手の下へ移動しようとするのは、自分の子孫の下へ潜り込むことになり
+  // 循環が生まれるので禁止する。
+  function isSomedayAncestor(ancestorId, taskId) {
+    let current = someday.find((t) => t.id === taskId);
+    while (current && current.parentId) {
+      if (current.parentId === ancestorId) return true;
+      current = someday.find((t) => t.id === current.parentId);
+    }
+    return false;
+  }
+
+  // taskをnewParentId(nullならトップレベル)の下へ配置転換してよいか —
+  // 自分自身/自分の子孫の下(循環)、既に今の親と同じ(無意味)、移動後に
+  // 自分のサブツリーの最深部がひ孫より深くなってしまう場合は不可。
+  function canReparentSomedayUnder(task, newParentId) {
+    if (newParentId === task.id) return false;
+    if ((task.parentId || null) === (newParentId || null)) return false;
+    if (newParentId && isSomedayAncestor(task.id, newParentId)) return false;
+    const newParentDepth = newParentId ? somedayTaskDepth(someday.find((t) => t.id === newParentId)) : -1;
+    const newDepth = newParentDepth + 1;
+    return newDepth + subtreeMaxDepth(task.id) <= SOMEDAY_MAX_DEPTH;
+  }
+
+  // 実際に配置転換を行う — 子孫はtask.parentIdの変更だけで自動的に一緒に
+  // ついてくる(childrenOfは常にsomeday配列をその場でフィルタするので)。
+  // 新しい兄弟の最後に来るよう、配列内の位置も末尾へ付け替える(元の配列
+  // 位置に引きずられて意図しない場所に挟まるのを防ぐ)。
+  function performSomedayReparent(task, newParentId) {
+    captureUndoSnapshot();
+    task.parentId = newParentId;
+    someday = someday.filter((t) => t.id !== task.id);
+    someday.push(task);
+    saveSomeday();
+    activeSomedayIds = activeSomedayIds.map(() => null);
+    renderSomedayList();
+    vibrate(20);
+  }
+
   // いつか is shown in two places (デイリー's tray and マンスリー's), and
   // 子タスク likewise in two places — all four render from the same
-  // someday array, just filtered to a different subset of it.
+  // someday array, just filtered to a different subset of it. The per-task
+  // chip itself (createSomedayChip) is shared with the 全展開 grouped
+  // rendering below (renderSomedayListGrouped), which needs the exact same
+  // chip look/behavior, just interleaved with group-header dividers.
+  function createSomedayChip(task, listEl) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "cal-unplanned-chip";
+    const depth = somedayTaskDepth(task);
+    if (isParentTask(task.id)) {
+      // a parent: filled with its family's color, so it visibly reads as
+      // a container rather than something you can schedule directly. The
+      // whole family (every 子/孫/ひ孫 hanging off the same いつか task)
+      // shares one base color — the border always stays at that full
+      // color regardless of depth, while the fill itself fades lighter
+      // the closer this chip sits to the leaves.
+      chip.classList.add("parent");
+      if (activeSomedayIds.includes(task.id)) chip.classList.add("active-parent");
+      const base = ensureParentColor(rootSomedayTask(task));
+      chip.style.borderColor = base;
+      chip.style.background = lightenHex(base, SOMEDAY_FILL_LIGHTEN[depth] || 0);
+      // the class's white text (for a full-strength fill) stops reading
+      // well once the fill has faded most of the way toward white
+      chip.style.color = depth >= 2 ? "var(--ink)" : "#fff";
+    } else if (task.parentId) {
+      // a leaf — never filled, just outlined in its family's base color
+      // (no fill) so the family resemblance still reads at a glance,
+      // while the white interior doubles as the "this one can be
+      // scheduled" marker leaf tasks already have by default
+      chip.style.borderColor = ensureParentColor(rootSomedayTask(task));
+    }
+    const labelEl = document.createElement("span");
+    labelEl.className = "cal-unplanned-chip-label";
+    labelEl.textContent = task.label;
+    chip.appendChild(labelEl);
+
+    // parent vs. leaf already reads from the chip's own shape (square vs.
+    // pill), so the count badge only adds information for an actual
+    // parent — showing it on every leaf too (always "0") would just be
+    // clutter with nothing to see-at-a-glance.
+    const childCount = childrenOf(task.id).length;
+    if (depth < SOMEDAY_MAX_DEPTH && childCount > 0) {
+      const badge = document.createElement("span");
+      badge.className = "cal-child-count-badge";
+      // rendered via CSS content: attr(), not textContent — so chip.textContent
+      // stays just the label, which the rest of the someday code (and tests)
+      // rely on for reading/comparing a chip's name
+      badge.dataset.count = String(childCount);
+      chip.appendChild(badge);
+    }
+
+    chip.dataset.somedayId = task.id;
+    if (VERTICAL_SOMEDAY_LISTS.has(listEl)) {
+      chip.addEventListener("click", () => handleSomedayChipTap(task));
+    } else {
+      chip.addEventListener("pointerdown", (e) => startSomedayChipDrag(e, chip, task));
+    }
+    return chip;
+  }
+
   function renderSomedayListInto(listEl, tasks) {
     listEl.innerHTML = "";
     if (!tasks.length) {
@@ -2855,60 +2994,28 @@
       listEl.appendChild(empty);
       return;
     }
-    tasks.forEach((task) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "cal-unplanned-chip";
-      const depth = somedayTaskDepth(task);
-      if (isParentTask(task.id)) {
-        // a parent: filled with its family's color, so it visibly reads as
-        // a container rather than something you can schedule directly. The
-        // whole family (every 子/孫/ひ孫 hanging off the same いつか task)
-        // shares one base color — the border always stays at that full
-        // color regardless of depth, while the fill itself fades lighter
-        // the closer this chip sits to the leaves.
-        chip.classList.add("parent");
-        if (activeSomedayIds.includes(task.id)) chip.classList.add("active-parent");
-        const base = ensureParentColor(rootSomedayTask(task));
-        chip.style.borderColor = base;
-        chip.style.background = lightenHex(base, SOMEDAY_FILL_LIGHTEN[depth] || 0);
-        // the class's white text (for a full-strength fill) stops reading
-        // well once the fill has faded most of the way toward white
-        chip.style.color = depth >= 2 ? "var(--ink)" : "#fff";
-      } else if (task.parentId) {
-        // a leaf — never filled, just outlined in its family's base color
-        // (no fill) so the family resemblance still reads at a glance,
-        // while the white interior doubles as the "this one can be
-        // scheduled" marker leaf tasks already have by default
-        chip.style.borderColor = ensureParentColor(rootSomedayTask(task));
-      }
-      const labelEl = document.createElement("span");
-      labelEl.className = "cal-unplanned-chip-label";
-      labelEl.textContent = task.label;
-      chip.appendChild(labelEl);
+    tasks.forEach((task) => listEl.appendChild(createSomedayChip(task, listEl)));
+  }
 
-      // parent vs. leaf already reads from the chip's own shape (square vs.
-      // pill), so the count badge only adds information for an actual
-      // parent — showing it on every leaf too (always "0") would just be
-      // clutter with nothing to see-at-a-glance.
-      const childCount = childrenOf(task.id).length;
-      if (depth < SOMEDAY_MAX_DEPTH && childCount > 0) {
-        const badge = document.createElement("span");
-        badge.className = "cal-child-count-badge";
-        // rendered via CSS content: attr(), not textContent — so chip.textContent
-        // stays just the label, which the rest of the someday code (and tests)
-        // rely on for reading/comparing a chip's name
-        badge.dataset.count = String(childCount);
-        chip.appendChild(badge);
-      }
-
-      chip.dataset.somedayId = task.id;
-      if (VERTICAL_SOMEDAY_LISTS.has(listEl)) {
-        chip.addEventListener("click", () => handleSomedayChipTap(task));
-      } else {
-        chip.addEventListener("pointerdown", (e) => startSomedayChipDrag(e, chip, task));
-      }
-      listEl.appendChild(chip);
+  // 全展開モード用: groups=[{parent, children}, ...]を、親ごとの見出し+
+  // その子チップの並びとして1つのlistElにまとめて描画する。
+  function renderSomedayListGrouped(listEl, groups) {
+    listEl.innerHTML = "";
+    if (!groups.length) {
+      const empty = document.createElement("span");
+      empty.className = "calendar-unplanned-empty";
+      empty.textContent = "なし";
+      listEl.appendChild(empty);
+      return;
+    }
+    groups.forEach(({ parent, children }) => {
+      const header = document.createElement("span");
+      header.className = "someday-group-header";
+      header.textContent = parent.label;
+      header.title = `「${parent.label}」の子`;
+      header.addEventListener("click", () => promptSomedayEditOrAddChild(parent, somedayTaskDepth(parent)));
+      listEl.appendChild(header);
+      children.forEach((task) => listEl.appendChild(createSomedayChip(task, listEl)));
     });
   }
 
@@ -2950,9 +3057,27 @@
     }
   }
 
+  // 全展開モード用: 各階層(0=子,1=孫,2=ひ孫の列)について、その階層に子を
+  // 持つ全ての親をsomeday配列の並び順のまま集め、親ごとのグループとして
+  // 表示する — activeSomedayIds(1つの親だけを選ぶ通常モードの状態)は
+  // 見ない。
+  function renderSubtaskTraysExpanded() {
+    for (let level = 0; level < activeSomedayIds.length; level++) {
+      const cfg = somedayLevelEls[level + 1];
+      const parents = someday.filter((t) => somedayTaskDepth(t) === level && isParentTask(t.id));
+      cfg.boxes.forEach((b) => (b.hidden = parents.length === 0));
+      const groups = parents.map((parent) => ({ parent, children: childrenOf(parent.id) }));
+      cfg.lists.forEach((listEl) => renderSomedayListGrouped(listEl, groups));
+    }
+  }
+
   function renderSomedayList() {
     somedayLevelEls[0].lists.forEach((listEl) => renderSomedayListInto(listEl, topLevelSomeday()));
-    renderSubtaskTrays();
+    if (somedayExpandAll) {
+      renderSubtaskTraysExpanded();
+    } else {
+      renderSubtaskTrays();
+    }
     repositionSomedayConnectors();
     // A box that just went from hidden to visible in this same pass (e.g. a
     // task's first-ever child, or first-ever grandchild) can still report a
@@ -3705,6 +3830,12 @@
       scrollVelocity: 0,
       lastClientX: e.clientX,
       scrollRafId: null,
+      // reorderフェーズ中、ポインタが今どのチップ(または、いつかトレイの
+      // 空きスペース)の上に乗っているか — 配置転換(reparent)の対象。
+      // どちらも無ければnull(=通常の並べ替え)。
+      reparentTargetEl: null,
+      reparentTargetId: null,
+      promoteZoneEl: null,
     };
     somedayDragCtx.longPressTimer = setTimeout(() => {
       if (!somedayDragCtx || somedayDragCtx.phase !== "pending") return;
@@ -3932,6 +4063,82 @@
       const currentLeft = ctx.chip.offsetLeft;
       ctx.chip.style.transform = `translateX(${desiredLeft - currentLeft}px)`;
 
+      // 別のチップの「真ん中(左右端から25%ずつを除いた中央帯)」に指
+      // (ポインタ)が乗っていれば、それは「同じ列内での並べ替え」ではなく
+      // 「このチップの子への配置転換」の合図 — 通常の並べ替え(下の
+      // sibling-swap)より優先する。中央帯だけに絞るのは、チップの左右端
+      // 付近への重なりまで配置転換にしてしまうと、隣り合う2枚を並べ替え
+      // ようとする普通のドラッグ(チップの端が軽く重なるだけで起きる)まで
+      // 意図せず配置転換に化けてしまうため — 真ん中への重なりは、それより
+      // 踏み込んだ「このチップの上に落とす」という明確な意図として扱う。
+      // 同じページ内のチップだけを対象にする(表示中でないページのチップ
+      // は、ページ送りで単に画面外に置かれているだけで座標的にヒットしない
+      // 設計だが、念のため明示的にスコープする)。
+      const pageRoot = ctx.chip.closest(".page");
+      let hoverChipEl = null;
+      let hoverTask = null;
+      if (pageRoot) {
+        const candidates = pageRoot.querySelectorAll(".cal-unplanned-chip");
+        for (const cand of candidates) {
+          if (cand === ctx.chip) continue;
+          const candId = cand.dataset.somedayId;
+          if (!candId) continue;
+          const rect = cand.getBoundingClientRect();
+          const bandMargin = rect.width * 0.25;
+          const inMiddleBand =
+            e.clientX >= rect.left + bandMargin &&
+            e.clientX <= rect.right - bandMargin &&
+            e.clientY >= rect.top &&
+            e.clientY <= rect.bottom;
+          if (inMiddleBand) {
+            hoverChipEl = cand;
+            hoverTask = someday.find((t) => t.id === candId);
+            break;
+          }
+        }
+      }
+
+      if (ctx.reparentTargetEl && ctx.reparentTargetEl !== hoverChipEl) {
+        ctx.reparentTargetEl.classList.remove("reparent-target");
+        ctx.reparentTargetEl = null;
+        ctx.reparentTargetId = null;
+      }
+      if (ctx.promoteZoneEl) {
+        ctx.promoteZoneEl.classList.remove("drop-target");
+        ctx.promoteZoneEl = null;
+      }
+
+      if (hoverTask && canReparentSomedayUnder(ctx.task, hoverTask.id)) {
+        hoverChipEl.classList.add("reparent-target");
+        ctx.reparentTargetEl = hoverChipEl;
+        ctx.reparentTargetId = hoverTask.id;
+      } else {
+        ctx.reparentTargetId = null;
+        // どのチップの上でもなければ、いつか(トップレベル)トレイの上に
+        // 乗っているかを見る — 乗っていて、かつ今すでにトップレベルでは
+        // ない場合だけ「トップレベルへ昇格」の対象になる。
+        const topLevelListEl = pageRoot ? somedayLevelEls[0].lists.find((l) => pageRoot.contains(l)) : null;
+        if (
+          topLevelListEl &&
+          ctx.task.parentId &&
+          canReparentSomedayUnder(ctx.task, null) &&
+          rectContains(topLevelListEl.getBoundingClientRect(), e.clientX, e.clientY)
+        ) {
+          topLevelListEl.classList.add("drop-target");
+          ctx.promoteZoneEl = topLevelListEl;
+          ctx.reparentTargetId = "TOP_LEVEL";
+        }
+      }
+
+      // 配置転換の対象が乗っている間は、同じ列内でのX位置ベースの並べ替え
+      // は行わない(このドラッグの意図は「別の場所へ落とす」ことであって
+      // 「今の列内で順番を変える」ことではないため)。
+      if (ctx.reparentTargetId) return;
+      // 全展開中は複数の親のグループが同じ列に同居しており、位置ベースの
+      // 並べ替えは「どのグループの間に挟まったか」が曖昧になるため行わない
+      // — この列での操作は配置転換のみに絞る。
+      if (somedayExpandAll) return;
+
       const chipRect = ctx.chip.getBoundingClientRect();
       const chipCenter = chipRect.left + chipRect.width / 2;
       const siblings = Array.from(ctx.listEl.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
@@ -3966,6 +4173,8 @@
     Array.from(document.querySelectorAll(".monthly-cell.drop-target")).forEach((c) => c.classList.remove("drop-target"));
     calendarPriorityBox.classList.remove("drop-target");
     listWrap.classList.remove("drop-target");
+    if (ctx.reparentTargetEl) ctx.reparentTargetEl.classList.remove("reparent-target");
+    if (ctx.promoteZoneEl) ctx.promoteZoneEl.classList.remove("drop-target");
     clearDragPreview();
     clearDragGhost();
 
@@ -4097,6 +4306,25 @@
       ctx.chip.classList.remove("reordering");
       ctx.chip.style.transition = "transform 0.15s ease";
       ctx.chip.style.transform = "";
+
+      if (ctx.reparentTargetId) {
+        // 別のチップ(またはいつかトレイ)の上で離した = 並べ替えではなく
+        // 配置転換。子孫ごと移動し、renderSomedayList()が列構成全体を
+        // 作り直すので、通常の並べ替え側のsibling-syncは不要。
+        const { task, reparentTargetId } = ctx;
+        somedayDragCtx = null;
+        performSomedayReparent(task, reparentTargetId === "TOP_LEVEL" ? null : reparentTargetId);
+        return;
+      }
+
+      if (somedayExpandAll) {
+        // 移動中(onSomedayChipDragMove)側で並べ替え自体を行っていない
+        // ("全展開中は行わない"のガード参照)ので、DOM位置も変わっていない
+        // — 何もせず元の位置へ視覚的に戻すだけでよい。
+        somedayDragCtx = null;
+        return;
+      }
+
       const domOrder = Array.from(ctx.listEl.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
       const orderedIds = domOrder.map((n) => n.dataset.somedayId);
       // only the tasks actually shown in this scoped list (top-level, or one
@@ -4152,8 +4380,10 @@
       // opens the same 変更修正/子タスク追加 choice as a leaf task, instead
       // of always renaming — otherwise there was no way to add ANOTHER
       // child from an already-expanded parent without first collapsing
-      // and re-tapping it
-      if (activeSomedayIds[depth] === task.id) {
+      // and re-tapping it。全展開中は全ての親の子が最初から見えているので
+      // 「まだ掘り下げていない親を選ぶ」段階がそもそも無く、常にこちら
+      // (選択肢パネル)へ直接進む。
+      if (somedayExpandAll || activeSomedayIds[depth] === task.id) {
         promptSomedayEditOrAddChild(task, depth);
       } else {
         activateSomedayChain(depth, task.id);
@@ -4162,7 +4392,7 @@
       return;
     }
 
-    if (depth === 0 && activeSomedayIds.some((id) => id)) {
+    if (!somedayExpandAll && depth === 0 && activeSomedayIds.some((id) => id)) {
       // an unrelated childless いつか task, tapped while some other
       // family's 子/孫/ひ孫 trays are expanded below — just close that
       // expansion (like tapping outside does) instead of also popping
@@ -4869,6 +5099,27 @@
   monthlySomedayAddBtn.addEventListener("click", addSomedayTask);
   taskSomedayAddBtn.addEventListener("click", addSomedayTask);
   tasklistSomedayAddBtn.addEventListener("click", addSomedayTask);
+
+  const somedayExpandAllBtns = [
+    calendarSomedayExpandAllBtn,
+    weeklySomedayExpandAllBtn,
+    monthlySomedayExpandAllBtn,
+    taskSomedayExpandAllBtn,
+    tasklistSomedayExpandAllBtn,
+  ];
+  function updateSomedayExpandAllBtns() {
+    somedayExpandAllBtns.forEach((btn) => {
+      btn.textContent = somedayExpandAll ? "たたむ" : "全展開";
+      btn.classList.toggle("active", somedayExpandAll);
+    });
+  }
+  somedayExpandAllBtns.forEach((btn) =>
+    btn.addEventListener("click", () => {
+      somedayExpandAll = !somedayExpandAll;
+      updateSomedayExpandAllBtns();
+      renderSomedayList();
+    })
+  );
 
   // a connector line tracks its parent chip's real on-screen position, so
   // it needs to move along whenever the tray holding that chip is scrolled

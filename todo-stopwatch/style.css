@@ -2008,6 +2008,61 @@ body {
   outline-offset: 1px;
 }
 
+/* いつかトレイの「全展開」トグル: オフの間は今まで通り1つの親だけを
+   選んで掘り下げる表示、オンの間は子/孫/ひ孫の各列に「子を持つ全ての
+   親」の子をまとめて(親ごとの見出しで区切って)表示する。 */
+.someday-expand-all-btn {
+  all: unset;
+  box-sizing: border-box;
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--panel);
+  color: var(--muted);
+  border: 1.5px solid var(--panel-line);
+  white-space: nowrap;
+}
+
+.someday-expand-all-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.someday-expand-all-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 全展開中、子/孫/ひ孫の各列内で親ごとのグループを区切る見出し。横
+   スクロールのトレイでは小さな仕切りチップとして、タスク一覧ページの
+   縦リスト内では区切り線つきの小見出しとして働く(下の.tasklist-list
+   内の上書きを参照)。タップでその親の編集/子タスク追加を開ける。 */
+.someday-group-header {
+  flex: none;
+  align-self: center;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 2px 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* ドラッグ中のチップを、別のチップの真上に重ねている間の「ここへ落とすと
+   このチップの子になる」合図。 */
+.cal-unplanned-chip.reparent-target {
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+.calendar-unplanned-list.drop-target {
+  background: var(--accent-soft);
+  border-radius: 8px;
+}
+
 /* --- タスク一覧ページ(設定とマンスリーの間のタブ): 他のページの
    横スクロールのチップトレイと同じ「いつか/子/孫/ひ孫」データを、
    縦一列のリストとして表示する専用ページ。列(いつか/子/孫/ひ孫)は
@@ -2090,6 +2145,21 @@ body {
 .tasklist-list .cal-unplanned-chip-label {
   white-space: normal;
   overflow-wrap: break-word;
+}
+
+/* 縦一覧では横スクロールトレイ用の小さな仕切りチップではなく、区切り線
+   つきの全幅見出しにする(グループごとの境目が縦一列でもわかるように)。 */
+.tasklist-list .someday-group-header {
+  align-self: stretch;
+  text-align: left;
+  padding: 6px 4px 2px;
+  border-top: 1px solid var(--panel-line);
+  margin-top: 4px;
+}
+
+.tasklist-list .someday-group-header:first-child {
+  border-top: none;
+  margin-top: 0;
 }
 
 /* 「時間未定」タスクの常時表示行: 時間軸グリッドとは別の、スクロールし
