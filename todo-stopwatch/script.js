@@ -735,11 +735,28 @@
     closeRunningSegments(now);
     archiveDay(state.day);
 
+    // 子タスクを抱えた予定が、完了しないまま日付をまたいだ場合は、その日の
+    // 記録として手放す前に、いつかタスクへ戻す(階層構造ごと、完了済みの
+    // 子タスクは除く — ドラッグで手動で戻す時と同じrestorePlanToSomeday)。
+    // 複数日にまたがる作業を、翌日以降また改めてスケジュールへ組み直せる
+    // ようにするための救済。予定自体を完了扱いにしていた場合や、子タスクを
+    // 持たない普通の予定はこれまで通り(手放すだけ)。
+    let restoredAnyToSomeday = false;
+    state.items.forEach((it) => {
+      if (it.completed || !it.planId) return;
+      const plan = (plans[state.day] || []).find((p) => p.id === it.planId);
+      if (!plan || !plan.children || !plan.children.length) return;
+      restorePlanToSomeday(plan, somedayRestoreParentId(plan.somedayParentId));
+      restoredAnyToSomeday = true;
+    });
+    if (restoredAnyToSomeday) saveSomeday();
+
     // 最優先/今日中(=スケジュールに載っていない未完了タスク)だけ、元の
     // カテゴリ(priorityフラグの有無)のまま翌日へそれぞれ引き継ぐ。
     // スケジュールにはめ込まれていたタスク(item.planIdあり)は引き継がない
     // — planは日付ごとに保存されるため翌日にはもう存在しない相手だし、
-    // 記録はarchiveDay側で既に履歴へ保存済みなので、ここで手放してよい。
+    // 記録はarchiveDay側で既に履歴へ保存済みなので、ここで手放してよい
+    // (子タスクを抱えていた分は、上でいつかへ既に救い出し済み)。
     // 完了済みも同様に「その日のうちだけログに残る」実績なので手放す。
     const carryOver = state.items.filter((it) => !it.completed && !it.planId);
     carryOver.forEach((it) => {
