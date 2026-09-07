@@ -2730,7 +2730,7 @@ body {
 .cal-plan-child-col-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 4px;
 }
 
@@ -2770,9 +2770,22 @@ body {
 
 .cal-plan-edit,
 .cal-plan-monthly-toggle,
+.cal-plan-memo-btn,
 .cal-plan-delete {
   padding: 5px 12px;
   font-size: 0.68rem;
+}
+
+.cal-plan-memo-preview {
+  margin: 0;
+  padding: 6px 8px;
+  background: var(--panel);
+  border-radius: 6px;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .calendar-legend {
@@ -2826,6 +2839,24 @@ body {
 }
 
 .modal-box input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.item-memo-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.item-memo-textarea:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }

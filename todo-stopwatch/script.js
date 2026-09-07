@@ -1298,6 +1298,54 @@
     return openModal({ title, showDuration: true });
   }
 
+  // 予定/タスク1件ごとに持たせる自由記述メモ用の専用モーダル。改行を
+  // 許すためtextareaを使うので、Enterで送信するnameModal(openModal)とは
+  // 別に持つ(Enterは改行として使わせる)。
+  const itemMemoModal = document.getElementById("itemMemoModal");
+  const itemMemoModalInput = document.getElementById("itemMemoModalInput");
+  const itemMemoModalOk = document.getElementById("itemMemoModalOk");
+  const itemMemoModalDelete = document.getElementById("itemMemoModalDelete");
+  const itemMemoModalCancel = document.getElementById("itemMemoModalCancel");
+
+  function openMemoModal(initial) {
+    return new Promise((resolve) => {
+      itemMemoModalInput.value = initial || "";
+      itemMemoModal.hidden = false;
+      itemMemoModalInput.focus();
+
+      function cleanup(result) {
+        itemMemoModal.hidden = true;
+        itemMemoModalOk.removeEventListener("click", onOk);
+        itemMemoModalDelete.removeEventListener("click", onDelete);
+        itemMemoModalCancel.removeEventListener("click", onCancel);
+        itemMemoModal.removeEventListener("mousedown", onBackdrop);
+        document.removeEventListener("keydown", onKeydown);
+        resolve(result);
+      }
+      function onOk() {
+        cleanup(itemMemoModalInput.value);
+      }
+      function onDelete() {
+        cleanup("");
+      }
+      function onCancel() {
+        cleanup(null);
+      }
+      function onBackdrop(e) {
+        if (e.target === itemMemoModal) onCancel();
+      }
+      function onKeydown(e) {
+        if (e.key === "Escape") onCancel();
+      }
+
+      itemMemoModalOk.addEventListener("click", onOk);
+      itemMemoModalDelete.addEventListener("click", onDelete);
+      itemMemoModalCancel.addEventListener("click", onCancel);
+      itemMemoModal.addEventListener("mousedown", onBackdrop);
+      document.addEventListener("keydown", onKeydown);
+    });
+  }
+
   const newTaskBtn = document.getElementById("newTaskBtn");
 
   newTaskBtn.addEventListener("click", async () => {
@@ -1606,6 +1654,8 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-07", text: "予定・タスクをタップした際の編集メニューから、それぞれに自由記述の「メモ」を追加・編集できるようにしました。" },
+    { date: "2026-09-07", text: "予定詳細の「子タスク」欄で、見出しと＋ボタンの間が離れすぎていたのを詰めました。" },
     { date: "2026-09-07", text: "バッファ(移動時間)の設定に「クリア」ボタンを追加しました。前後どちらも一度で未設定に戻せます。" },
     { date: "2026-09-07", text: "設定ページに「お知らせ」と「よくある質問」を追加しました。" },
     { date: "2026-09-07", text: "いつか・今日中・最優先の並べ替え中、指をトレイの端に置き続けると自動でスクロールするようにしました。可視範囲外にあった項目も、そのまま1回のドラッグで並べ替えられます。" },
@@ -2367,6 +2417,7 @@
       showAddChild: depth < PLAN_CHILD_MAX_DEPTH,
       showComplete,
       completeLabel: child.done ? "完了を取り消す" : "完了",
+      showMemo: true,
     }).then((choice) => {
       if (choice === "edit") {
         openNameModal(child.label).then((name) => {
@@ -2375,6 +2426,17 @@
           if (!label) return;
           captureUndoSnapshot();
           child.label = label;
+          savePlans();
+          renderCalendar();
+          showPlanDetail(dateStr, plan);
+        });
+      } else if (choice === "memo") {
+        openMemoModal(child.memo).then((text) => {
+          if (text === null) return;
+          captureUndoSnapshot();
+          const trimmed = text.trim();
+          if (trimmed) child.memo = trimmed;
+          else delete child.memo;
           savePlans();
           renderCalendar();
           showPlanDetail(dateStr, plan);
@@ -2424,6 +2486,22 @@
     editBtn.textContent = "編集";
     editBtn.addEventListener("click", () => {
       renamePlan(dateStr, plan).then(() => showPlanDetail(dateStr, plan));
+    });
+
+    const memoBtn = document.createElement("button");
+    memoBtn.type = "button";
+    memoBtn.className = "btn btn-modal-cancel cal-plan-memo-btn";
+    memoBtn.textContent = plan.memo ? "メモ" : "メモ追加";
+    memoBtn.addEventListener("click", () => {
+      openMemoModal(plan.memo).then((text) => {
+        if (text === null) return;
+        captureUndoSnapshot();
+        const trimmed = text.trim();
+        if (trimmed) plan.memo = trimmed;
+        else delete plan.memo;
+        savePlans();
+        showPlanDetail(dateStr, plan);
+      });
     });
 
     const delBtn = document.createElement("button");
@@ -2485,7 +2563,7 @@
       });
     }
 
-    actions.append(editBtn, ...(monthlyBtn ? [monthlyBtn] : []), ...(completeBtn ? [completeBtn] : []), delBtn);
+    actions.append(editBtn, memoBtn, ...(monthlyBtn ? [monthlyBtn] : []), ...(completeBtn ? [completeBtn] : []), delBtn);
 
     // 移動時間バッファ(前後)の入力欄 — 設定方法は後で作り直す前提の、
     // 今はとりあえず動かすための簡易UI(数値入力2つ)。
@@ -2562,12 +2640,21 @@
     resizeHandle.className = "cal-plan-detail-resize-handle";
     resizeHandle.addEventListener("pointerdown", startCalendarDetailResize);
 
+    // メモがあれば、毎回モーダルを開かなくても内容が見えるようプレビュー
+    // を出す。
+    let memoPreview = null;
+    if (plan.memo) {
+      memoPreview = document.createElement("p");
+      memoPreview.className = "cal-plan-memo-preview";
+      memoPreview.textContent = plan.memo;
+    }
+
     // 情報行+操作ボタンを、子タスクツリーの真上に貼り付けたまま常時表示
     // する — ツリーが縦に伸びてcalendarDetail自体がスクロールしても、
     // 編集/マンスリー表示/完了などへその都度スクロールし直さずに済む。
     const header = document.createElement("div");
     header.className = "cal-plan-detail-header";
-    header.append(resizeHandle, line, bufferRow, actions);
+    header.append(resizeHandle, line, ...(memoPreview ? [memoPreview] : []), bufferRow, actions);
     calendarDetail.append(header, childrenSection);
   }
 
@@ -4113,6 +4200,7 @@
   const somedayChoiceAddChildBtn = document.getElementById("somedayChoiceAddChildBtn");
   const somedayChoiceMonthlyBtn = document.getElementById("somedayChoiceMonthlyBtn");
   const somedayChoiceCompleteBtn = document.getElementById("somedayChoiceCompleteBtn");
+  const somedayChoiceMemoBtn = document.getElementById("somedayChoiceMemoBtn");
   const somedayChoiceDeleteBtn = document.getElementById("somedayChoiceDeleteBtn");
   const somedayChoiceCancelBtn = document.getElementById("somedayChoiceCancelBtn");
 
@@ -4120,16 +4208,21 @@
     const showAddChild = !!(opts && opts.showAddChild);
     const showMonthlyToggle = !!(opts && opts.showMonthlyToggle);
     const showComplete = !!(opts && opts.showComplete);
+    const showMemo = !!(opts && opts.showMemo);
     return new Promise((resolve) => {
       somedayChoiceTitle.textContent = `「${task.label}」を編集`;
       somedayChoiceAddChildBtn.hidden = !showAddChild;
       somedayChoiceMonthlyBtn.hidden = !showMonthlyToggle;
       somedayChoiceCompleteBtn.hidden = !showComplete;
+      somedayChoiceMemoBtn.hidden = !showMemo;
       if (showMonthlyToggle) {
         somedayChoiceMonthlyBtn.textContent = opts.monthlyVisible ? "マンスリーでは非表示" : "マンスリーにもタスクとして表示";
       }
       if (showComplete) {
         somedayChoiceCompleteBtn.textContent = opts.completeLabel || "完了";
+      }
+      if (showMemo) {
+        somedayChoiceMemoBtn.textContent = task.memo ? "メモを編集" : "メモ追加";
       }
       somedayChoiceModal.hidden = false;
 
@@ -4139,6 +4232,7 @@
         somedayChoiceAddChildBtn.removeEventListener("click", onAddChild);
         somedayChoiceMonthlyBtn.removeEventListener("click", onMonthlyToggle);
         somedayChoiceCompleteBtn.removeEventListener("click", onComplete);
+        somedayChoiceMemoBtn.removeEventListener("click", onMemo);
         somedayChoiceDeleteBtn.removeEventListener("click", onDelete);
         somedayChoiceCancelBtn.removeEventListener("click", onCancel);
         somedayChoiceModal.removeEventListener("mousedown", onBackdrop);
@@ -4156,6 +4250,9 @@
       function onComplete() {
         cleanup("complete");
       }
+      function onMemo() {
+        cleanup("memo");
+      }
       function onDelete() {
         cleanup("delete");
       }
@@ -4170,6 +4267,7 @@
       somedayChoiceAddChildBtn.addEventListener("click", onAddChild);
       somedayChoiceMonthlyBtn.addEventListener("click", onMonthlyToggle);
       somedayChoiceCompleteBtn.addEventListener("click", onComplete);
+      somedayChoiceMemoBtn.addEventListener("click", onMemo);
       somedayChoiceDeleteBtn.addEventListener("click", onDelete);
       somedayChoiceCancelBtn.addEventListener("click", onCancel);
       somedayChoiceModal.addEventListener("mousedown", onBackdrop);
@@ -4276,7 +4374,7 @@
     // 親(子タスクを持つ)は掘り下げ途中の未確定な括りなので、確定した1件
     // として完了扱いにはできない — 葉タスクだけ完了を出す。
     const showComplete = !isParentTask(task.id);
-    openTaskChoiceModal(task, { showAddChild: depth < SOMEDAY_MAX_DEPTH, showComplete }).then((choice) => {
+    openTaskChoiceModal(task, { showAddChild: depth < SOMEDAY_MAX_DEPTH, showComplete, showMemo: true }).then((choice) => {
       if (choice === "edit") {
         renameSomedayTask(task);
       } else if (choice === "addChild") {
@@ -4288,6 +4386,16 @@
           someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label, parentId: task.id });
           saveSomeday();
           activateSomedayChain(depth, task.id);
+          renderSomedayList();
+        });
+      } else if (choice === "memo") {
+        openMemoModal(task.memo).then((text) => {
+          if (text === null) return;
+          captureUndoSnapshot();
+          const trimmed = text.trim();
+          if (trimmed) task.memo = trimmed;
+          else delete task.memo;
+          saveSomeday();
           renderSomedayList();
         });
       } else if (choice === "complete") {
@@ -4325,6 +4433,7 @@
       monthlyVisible: !!item.showOnMonthly,
       showComplete: true,
       completeLabel: item.completed ? "完了を取り消す" : "完了",
+      showMemo: true,
     }).then((choice) => {
       if (choice === "edit") {
         openNameModal(item.label).then((name) => {
@@ -4342,6 +4451,16 @@
           }
           persistItemsForDate(dateStr);
           refreshTimerIfShowing(dateStr);
+          renderCalendar();
+        });
+      } else if (choice === "memo") {
+        openMemoModal(item.memo).then((text) => {
+          if (text === null) return;
+          captureUndoSnapshot();
+          const trimmed = text.trim();
+          if (trimmed) item.memo = trimmed;
+          else delete item.memo;
+          persistItemsForDate(dateStr);
           renderCalendar();
         });
       } else if (choice === "toggleMonthly") {
