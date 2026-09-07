@@ -3256,6 +3256,58 @@
 
   const CHIP_REORDER_LONGPRESS_MS = 400;
 
+  // 並べ替えドラッグ中、指(ポインタ)は画面の可視範囲を超えて動かせない
+  // ため、これが無いと可視範囲外にあるチップを超えて並べ替えることが
+  // できない。トレイの可視範囲のきわ(左右CHIP_REORDER_EDGE_PXの帯)に
+  // 居続けている間、フレームごとに自動でその方向へスクロールし、可視
+  // 範囲外だったチップを手前へ流し込む — ドラッグ中のチップ自身は
+  // (transformでポインタの総移動量ぶんだけ追従させているので)そのまま
+  // きわの位置に留まり続ける。いつか/今日中/最優先など、並べ替え可能な
+  // 横スクロールトレイすべてで共有する仕組み。
+  const CHIP_REORDER_EDGE_PX = 48;
+  const CHIP_REORDER_MAX_SCROLL_PX = 16;
+
+  function chipReorderAutoScrollTick(ctx, runStep) {
+    if (!ctx.autoScrollActive) return;
+    const listEl = ctx.listEl;
+    const rect = listEl.getBoundingClientRect();
+    const x = ctx.lastClientX;
+    let dir = 0;
+    let depth = 0;
+    if (x < rect.left + CHIP_REORDER_EDGE_PX) {
+      dir = -1;
+      depth = (rect.left + CHIP_REORDER_EDGE_PX - x) / CHIP_REORDER_EDGE_PX;
+    } else if (x > rect.right - CHIP_REORDER_EDGE_PX) {
+      dir = 1;
+      depth = (x - (rect.right - CHIP_REORDER_EDGE_PX)) / CHIP_REORDER_EDGE_PX;
+    }
+    if (dir !== 0) {
+      depth = Math.max(0, Math.min(1, depth));
+      const before = listEl.scrollLeft;
+      const maxScroll = listEl.scrollWidth - listEl.clientWidth;
+      const next = Math.max(0, Math.min(maxScroll, before + dir * CHIP_REORDER_MAX_SCROLL_PX * depth));
+      if (next !== before) {
+        listEl.scrollLeft = next;
+        runStep();
+      }
+    }
+    ctx.autoScrollRafId = requestAnimationFrame(() => chipReorderAutoScrollTick(ctx, runStep));
+  }
+
+  function startChipReorderAutoScroll(ctx, runStep) {
+    ctx.autoScrollActive = true;
+    chipReorderAutoScrollTick(ctx, runStep);
+  }
+
+  function stopChipReorderAutoScroll(ctx) {
+    if (!ctx) return;
+    ctx.autoScrollActive = false;
+    if (ctx.autoScrollRafId) {
+      cancelAnimationFrame(ctx.autoScrollRafId);
+      ctx.autoScrollRafId = null;
+    }
+  }
+
   // いつか tasks can carry subtasks of their own: a task with parentId
   // set is a child, living in the SAME someday array as top-level tasks;
   // a top-level task with at least one child renders filled-in as a
@@ -4387,6 +4439,8 @@
       scrollVelocity: 0,
       lastClientX: e.clientX,
       scrollRafId: null,
+      autoScrollActive: false,
+      autoScrollRafId: null,
     };
     trayDragCtx.longPressTimer = setTimeout(() => {
       if (!trayDragCtx || trayDragCtx.phase !== "pending") return;
@@ -4400,9 +4454,34 @@
     document.addEventListener("pointercancel", onTrayItemDragEnd);
   }
 
+  function runTrayReorderStep(ctx) {
+    const desiredLeft = ctx.startLeft + (ctx.lastClientX - ctx.startClientX) + (ctx.listEl.scrollLeft - ctx.startScrollLeft);
+    const currentLeft = ctx.chip.offsetLeft;
+    ctx.chip.style.transform = `translateX(${desiredLeft - currentLeft}px)`;
+
+    const chipRect = ctx.chip.getBoundingClientRect();
+    const chipCenter = chipRect.left + chipRect.width / 2;
+    const siblings = Array.from(ctx.listEl.children).filter((n) => n.classList.contains(ctx.itemClass));
+    const draggedIndex = siblings.indexOf(ctx.chip);
+    for (let j = 0; j < siblings.length; j++) {
+      const sib = siblings[j];
+      if (sib === ctx.chip) continue;
+      const sibRect = sib.getBoundingClientRect();
+      if (chipCenter > sibRect.left && chipCenter < sibRect.right) {
+        if (j < draggedIndex) {
+          ctx.listEl.insertBefore(ctx.chip, sib);
+        } else {
+          ctx.listEl.insertBefore(ctx.chip, sib.nextSibling);
+        }
+        break;
+      }
+    }
+  }
+
   function onTrayItemDragMove(e) {
     if (!trayDragCtx) return;
     const ctx = trayDragCtx;
+    ctx.lastClientX = e.clientX;
 
     if (ctx.phase === "pending") {
       const dx = e.clientX - ctx.startClientX;
@@ -4419,6 +4498,7 @@
           ctx.chip.classList.add("reordering");
           ctx.chip.style.transition = "none";
           vibrate(15);
+          startChipReorderAutoScroll(ctx, () => runTrayReorderStep(ctx));
         } else {
           ctx.phase = "scroll";
         }
@@ -4506,27 +4586,7 @@
 
     if (ctx.phase === "reorder") {
       e.preventDefault();
-      const desiredLeft = ctx.startLeft + (e.clientX - ctx.startClientX);
-      const currentLeft = ctx.chip.offsetLeft;
-      ctx.chip.style.transform = `translateX(${desiredLeft - currentLeft}px)`;
-
-      const chipRect = ctx.chip.getBoundingClientRect();
-      const chipCenter = chipRect.left + chipRect.width / 2;
-      const siblings = Array.from(ctx.listEl.children).filter((n) => n.classList.contains(ctx.itemClass));
-      const draggedIndex = siblings.indexOf(ctx.chip);
-      for (let j = 0; j < siblings.length; j++) {
-        const sib = siblings[j];
-        if (sib === ctx.chip) continue;
-        const sibRect = sib.getBoundingClientRect();
-        if (chipCenter > sibRect.left && chipCenter < sibRect.right) {
-          if (j < draggedIndex) {
-            ctx.listEl.insertBefore(ctx.chip, sib);
-          } else {
-            ctx.listEl.insertBefore(ctx.chip, sib.nextSibling);
-          }
-          break;
-        }
-      }
+      runTrayReorderStep(ctx);
     }
   }
 
@@ -4536,6 +4596,7 @@
     document.removeEventListener("pointermove", onTrayItemDragMove);
     document.removeEventListener("pointerup", onTrayItemDragEnd);
     document.removeEventListener("pointercancel", onTrayItemDragEnd);
+    stopChipReorderAutoScroll(ctx);
     if (ctx.longPressTimer) clearTimeout(ctx.longPressTimer);
     ctx.chip.classList.remove("armed");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
@@ -4672,6 +4733,8 @@
       reparentTargetEl: null,
       reparentTargetId: null,
       promoteZoneEl: null,
+      autoScrollActive: false,
+      autoScrollRafId: null,
     };
     somedayDragCtx.longPressTimer = setTimeout(() => {
       if (!somedayDragCtx || somedayDragCtx.phase !== "pending") return;
@@ -4688,6 +4751,8 @@
   function onSomedayChipDragMove(e) {
     if (!somedayDragCtx) return;
     const ctx = somedayDragCtx;
+    ctx.lastClientX = e.clientX;
+    ctx.lastClientY = e.clientY;
 
     if (ctx.phase === "pending") {
       const dx = e.clientX - ctx.startClientX;
@@ -4708,6 +4773,7 @@
           ctx.chip.classList.add("reordering");
           ctx.chip.style.transition = "none";
           vibrate(15);
+          startChipReorderAutoScroll(ctx, () => runSomedayReorderStep(ctx));
         } else {
           ctx.phase = "scroll";
         }
@@ -4889,101 +4955,105 @@
 
     if (ctx.phase === "reorder") {
       e.preventDefault();
-      const desiredLeft = ctx.startLeft + (e.clientX - ctx.startClientX);
-      const currentLeft = ctx.chip.offsetLeft;
-      ctx.chip.style.transform = `translateX(${desiredLeft - currentLeft}px)`;
+      runSomedayReorderStep(ctx);
+    }
+  }
 
-      // 別のチップの「真ん中(左右端から25%ずつを除いた中央帯)」に指
-      // (ポインタ)が乗っていれば、それは「同じ列内での並べ替え」ではなく
-      // 「このチップの子への配置転換」の合図 — 通常の並べ替え(下の
-      // sibling-swap)より優先する。中央帯だけに絞るのは、チップの左右端
-      // 付近への重なりまで配置転換にしてしまうと、隣り合う2枚を並べ替え
-      // ようとする普通のドラッグ(チップの端が軽く重なるだけで起きる)まで
-      // 意図せず配置転換に化けてしまうため — 真ん中への重なりは、それより
-      // 踏み込んだ「このチップの上に落とす」という明確な意図として扱う。
-      // 同じページ内のチップだけを対象にする(表示中でないページのチップ
-      // は、ページ送りで単に画面外に置かれているだけで座標的にヒットしない
-      // 設計だが、念のため明示的にスコープする)。
-      const pageRoot = ctx.chip.closest(".page");
-      let hoverChipEl = null;
-      let hoverTask = null;
-      if (pageRoot) {
-        const candidates = pageRoot.querySelectorAll(".cal-unplanned-chip");
-        for (const cand of candidates) {
-          if (cand === ctx.chip) continue;
-          const candId = cand.dataset.somedayId;
-          if (!candId) continue;
-          const rect = cand.getBoundingClientRect();
-          const bandMargin = rect.width * 0.25;
-          const inMiddleBand =
-            e.clientX >= rect.left + bandMargin &&
-            e.clientX <= rect.right - bandMargin &&
-            e.clientY >= rect.top &&
-            e.clientY <= rect.bottom;
-          if (inMiddleBand) {
-            hoverChipEl = cand;
-            hoverTask = someday.find((t) => t.id === candId);
-            break;
-          }
-        }
-      }
+  function runSomedayReorderStep(ctx) {
+    const desiredLeft = ctx.startLeft + (ctx.lastClientX - ctx.startClientX) + (ctx.listEl.scrollLeft - ctx.startScrollLeft);
+    const currentLeft = ctx.chip.offsetLeft;
+    ctx.chip.style.transform = `translateX(${desiredLeft - currentLeft}px)`;
 
-      if (ctx.reparentTargetEl && ctx.reparentTargetEl !== hoverChipEl) {
-        ctx.reparentTargetEl.classList.remove("reparent-target");
-        ctx.reparentTargetEl = null;
-        ctx.reparentTargetId = null;
-      }
-      if (ctx.promoteZoneEl) {
-        ctx.promoteZoneEl.classList.remove("drop-target");
-        ctx.promoteZoneEl = null;
-      }
-
-      if (hoverTask && canReparentSomedayUnder(ctx.task, hoverTask.id)) {
-        hoverChipEl.classList.add("reparent-target");
-        ctx.reparentTargetEl = hoverChipEl;
-        ctx.reparentTargetId = hoverTask.id;
-      } else {
-        ctx.reparentTargetId = null;
-        // どのチップの上でもなければ、いつか(トップレベル)トレイの上に
-        // 乗っているかを見る — 乗っていて、かつ今すでにトップレベルでは
-        // ない場合だけ「トップレベルへ昇格」の対象になる。
-        const topLevelListEl = pageRoot ? somedayLevelEls[0].lists.find((l) => pageRoot.contains(l)) : null;
-        if (
-          topLevelListEl &&
-          ctx.task.parentId &&
-          canReparentSomedayUnder(ctx.task, null) &&
-          rectContains(topLevelListEl.getBoundingClientRect(), e.clientX, e.clientY)
-        ) {
-          topLevelListEl.classList.add("drop-target");
-          ctx.promoteZoneEl = topLevelListEl;
-          ctx.reparentTargetId = "TOP_LEVEL";
-        }
-      }
-
-      // 配置転換の対象が乗っている間は、同じ列内でのX位置ベースの並べ替え
-      // は行わない(このドラッグの意図は「別の場所へ落とす」ことであって
-      // 「今の列内で順番を変える」ことではないため)。
-      if (ctx.reparentTargetId) return;
-      // 全展開ツリー表示中は、ctx.listElが「その家族・その深さだけの
-      // セル」に自然にスコープされている(renderSomedayTreeInto参照)ので、
-      // 通常モードと同じ位置ベースの並べ替えロジックがそのまま安全に使える。
-
-      const chipRect = ctx.chip.getBoundingClientRect();
-      const chipCenter = chipRect.left + chipRect.width / 2;
-      const siblings = Array.from(ctx.listEl.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
-      const draggedIndex = siblings.indexOf(ctx.chip);
-      for (let j = 0; j < siblings.length; j++) {
-        const sib = siblings[j];
-        if (sib === ctx.chip) continue;
-        const sibRect = sib.getBoundingClientRect();
-        if (chipCenter > sibRect.left && chipCenter < sibRect.right) {
-          if (j < draggedIndex) {
-            ctx.listEl.insertBefore(ctx.chip, sib);
-          } else {
-            ctx.listEl.insertBefore(ctx.chip, sib.nextSibling);
-          }
+    // 別のチップの「真ん中(左右端から25%ずつを除いた中央帯)」に指
+    // (ポインタ)が乗っていれば、それは「同じ列内での並べ替え」ではなく
+    // 「このチップの子への配置転換」の合図 — 通常の並べ替え(下の
+    // sibling-swap)より優先する。中央帯だけに絞るのは、チップの左右端
+    // 付近への重なりまで配置転換にしてしまうと、隣り合う2枚を並べ替え
+    // ようとする普通のドラッグ(チップの端が軽く重なるだけで起きる)まで
+    // 意図せず配置転換に化けてしまうため — 真ん中への重なりは、それより
+    // 踏み込んだ「このチップの上に落とす」という明確な意図として扱う。
+    // 同じページ内のチップだけを対象にする(表示中でないページのチップ
+    // は、ページ送りで単に画面外に置かれているだけで座標的にヒットしない
+    // 設計だが、念のため明示的にスコープする)。
+    const pageRoot = ctx.chip.closest(".page");
+    let hoverChipEl = null;
+    let hoverTask = null;
+    if (pageRoot) {
+      const candidates = pageRoot.querySelectorAll(".cal-unplanned-chip");
+      for (const cand of candidates) {
+        if (cand === ctx.chip) continue;
+        const candId = cand.dataset.somedayId;
+        if (!candId) continue;
+        const rect = cand.getBoundingClientRect();
+        const bandMargin = rect.width * 0.25;
+        const inMiddleBand =
+          ctx.lastClientX >= rect.left + bandMargin &&
+          ctx.lastClientX <= rect.right - bandMargin &&
+          ctx.lastClientY >= rect.top &&
+          ctx.lastClientY <= rect.bottom;
+        if (inMiddleBand) {
+          hoverChipEl = cand;
+          hoverTask = someday.find((t) => t.id === candId);
           break;
         }
+      }
+    }
+
+    if (ctx.reparentTargetEl && ctx.reparentTargetEl !== hoverChipEl) {
+      ctx.reparentTargetEl.classList.remove("reparent-target");
+      ctx.reparentTargetEl = null;
+      ctx.reparentTargetId = null;
+    }
+    if (ctx.promoteZoneEl) {
+      ctx.promoteZoneEl.classList.remove("drop-target");
+      ctx.promoteZoneEl = null;
+    }
+
+    if (hoverTask && canReparentSomedayUnder(ctx.task, hoverTask.id)) {
+      hoverChipEl.classList.add("reparent-target");
+      ctx.reparentTargetEl = hoverChipEl;
+      ctx.reparentTargetId = hoverTask.id;
+    } else {
+      ctx.reparentTargetId = null;
+      // どのチップの上でもなければ、いつか(トップレベル)トレイの上に
+      // 乗っているかを見る — 乗っていて、かつ今すでにトップレベルでは
+      // ない場合だけ「トップレベルへ昇格」の対象になる。
+      const topLevelListEl = pageRoot ? somedayLevelEls[0].lists.find((l) => pageRoot.contains(l)) : null;
+      if (
+        topLevelListEl &&
+        ctx.task.parentId &&
+        canReparentSomedayUnder(ctx.task, null) &&
+        rectContains(topLevelListEl.getBoundingClientRect(), ctx.lastClientX, ctx.lastClientY)
+      ) {
+        topLevelListEl.classList.add("drop-target");
+        ctx.promoteZoneEl = topLevelListEl;
+        ctx.reparentTargetId = "TOP_LEVEL";
+      }
+    }
+
+    // 配置転換の対象が乗っている間は、同じ列内でのX位置ベースの並べ替え
+    // は行わない(このドラッグの意図は「別の場所へ落とす」ことであって
+    // 「今の列内で順番を変える」ことではないため)。
+    if (ctx.reparentTargetId) return;
+    // 全展開ツリー表示中は、ctx.listElが「その家族・その深さだけの
+    // セル」に自然にスコープされている(renderSomedayTreeInto参照)ので、
+    // 通常モードと同じ位置ベースの並べ替えロジックがそのまま安全に使える。
+
+    const chipRect = ctx.chip.getBoundingClientRect();
+    const chipCenter = chipRect.left + chipRect.width / 2;
+    const siblings = Array.from(ctx.listEl.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
+    const draggedIndex = siblings.indexOf(ctx.chip);
+    for (let j = 0; j < siblings.length; j++) {
+      const sib = siblings[j];
+      if (sib === ctx.chip) continue;
+      const sibRect = sib.getBoundingClientRect();
+      if (chipCenter > sibRect.left && chipCenter < sibRect.right) {
+        if (j < draggedIndex) {
+          ctx.listEl.insertBefore(ctx.chip, sib);
+        } else {
+          ctx.listEl.insertBefore(ctx.chip, sib.nextSibling);
+        }
+        break;
       }
     }
   }
@@ -4994,6 +5064,7 @@
     document.removeEventListener("pointermove", onSomedayChipDragMove);
     document.removeEventListener("pointerup", onSomedayChipDragEnd);
     document.removeEventListener("pointercancel", onSomedayChipDragEnd);
+    stopChipReorderAutoScroll(ctx);
     if (ctx.longPressTimer) clearTimeout(ctx.longPressTimer);
     ctx.chip.classList.remove("armed");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
