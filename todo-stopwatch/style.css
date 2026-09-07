@@ -1907,27 +1907,48 @@ body {
   right: 1px;
 }
 
+/* バッファの幹と接する左辺: 継ぎ目を消して1つの輪郭に見せるため枠線を
+   引かず、左側の角も丸めない(幹のcoreピースは角丸を持たないので、
+   ここを丸めたままだと角のところだけ隙間が空いて見えてしまう)。 */
+.cal-plan-block.has-buffer {
+  border-left: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
 /* 予定の前後に確保したバッファ(移動時間)を示す細い「幹」。本体の
    .cal-plan-block はここから右へ張り出す形になり、全体で左に90度倒した
    Tの字のような形になる — 予定名は無いが時間帯は押さえてあることを、
    控えめな見た目で示す。幹は3つのピース(前バッファ/本体と重なる区間/
    後バッファ)を継ぎ目なく積んで作る — バッファ部分だけ縞模様にする
-   ことで、幹を見ただけでバッファが何分あるか数えやすくするため。 */
+   ことで、幹を見ただけでバッファが何分あるか数えやすくするため。
+   幹と本体を1つの輪郭として見せたいので、枠線は外周に当たる辺だけに
+   引く: 左辺は常に外周、上下端はspine-edge-top/bottom(JS側で実際に
+   一番上/一番下に来るピースへ付与)、右辺はstriped(前後バッファ)側
+   だけで、本体と接するcoreピース側には引かない(下でoverride)。 */
 .cal-plan-buffer-spine {
   position: absolute;
   z-index: 1;
   box-sizing: border-box;
   border-left: 1px solid var(--accent);
   border-right: 1px solid var(--accent);
-  border-top: 1px solid var(--accent);
-  border-bottom: 1px solid var(--accent);
   opacity: 0.85;
   pointer-events: none;
 }
 
-/* 本体(予定名)と時間帯が重なる区間 — バッファではないので縞なしの白 */
+.cal-plan-buffer-spine.spine-edge-top {
+  border-top: 1px solid var(--accent);
+}
+
+.cal-plan-buffer-spine.spine-edge-bottom {
+  border-bottom: 1px solid var(--accent);
+}
+
+/* 本体(予定名)と時間帯が重なる区間 — バッファではないので縞なしの白。
+   右辺は本体の左辺と接する内側の継ぎ目なので枠線を引かない。 */
 .cal-plan-buffer-spine.core {
   background-color: var(--card-bg);
+  border-right: none;
 }
 
 /* 前後のバッファ区間の縞模様。1本あたりの実ピクセル高さ(=10分ぶんの

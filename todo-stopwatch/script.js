@@ -5617,17 +5617,30 @@
                 afterPiece.style.backgroundSize = `100% ${periodPx}px`;
                 dayCol.appendChild(afterPiece);
               }
+
+              // 幹と本体を「一体の輪郭」に見せるため、内側で接する辺
+              // (前後ピース同士の継ぎ目、本体と接するコアピースの右辺)
+              // には枠線を引かず、外側の輪郭に当たる辺だけに枠線を残す
+              // — 3ピースのうち実際に一番上/一番下に来るものだけへ
+              // spine-edge-top/bottomを付け、外周の上下端を閉じる。
+              (beforePiece || corePiece).classList.add("spine-edge-top");
+              (afterPiece || corePiece).classList.add("spine-edge-bottom");
             }
 
+            // 幹と本体が接する辺(本体の左辺)は枠線無しにして継ぎ目を
+            // 消し、隣り合う2つの箱ではなく1つのT字形として見えるように
+            // する(CSS .cal-plan-block.has-buffer参照)。すき間も無くし、
+            // 本体の左辺が幹のコアピースの右辺にちょうど重なるようにする。
             const blockLeftCss = hasBuffer
-              ? `calc(${(col / colCount) * 100}% + ${PLAN_BUFFER_SPINE_W + 2}px)`
+              ? `calc(${(col / colCount) * 100}% + ${PLAN_BUFFER_SPINE_W + 1}px)`
               : `calc(${(col / colCount) * 100}% + 1px)`;
             const blockWidthCss = hasBuffer
-              ? `calc(${(1 / colCount) * 100}% - ${PLAN_BUFFER_SPINE_W + 4}px)`
+              ? `calc(${(1 / colCount) * 100}% - ${PLAN_BUFFER_SPINE_W + 2}px)`
               : `calc(${(1 / colCount) * 100}% - 2px)`;
 
             const block = document.createElement("div");
             block.className = "cal-plan-block";
+            block.classList.toggle("has-buffer", hasBuffer);
             block.style.top = `${minToPx(p.startMin)}px`;
             block.style.height = `${minToPx(Math.max(1, p.endMin - p.startMin))}px`;
             block.style.left = blockLeftCss;
