@@ -1916,9 +1916,20 @@ body {
   z-index: 1;
   box-sizing: border-box;
   border-radius: 3px;
-  background: var(--accent-soft);
+  background-color: var(--card-bg);
+  /* 10分ごとの横縞: 1本あたりの実ピクセル高さ(=10分ぶんの高さ)は
+     background-size、実時刻に揃えるための位置合わせはbackground-position-y
+     として、それぞれJS側(renderCalendar)がインラインで設定する。 */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--accent-soft) 0%,
+    var(--accent-soft) 50%,
+    transparent 50%,
+    transparent 100%
+  );
+  background-repeat: repeat-y;
   border: 1px solid var(--accent);
-  opacity: 0.8;
+  opacity: 0.85;
   pointer-events: none;
 }
 

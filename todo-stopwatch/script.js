@@ -2557,6 +2557,8 @@
   const PLAN_DRAG_H_TOLERANCE = 32;
   // 移動時間バッファ(前後30分など)を示す細い「幹」の幅
   const PLAN_BUFFER_SPINE_W = 7;
+  // 幹の中に入れる横縞の間隔(分)
+  const PLAN_BUFFER_STRIPE_MIN = 10;
 
   // shared with the swipe-navigation block further down: how much a drag
   // must favor the horizontal axis before it's read as a swipe rather than a
@@ -5503,6 +5505,14 @@
               spine.style.height = `${minToPx(Math.max(1, bufferEndMin - bufferStartMin))}px`;
               spine.style.left = `calc(${(col / colCount) * 100}% + 1px)`;
               spine.style.width = `${PLAN_BUFFER_SPINE_W}px`;
+              // 10分ごとの横縞。実時刻(0時起点)のキリの良い10分単位に
+              // 揃うよう、幹自身の開始位置とのズレ分だけ背景をオフセット
+              // する(幹はbeforeBufferMin分だけ本体より早く始まるので、
+              // 10分の倍数からズレていることが多い)。
+              const stripePx = minToPx(PLAN_BUFFER_STRIPE_MIN);
+              spine.style.backgroundSize = `100% ${stripePx * 2}px`;
+              const stripeOffsetMin = ((bufferStartMin % PLAN_BUFFER_STRIPE_MIN) + PLAN_BUFFER_STRIPE_MIN) % PLAN_BUFFER_STRIPE_MIN;
+              spine.style.backgroundPositionY = `${-minToPx(stripeOffsetMin)}px`;
               dayCol.appendChild(spine);
             }
 
