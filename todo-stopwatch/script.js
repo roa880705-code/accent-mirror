@@ -609,28 +609,28 @@
     closeRunningSegments(now);
     archiveDay(state.day);
 
+    // 最優先/今日中(=スケジュールに載っていない未完了タスク)だけ、元の
+    // カテゴリ(priorityフラグの有無)のまま翌日へそれぞれ引き継ぐ。
+    // スケジュールにはめ込まれていたタスク(item.planIdあり)は引き継がない
+    // — planは日付ごとに保存されるため翌日にはもう存在しない相手だし、
+    // 記録はarchiveDay側で既に履歴へ保存済みなので、ここで手放してよい。
+    // 完了済みも同様に「その日のうちだけログに残る」実績なので手放す。
+    const carryOver = state.items.filter((it) => !it.completed && !it.planId);
+    carryOver.forEach((it) => {
+      if (it.running) it.startedAt = now;
+      it.elapsedMs = 0;
+    });
+
     const draftForToday = drafts[today];
     if (draftForToday && draftForToday.length) {
       // Already full item objects with their planId links intact, so a plan
       // made for this date while it was still "tomorrow" stays linked.
-      // 完了済みは「その日のうちだけログに残る」実績なので、日付が変わる
-      // ここで一緒に手放す(削除したのと同じ、記録はarchiveDay側で済み)。
-      state.items = draftForToday.filter((it) => !it.completed);
+      // 完了済みは同じ理由でここでも手放す。
+      state.items = [...draftForToday.filter((it) => !it.completed), ...carryOver];
       delete drafts[today];
       saveDrafts();
     } else {
-      state.items = state.items.filter((it) => !it.completed);
-      state.items.forEach((it) => {
-        if (it.running) it.startedAt = now;
-        it.elapsedMs = 0;
-        // a plan is filed under the date it was made for (plans[state.day]),
-        // which just got archived along with yesterday under that same old
-        // date key — carrying the old planId forward would leave the item
-        // pointing at a plan that doesn't exist under the new state.day,
-        // making it invisible in today's schedule (neither a block nor
-        // listed under 時間未定) while still showing up here in ログ.
-        it.planId = null;
-      });
+      state.items = carryOver;
     }
     if (state.sidework.running) state.sidework.startedAt = now;
     state.sidework.elapsedMs = 0;
