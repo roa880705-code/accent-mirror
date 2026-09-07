@@ -2483,6 +2483,19 @@ body {
   font-weight: 600;
 }
 
+/* 子タスクツリーが縦に伸びてcalendarDetail自体がスクロールしても、
+   情報行+操作ボタンはツリーの真上に貼り付いたまま常時見えるようにする */
+.cal-plan-detail-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 4px;
+}
+
 .cal-plan-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2537,6 +2550,12 @@ body {
   width: 100%;
   text-align: left;
   padding: 6px 8px;
+  /* the base .cal-unplanned-chip blocks all touch panning (touch-action:
+     none) to support its drag gesture elsewhere, but these chips are
+     tap-only — since they fill most of this column's width, leaving that
+     in place made a vertical swipe starting on almost any chip fail to
+     scroll the (possibly tall) child-task tree at all. */
+  touch-action: pan-y;
 }
 
 .cal-plan-child-col-list .cal-unplanned-chip-label {

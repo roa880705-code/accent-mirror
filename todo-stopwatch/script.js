@@ -2331,7 +2331,14 @@
     }
 
     actions.append(editBtn, ...(monthlyBtn ? [monthlyBtn] : []), ...(completeBtn ? [completeBtn] : []), delBtn);
-    calendarDetail.append(line, childrenSection, actions);
+
+    // 情報行+操作ボタンを、子タスクツリーの真上に貼り付けたまま常時表示
+    // する — ツリーが縦に伸びてcalendarDetail自体がスクロールしても、
+    // 編集/マンスリー表示/完了などへその都度スクロールし直さずに済む。
+    const header = document.createElement("div");
+    header.className = "cal-plan-detail-header";
+    header.append(line, actions);
+    calendarDetail.append(header, childrenSection);
   }
 
   // タップ(=ドラッグせずに指を離した)は、他のタスク種別(最優先/今日中/
