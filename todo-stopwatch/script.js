@@ -2120,6 +2120,9 @@
   const PLAN_MIN_DURATION = 5; // minimum length a hand-drawn plan can shrink to
   const PLAN_LONGPRESS_MS = 500;
   const PLAN_MOVE_TOLERANCE = 8;
+  // an already-placed plan's vertical position while being moved lags the
+  // finger by this fraction, so small grip shifts don't visibly relocate it
+  const PLAN_DRAG_DAMPING = 0.45;
 
   // shared with the swipe-navigation block further down: how much a drag
   // must favor the horizontal axis before it's read as a swipe rather than a
@@ -2508,10 +2511,14 @@
     }
     cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
 
-    const rect = targetCol.getBoundingClientRect();
-    const relY = e.clientY - rect.top;
-    const rawMin = pxToMin(relY);
-    let startMin = Math.round(rawMin / 15) * 15;
+    // vertical position tracks the finger RELATIVE to where the long-press
+    // started (not the finger's raw on-screen position), and is damped —
+    // so the block doesn't have to sit exactly under the finger to drag,
+    // and a slight grip shift during fine adjustment doesn't yank it far.
+    // Together with the 5-min snap below this keeps small nudges usable
+    // even though the finger itself still covers part of the block.
+    const dyMin = pxToMin(e.clientY - planDragCtx.startClientY) * PLAN_DRAG_DAMPING;
+    let startMin = Math.round((planDragCtx.plan.startMin + dyMin) / 5) * 5;
     startMin = Math.max(0, Math.min(1440 - planDragCtx.duration, startMin));
 
     planDragCtx.hoverDate = targetCol.dataset.date;
@@ -5008,11 +5015,11 @@
             block.style.height = `${minToPx(Math.max(1, p.endMin - p.startMin))}px`;
             block.style.left = `calc(${(col / colCount) * 100}% + 1px)`;
             block.style.width = `calc(${(1 / colCount) * 100}% - 2px)`;
+            block.appendChild(document.createTextNode(p.label));
             const timeEl = document.createElement("span");
             timeEl.className = "cal-plan-time";
             timeEl.textContent = formatMinHM(p.startMin);
             block.appendChild(timeEl);
-            block.appendChild(document.createTextNode(p.label));
             const linkedItem = itemsArrayForDate(dateStr).find((it) => it.planId === p.id);
             block.classList.toggle("cal-plan-completed", !!(linkedItem && linkedItem.completed));
             block.addEventListener("pointerdown", (e) => startPlanDrag(e, block, dateStr, p));
