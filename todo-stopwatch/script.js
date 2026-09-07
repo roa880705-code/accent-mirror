@@ -3256,6 +3256,14 @@
 
   const CHIP_REORDER_LONGPRESS_MS = 400;
 
+  // 長押しで保持済み(heldLongEnough)の状態から動き出した際、縦方向の
+  // 動きがこの倍率を超えて横方向より大きい場合だけ「スケジュールへの
+  // 持ち上げ」とみなす。それ以下(=保持した指のちょっとしたぶれの範囲)
+  // は並べ替えの継続として扱う — 保持後も明確に縦方向優位な大きな動き
+  // (実際にスケジュール欄まで持ち上げようとする操作)は引き続き持ち上げ
+  // として機能させつつ、指のわずかなぶれでは化けないようにするため。
+  const CHIP_HOLD_LIFT_AXIS_RATIO = 2;
+
   // 並べ替えドラッグ中、指(ポインタ)は画面の可視範囲を超えて動かせない
   // ため、これが無いと可視範囲外にあるチップを超えて並べ替えることが
   // できない。トレイの可視範囲のきわ(左右CHIP_REORDER_EDGE_PXの帯)に
@@ -4491,22 +4499,25 @@
         clearTimeout(ctx.longPressTimer);
         ctx.longPressTimer = null;
       }
-      if (ctx.heldLongEnough) {
-        // 既に長押しで保持済みなら、その後の動きが縦寄りでも横寄りでも
-        // すべて並べ替えの継続として扱う — スケジュール内で予定を動かす
-        // 時と同様、保持した指が上下に少しずれても「持ち上げ(スケジュ
-        // ール化)」には化けないようにして、指で画面が見づらくなるのを
-        // 防ぐ。
+      if (ctx.heldLongEnough && Math.abs(dy) <= Math.abs(dx) * CHIP_HOLD_LIFT_AXIS_RATIO) {
+        // 既に長押しで保持済みで、かつ縦方向の動きが横方向よりはるかに
+        // 大きいわけではない(=保持した指のちょっとしたぶれの範囲)なら
+        // 並べ替えの継続として扱う — スケジュール内で予定を動かす時と
+        // 同様、保持した指が上下に少しずれても「持ち上げ(スケジュール
+        // 化)」には化けないようにして、指で画面が見づらくなるのを防ぐ。
         ctx.chip.classList.remove("armed");
         ctx.phase = "reorder";
         ctx.chip.classList.add("reordering");
         ctx.chip.style.transition = "none";
         vibrate(15);
         startChipReorderAutoScroll(ctx, () => runTrayReorderStep(ctx));
-      } else if (Math.abs(dx) > Math.abs(dy)) {
+      } else if (!ctx.heldLongEnough && Math.abs(dx) > Math.abs(dy)) {
         ctx.chip.classList.remove("armed");
         ctx.phase = "scroll";
       } else {
+        // 保持済みでも、明確に縦方向優位な動きは引き続き「スケジュール
+        // へ持ち上げ」として機能させる(長押し後にそのまま上へ運んで
+        // 予定へ落とす操作を壊さないため)。
         ctx.chip.classList.remove("armed");
         ctx.phase = "schedule";
         ctx.chip.classList.add("dragging");
@@ -4766,21 +4777,25 @@
         clearTimeout(ctx.longPressTimer);
         ctx.longPressTimer = null;
       }
-      // 未確定(長押しがまだ成立していない)状態でのみ、動きの向きで
+      // 未確定(長押しがまだ成立していない)状態では、動きの向きで
       // 「横スワイプ=トレイのスクロール」「縦スワイプ=スケジュールへ
-      // 持ち上げ」を判定する。既に長押しで保持済み(heldLongEnough)なら
-      // その後の動きが縦寄りでも横寄りでも並べ替えの継続として扱う —
+      // 持ち上げ」を判定する。既に長押しで保持済み(heldLongEnough)なら、
+      // 縦方向の動きが横方向よりはるかに大きいわけではない(=保持した
+      // 指のちょっとしたぶれの範囲)場合だけ並べ替えの継続として扱う —
       // スケジュール内で予定を動かす時と同様、保持した指が上下に少し
       // ずれても「持ち上げ(スケジュール化)」には化けないようにして、
-      // 指で画面が見づらくなるのを防ぐ。
-      if (ctx.heldLongEnough) {
+      // 指で画面が見づらくなるのを防ぐ。ただし保持済みでも明確に縦方向
+      // 優位な大きな動きは、引き続き「スケジュールへ持ち上げ」として
+      // 機能させる(長押し後にそのまま上へ運んで予定へ落とす操作を
+      // 壊さないため)。
+      if (ctx.heldLongEnough && Math.abs(dy) <= Math.abs(dx) * CHIP_HOLD_LIFT_AXIS_RATIO) {
         ctx.chip.classList.remove("armed");
         ctx.phase = "reorder";
         ctx.chip.classList.add("reordering");
         ctx.chip.style.transition = "none";
         vibrate(15);
         startChipReorderAutoScroll(ctx, () => runSomedayReorderStep(ctx));
-      } else if (Math.abs(dx) > Math.abs(dy)) {
+      } else if (!ctx.heldLongEnough && Math.abs(dx) > Math.abs(dy)) {
         ctx.chip.classList.remove("armed");
         ctx.phase = "scroll";
       } else {
