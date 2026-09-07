@@ -5497,23 +5497,45 @@
             // なる — 幹の部分は「予定名は無いが時間は押さえてある」こと
             // を示す控えめな見た目。
             if (hasBuffer) {
-              const spine = document.createElement("div");
-              spine.className = "cal-plan-buffer-spine";
-              const bufferStartMin = p.startMin - (p.beforeBufferMin || 0);
-              const bufferEndMin = p.endMin + (p.afterBufferMin || 0);
-              spine.style.top = `${minToPx(bufferStartMin)}px`;
-              spine.style.height = `${minToPx(Math.max(1, bufferEndMin - bufferStartMin))}px`;
-              spine.style.left = `calc(${(col / colCount) * 100}% + 1px)`;
-              spine.style.width = `${PLAN_BUFFER_SPINE_W}px`;
-              // 10分ごとの横縞。実時刻(0時起点)のキリの良い10分単位に
-              // 揃うよう、幹自身の開始位置とのズレ分だけ背景をオフセット
-              // する(幹はbeforeBufferMin分だけ本体より早く始まるので、
-              // 10分の倍数からズレていることが多い)。
+              const beforeMin = p.beforeBufferMin || 0;
+              const afterMin = p.afterBufferMin || 0;
+              const spineLeft = `calc(${(col / colCount) * 100}% + 1px)`;
               const stripePx = minToPx(PLAN_BUFFER_STRIPE_MIN);
-              spine.style.backgroundSize = `100% ${stripePx * 2}px`;
-              const stripeOffsetMin = ((bufferStartMin % PLAN_BUFFER_STRIPE_MIN) + PLAN_BUFFER_STRIPE_MIN) % PLAN_BUFFER_STRIPE_MIN;
-              spine.style.backgroundPositionY = `${-minToPx(stripeOffsetMin)}px`;
-              dayCol.appendChild(spine);
+              const periodPx = stripePx * 2;
+
+              const makeSpinePiece = (cls, topMin, heightMin) => {
+                if (heightMin <= 0) return null;
+                const piece = document.createElement("div");
+                piece.className = `cal-plan-buffer-spine ${cls}`;
+                piece.style.top = `${minToPx(topMin)}px`;
+                piece.style.height = `${minToPx(heightMin)}px`;
+                piece.style.left = spineLeft;
+                piece.style.width = `${PLAN_BUFFER_SPINE_W}px`;
+                return piece;
+              };
+
+              // 前バッファ: 本体との境界(自分の下端)にちょうど色帯が
+              // 接して終わるよう、縞の位相を高さ分だけオフセットする。
+              const beforePiece = makeSpinePiece("striped", p.startMin - beforeMin, beforeMin);
+              if (beforePiece) {
+                beforePiece.style.backgroundSize = `100% ${periodPx}px`;
+                const heightPx = minToPx(beforeMin);
+                const offsetPx = ((heightPx - stripePx) % periodPx + periodPx) % periodPx;
+                beforePiece.style.backgroundPositionY = `${offsetPx}px`;
+                dayCol.appendChild(beforePiece);
+              }
+
+              // 本体と重なる区間: 縞無し、白一色で統一。
+              const corePiece = makeSpinePiece("core", p.startMin, p.endMin - p.startMin);
+              if (corePiece) dayCol.appendChild(corePiece);
+
+              // 後バッファ: 本体が終わった瞬間(自分の上端)から色帯が
+              // 始まるよう、縞の位相は既定(オフセット無し)のままにする。
+              const afterPiece = makeSpinePiece("striped", p.endMin, afterMin);
+              if (afterPiece) {
+                afterPiece.style.backgroundSize = `100% ${periodPx}px`;
+                dayCol.appendChild(afterPiece);
+              }
             }
 
             const blockLeftCss = hasBuffer

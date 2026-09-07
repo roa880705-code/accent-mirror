@@ -1907,19 +1907,35 @@ body {
   right: 1px;
 }
 
-/* 予定の前後に確保した移動時間(バッファ)を示す細い「幹」。本体の
+/* 予定の前後に確保したバッファ(移動時間)を示す細い「幹」。本体の
    .cal-plan-block はここから右へ張り出す形になり、全体で左に90度倒した
    Tの字のような形になる — 予定名は無いが時間帯は押さえてあることを、
-   控えめな見た目で示す。 */
+   控えめな見た目で示す。幹は3つのピース(前バッファ/本体と重なる区間/
+   後バッファ)を継ぎ目なく積んで作る — バッファ部分だけ縞模様にする
+   ことで、幹を見ただけでバッファが何分あるか数えやすくするため。 */
 .cal-plan-buffer-spine {
   position: absolute;
   z-index: 1;
   box-sizing: border-box;
-  border-radius: 0;
+  border-left: 1px solid var(--accent);
+  border-right: 1px solid var(--accent);
+  border-top: 1px solid var(--accent);
+  border-bottom: 1px solid var(--accent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* 本体(予定名)と時間帯が重なる区間 — バッファではないので縞なしの白 */
+.cal-plan-buffer-spine.core {
   background-color: var(--card-bg);
-  /* 10分ごとの横縞: 1本あたりの実ピクセル高さ(=10分ぶんの高さ)は
-     background-size、実時刻に揃えるための位置合わせはbackground-position-y
-     として、それぞれJS側(renderCalendar)がインラインで設定する。 */
+}
+
+/* 前後のバッファ区間の縞模様。1本あたりの実ピクセル高さ(=10分ぶんの
+   高さ)はbackground-size、本体との境界に縞の「色付き」の端が来るよう
+   な位置合わせはbackground-position-yとして、それぞれJS側
+   (renderCalendar)がインラインで設定する。 */
+.cal-plan-buffer-spine.striped {
+  background-color: var(--card-bg);
   background-image: repeating-linear-gradient(
     to bottom,
     var(--accent-soft) 0%,
@@ -1928,9 +1944,6 @@ body {
     transparent 100%
   );
   background-repeat: repeat-y;
-  border: 1px solid var(--accent);
-  opacity: 0.85;
-  pointer-events: none;
 }
 
 .cal-plan-resize-handle {
