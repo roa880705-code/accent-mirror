@@ -2117,7 +2117,7 @@
   // --- plan creation (long-press on empty grid space) ---
 
   const PLAN_DEFAULT_MIN = 30;
-  const PLAN_MIN_DURATION = 15; // minimum length a hand-drawn plan can shrink to
+  const PLAN_MIN_DURATION = 5; // minimum length a hand-drawn plan can shrink to
   const PLAN_LONGPRESS_MS = 500;
   const PLAN_MOVE_TOLERANCE = 8;
 
@@ -2247,7 +2247,7 @@
     vibrate(20);
     const rect = dayCol.getBoundingClientRect();
     const rawMin = pxToMin(startClientY - rect.top);
-    let anchorMin = Math.round(rawMin / 15) * 15;
+    let anchorMin = Math.round(rawMin / 5) * 5;
     anchorMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, anchorMin));
     // starts at the usual default length so a long-press with no follow-up
     // drag still creates a normal-sized plan; dragging overrides this as
@@ -2276,12 +2276,12 @@
     e.preventDefault();
     const ctx = planDrawCtx;
     // ignore sub-pixel jitter right after the long-press fires so the
-    // default 30-min block doesn't shrink to the 15-min floor on a
+    // default 30-min block doesn't shrink to the 5-min floor on a
     // stationary finger — only a real, deliberate drag should override it
     if (Math.abs(e.clientY - ctx.startClientY) < PLAN_MOVE_TOLERANCE) return;
     const rect = ctx.dayCol.getBoundingClientRect();
     const rawMin = pxToMin(e.clientY - rect.top);
-    let pointerMin = Math.round(rawMin / 15) * 15;
+    let pointerMin = Math.round(rawMin / 5) * 5;
     pointerMin = Math.max(0, Math.min(1440, pointerMin));
 
     // the drag can extend either later (below the anchor) or earlier (above
@@ -2694,8 +2694,8 @@
     e.preventDefault();
     const { plan, startClientY } = planResizeCtx;
     const deltaMin = pxToMin(e.clientY - startClientY);
-    let endMin = Math.round((plan.endMin + deltaMin) / 15) * 15;
-    endMin = Math.max(plan.startMin + 15, Math.min(1440, endMin));
+    let endMin = Math.round((plan.endMin + deltaMin) / 5) * 5;
+    endMin = Math.max(plan.startMin + PLAN_MIN_DURATION, Math.min(1440, endMin));
     planResizeCtx.previewEndMin = endMin;
     if (endMin !== planResizeCtx.lastVibrateMin) {
       vibrate(8);
@@ -2740,13 +2740,10 @@
       dragPreviewEl.style.pointerEvents = "none";
     }
     if (dragPreviewEl.parentElement !== dayCol) dayCol.appendChild(dragPreviewEl);
-    const color = colorForLabel(label);
     dragPreviewEl.style.top = `${minToPx(startMin)}px`;
     dragPreviewEl.style.height = `${minToPx(Math.max(1, duration))}px`;
     dragPreviewEl.style.left = "1px";
     dragPreviewEl.style.width = "calc(100% - 2px)";
-    dragPreviewEl.style.borderColor = color;
-    dragPreviewEl.style.color = color;
     dragPreviewEl.textContent = label;
   }
 
@@ -5011,10 +5008,11 @@
             block.style.height = `${minToPx(Math.max(1, p.endMin - p.startMin))}px`;
             block.style.left = `calc(${(col / colCount) * 100}% + 1px)`;
             block.style.width = `calc(${(1 / colCount) * 100}% - 2px)`;
-            const color = colorForLabel(p.label);
-            block.style.borderColor = color;
-            block.style.color = color;
-            block.textContent = p.label;
+            const timeEl = document.createElement("span");
+            timeEl.className = "cal-plan-time";
+            timeEl.textContent = formatMinHM(p.startMin);
+            block.appendChild(timeEl);
+            block.appendChild(document.createTextNode(p.label));
             const linkedItem = itemsArrayForDate(dateStr).find((it) => it.planId === p.id);
             block.classList.toggle("cal-plan-completed", !!(linkedItem && linkedItem.completed));
             block.addEventListener("pointerdown", (e) => startPlanDrag(e, block, dateStr, p));
@@ -5030,7 +5028,6 @@
               handle.className = "cal-plan-resize-handle";
               handle.style.top = `${minToPx(p.endMin)}px`;
               handle.style.left = `calc(${(col / colCount) * 100}% + ${(1 / colCount) * 50}%)`;
-              handle.style.background = color;
               handle.addEventListener("pointerdown", (e) => startPlanResize(e, block, handle, dayCol, dateStr, p));
               dayCol.appendChild(handle);
             }
