@@ -2489,9 +2489,59 @@ body {
   gap: 8px;
 }
 
+/* タスクページ(いつか一覧)のMiller Columnsと同じ向き: 子/孫/ひ孫を
+   横に並んだ列として常に全展開表示する。縦幅の超過はこの親要素
+   (予定詳細パネル=calendarDetail)自身のスクロールに任せるので、ここでは
+   高さを固定しない。 */
 .cal-plan-children {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.cal-plan-child-col {
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 4px;
+  padding: 2px 6px 4px;
+  border-left: 1px solid var(--line);
+}
+
+.cal-plan-child-col:first-child {
+  border-left: none;
+  padding-left: 0;
+}
+
+.cal-plan-child-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.cal-plan-child-col-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* clearance for the child-count badge poking above its own chip's
+     top-right corner (top:-3px) so the first row's badge isn't clipped */
+  padding-top: 3px;
+}
+
+.cal-plan-child-col-list .cal-unplanned-chip {
+  max-width: none;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+}
+
+.cal-plan-child-col-list .cal-unplanned-chip-label {
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 /* いつかのチップと同じ見た目を再利用しつつ、予定の子タスクだけが持つ

@@ -2061,27 +2061,40 @@
     });
   }
 
-  // 予定の子タスク階層でも「どの子/孫が今掘り下げ中か」を覚えておく必要が
-  // あるので、いつかツリーのactiveSomedayIdsと同じ考え方だが2段だけ:
-  // [0]=孫タスク欄を出す子、[1]=ひ孫タスク欄を出す孫。開いている予定が
-  // 切り替わったらリセットする(下のplanChildDetailPlanId参照)。
-  let activePlanChildIds = [null, null];
-  let planChildDetailPlanId = null;
+  // depth番目の階層に属する全ノードを集める(1=子, 2=孫, 3=ひ孫) — 「今
+  // 掘り下げ中の1本」だけでなく、木全体を常に全展開した状態で見せるため、
+  // 一つ上の階層の全ノードそれぞれの子をまとめて返す。
+  function planChildrenAtDepth(plan, depth) {
+    if (depth <= 1) return planChildrenOf(plan, null);
+    const parents = planChildrenAtDepth(plan, depth - 1);
+    const result = [];
+    parents.forEach((p) => result.push(...planChildrenOf(plan, p.id)));
+    return result;
+  }
 
-  // タスクページ(いつか)のチップと見た目/挙動を揃える: 子を持つ
-  // ノードは塗りつぶし角丸チップ+子数バッジで「掘り下げ先」だと分かり、
-  // タップすると下の階層欄に子が現れる。葉ノード(または既に掘り下げ済み
-  // の親を再タップ)は変更修正/子タスク追加/完了/削除の選択肢を出す —
-  // いつかのopenTaskChoiceModalをそのまま再利用している。
+  // 子を持つノード(=線を引く必要がある箇所)を、そのノードと直接の子の
+  // 組として全て集める。木全体が常に全展開なので、いつかの
+  // activeSomedayIdsのような「今どれを掘り下げているか」の状態は不要。
+  function planConnectorPairs(plan) {
+    const pairs = [];
+    (plan.children || []).forEach((node) => {
+      const kids = planChildrenOf(plan, node.id);
+      if (kids.length) pairs.push({ parent: node, children: kids });
+    });
+    return pairs;
+  }
+
+  // タスクページ(いつか一覧)の縦一覧と同じ見た目/操作感: 子を持つノードは
+  // 塗りつぶし角丸チップ+子数バッジで見分けられる。木は常に全展開なので、
+  // タップすると(掘り下げではなく)直接、変更修正/子タスク追加/完了/削除
+  // の選択肢パネルが開く — いつかのopenTaskChoiceModalをそのまま再利用。
   function createPlanChildChip(dateStr, plan, child, depth) {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "cal-unplanned-chip";
+    chip.dataset.planChildId = child.id;
     const kids = planChildrenOf(plan, child.id);
-    if (kids.length) {
-      chip.classList.add("parent");
-      if (activePlanChildIds[depth - 1] === child.id) chip.classList.add("active-parent");
-    }
+    if (kids.length) chip.classList.add("parent");
     chip.classList.toggle("cal-plan-child-chip-done", !!child.done);
     const labelEl = document.createElement("span");
     labelEl.className = "cal-unplanned-chip-label";
@@ -2093,79 +2106,102 @@
       badge.dataset.count = String(kids.length);
       chip.appendChild(badge);
     }
-    chip.addEventListener("click", () => handlePlanChildTap(dateStr, plan, child, depth));
+    chip.addEventListener("click", () => promptPlanChildEditOrAddChild(dateStr, plan, child, depth));
     return chip;
   }
 
-  function buildPlanChildTier(dateStr, plan, parentId, title, depth) {
-    const box = document.createElement("div");
-    box.className = "calendar-unplanned calendar-subtask-row";
+  function buildPlanChildColumn(dateStr, plan, title, depth) {
+    const nodes = planChildrenAtDepth(plan, depth);
+    if (!nodes.length && depth > 1) return null;
+
+    const col = document.createElement("div");
+    col.className = "cal-plan-child-col";
+    const header = document.createElement("div");
+    header.className = "cal-plan-child-col-header";
     const titleEl = document.createElement("span");
     titleEl.className = "calendar-unplanned-title";
     titleEl.textContent = title;
-    box.appendChild(titleEl);
+    header.appendChild(titleEl);
+    if (depth === 1) {
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "calendar-someday-add";
+      addBtn.setAttribute("aria-label", "子タスクを追加");
+      addBtn.textContent = "＋";
+      addBtn.addEventListener("click", () => {
+        openNameModal("", PLAN_CHILD_LABELS[0]).then((name) => {
+          if (name === null || !name.trim()) return;
+          captureUndoSnapshot();
+          addPlanChildToTree(plan, null, name.trim());
+          savePlans();
+          renderCalendar();
+          showPlanDetail(dateStr, plan);
+        });
+      });
+      header.appendChild(addBtn);
+    }
+    col.appendChild(header);
+
     const list = document.createElement("div");
-    list.className = "calendar-unplanned-list";
-    planChildrenOf(plan, parentId).forEach((child) => list.appendChild(createPlanChildChip(dateStr, plan, child, depth)));
-    box.appendChild(list);
-    return box;
+    list.className = "cal-plan-child-col-list";
+    nodes.forEach((child) => list.appendChild(createPlanChildChip(dateStr, plan, child, depth)));
+    col.appendChild(list);
+    return col;
   }
 
+  // 木全体を横に並んだ「子タスク/孫タスク/ひ孫タスク」の列として常に
+  // 全展開表示する(タスクページのMiller Columnsと同じ向き)。縦幅に収まら
+  // ない分はこの予定詳細パネル自体(calendarDetail)のスクロールに任せる。
   function buildPlanChildrenSection(dateStr, plan) {
-    if (planChildDetailPlanId !== plan.id) {
-      activePlanChildIds = [null, null];
-      planChildDetailPlanId = plan.id;
-    }
+    const wrap = document.createElement("div");
+    wrap.className = "cal-plan-children";
 
-    const section = document.createElement("div");
-    section.className = "cal-plan-children";
+    const col1 = buildPlanChildColumn(dateStr, plan, "子タスク", 1);
+    wrap.appendChild(col1);
+    const col2 = buildPlanChildColumn(dateStr, plan, "孫タスク", 2);
+    if (col2) wrap.appendChild(col2);
+    const col3 = buildPlanChildColumn(dateStr, plan, "ひ孫タスク", 3);
+    if (col3) wrap.appendChild(col3);
 
-    const topBox = document.createElement("div");
-    topBox.className = "calendar-unplanned";
-    const topTitle = document.createElement("span");
-    topTitle.className = "calendar-unplanned-title";
-    topTitle.textContent = "子タスク";
-    topBox.appendChild(topTitle);
-    const topList = document.createElement("div");
-    topList.className = "calendar-unplanned-list";
-    planChildrenOf(plan, null).forEach((child) => topList.appendChild(createPlanChildChip(dateStr, plan, child, 1)));
-    topBox.appendChild(topList);
-    const addBtn = document.createElement("button");
-    addBtn.type = "button";
-    addBtn.className = "calendar-someday-add";
-    addBtn.setAttribute("aria-label", "子タスクを追加");
-    addBtn.textContent = "＋";
-    addBtn.addEventListener("click", () => {
-      openNameModal("", PLAN_CHILD_LABELS[0]).then((name) => {
-        if (name === null || !name.trim()) return;
-        captureUndoSnapshot();
-        addPlanChildToTree(plan, null, name.trim());
-        savePlans();
-        renderCalendar();
-        showPlanDetail(dateStr, plan);
+    requestAnimationFrame(() => drawPlanChildConnectorLines(wrap, plan));
+    return wrap;
+  }
+
+  // 列をまたぐ親子の連結線を描く。幾何はpositionSomedayConnectorHorizontal
+  // と同じ(親チップ右端から幹→縦の梁→各子チップへ横の枝)だが、木は常に
+  // 全展開なので「今アクティブな1本」ではなく、子を持つノード全てについて
+  // 描く(drawSomedayTreeConnectorLinesの複数ペア対応と同じ考え方)。
+  function drawPlanChildConnectorLines(containerEl, plan) {
+    containerEl.querySelectorAll(".someday-branch-line").forEach((el) => el.remove());
+    const pairs = planConnectorPairs(plan);
+    if (!pairs.length) return;
+    const rootRect = containerEl.getBoundingClientRect();
+    const half = SOMEDAY_BRANCH_LINE_W / 2;
+
+    pairs.forEach(({ parent, children }) => {
+      const parentChip = containerEl.querySelector(`[data-plan-child-id="${parent.id}"]`);
+      const childChips = children.map((c) => containerEl.querySelector(`[data-plan-child-id="${c.id}"]`)).filter(Boolean);
+      if (!parentChip || !childChips.length) return;
+      const parentRect = parentChip.getBoundingClientRect();
+      const childRects = childChips.map((el) => el.getBoundingClientRect());
+
+      const parentY = parentRect.top + parentRect.height / 2 - rootRect.top;
+      const stemLeft = parentRect.right - rootRect.left;
+      const childAnchors = childRects.map((r) => ({
+        y: r.top + r.height / 2 - rootRect.top,
+        left: r.left - rootRect.left,
+      }));
+      const branchX = Math.max(stemLeft + 2, Math.min(...childAnchors.map((a) => a.left)) - SOMEDAY_BRANCH_GAP);
+      const allY = [parentY, ...childAnchors.map((a) => a.y)];
+      const minY = Math.min(...allY);
+      const maxY = Math.max(...allY);
+
+      addSomedayBranchLine(containerEl, stemLeft, parentY - half, branchX - stemLeft, SOMEDAY_BRANCH_LINE_W);
+      addSomedayBranchLine(containerEl, branchX - half, minY, SOMEDAY_BRANCH_LINE_W, maxY - minY);
+      childAnchors.forEach((a) => {
+        addSomedayBranchLine(containerEl, branchX, a.y - half, a.left - branchX, SOMEDAY_BRANCH_LINE_W);
       });
     });
-    topBox.appendChild(addBtn);
-    section.appendChild(topBox);
-
-    if (activePlanChildIds[0]) section.appendChild(buildPlanChildTier(dateStr, plan, activePlanChildIds[0], "孫タスク", 2));
-    if (activePlanChildIds[1]) section.appendChild(buildPlanChildTier(dateStr, plan, activePlanChildIds[1], "ひ孫タスク", 3));
-
-    return section;
-  }
-
-  // 子を持つノードをタップ: まだ掘り下げていなければその子を下の階層欄に
-  // 表示するだけ、既に掘り下げ済み(もう一度タップ)なら葉と同じ選択肢
-  // パネルを開く — いつかのhandleSomedayChipTapと同じ振る舞い。
-  function handlePlanChildTap(dateStr, plan, child, depth) {
-    const hasChildren = planChildrenOf(plan, child.id).length > 0;
-    if (depth < PLAN_CHILD_MAX_DEPTH && hasChildren && activePlanChildIds[depth - 1] !== child.id) {
-      activePlanChildIds[depth - 1] = child.id;
-      if (depth < activePlanChildIds.length) activePlanChildIds[depth] = null;
-      showPlanDetail(dateStr, plan);
-      return;
-    }
-    promptPlanChildEditOrAddChild(dateStr, plan, child, depth);
   }
 
   function promptPlanChildEditOrAddChild(dateStr, plan, child, depth) {
@@ -2195,8 +2231,6 @@
           if (!label) return;
           captureUndoSnapshot();
           addPlanChildToTree(plan, child.id, label);
-          activePlanChildIds[depth - 1] = child.id;
-          if (depth < activePlanChildIds.length) activePlanChildIds[depth] = null;
           savePlans();
           renderCalendar();
           showPlanDetail(dateStr, plan);
@@ -2210,8 +2244,6 @@
       } else if (choice === "delete") {
         captureUndoSnapshot();
         removePlanChildAndDescendants(plan, child.id);
-        if (activePlanChildIds[0] === child.id) activePlanChildIds = [null, null];
-        else if (activePlanChildIds[1] === child.id) activePlanChildIds[1] = null;
         savePlans();
         renderCalendar();
         showPlanDetail(dateStr, plan);
