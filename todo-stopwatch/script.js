@@ -3265,7 +3265,7 @@
   // きわの位置に留まり続ける。いつか/今日中/最優先など、並べ替え可能な
   // 横スクロールトレイすべてで共有する仕組み。
   const CHIP_REORDER_EDGE_PX = 48;
-  const CHIP_REORDER_MAX_SCROLL_PX = 16;
+  const CHIP_REORDER_MAX_SCROLL_PX = 16 / 3;
 
   function chipReorderAutoScrollTick(ctx, runStep) {
     if (!ctx.autoScrollActive) return;
