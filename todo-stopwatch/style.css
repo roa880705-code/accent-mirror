@@ -2492,58 +2492,13 @@ body {
 .cal-plan-children {
   display: flex;
   flex-direction: column;
-  gap: 3px;
 }
 
-.cal-plan-child-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.cal-plan-child-label {
-  flex: 1 1 auto;
-  font-size: 0.72rem;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cal-plan-child-label.done {
+/* いつかのチップと同じ見た目を再利用しつつ、予定の子タスクだけが持つ
+   「完了」状態を打ち消し線で示す */
+.cal-unplanned-chip.cal-plan-child-chip-done {
   text-decoration: line-through;
-  color: var(--muted);
-}
-
-.cal-plan-child-addsub {
-  flex: none;
-  border: 1px solid var(--line);
-  background: var(--card-bg);
-  color: var(--muted);
-  border-radius: 999px;
-  width: 16px;
-  height: 16px;
-  line-height: 1;
-  font-size: 0.68rem;
-  padding: 0;
-  cursor: pointer;
-}
-
-.cal-plan-child-remove {
-  flex: none;
-  border: none;
-  background: none;
-  color: var(--muted);
-  font-size: 0.85rem;
-  line-height: 1;
-  padding: 2px 4px;
-  cursor: pointer;
-}
-
-.cal-plan-child-add {
-  align-self: flex-start;
-  padding: 4px 10px;
-  font-size: 0.68rem;
+  opacity: 0.6;
 }
 
 .cal-plan-edit,

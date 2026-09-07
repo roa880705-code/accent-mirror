@@ -2061,75 +2061,80 @@
     });
   }
 
-  function appendPlanChildRows(section, dateStr, plan, child, depth) {
-    const row = document.createElement("div");
-    row.className = "cal-plan-child-row";
-    row.style.paddingLeft = `${(depth - 1) * 14}px`;
-    const check = document.createElement("input");
-    check.type = "checkbox";
-    check.checked = !!child.done;
-    check.addEventListener("change", () => {
-      captureUndoSnapshot();
-      child.done = check.checked;
-      savePlans();
-      // renderCalendar() ends by re-running renderCalendarDetail(), which
-      // hides/clears calendarDetail whenever no day-history is selected —
-      // so it must run BEFORE showPlanDetail, not after, or it wipes the
-      // panel we just meant to refresh.
-      renderCalendar();
-      showPlanDetail(dateStr, plan);
-    });
-    const label = document.createElement("span");
-    label.className = "cal-plan-child-label";
-    label.textContent = child.label;
-    label.classList.toggle("done", !!child.done);
-    row.append(check, label);
+  // 予定の子タスク階層でも「どの子/孫が今掘り下げ中か」を覚えておく必要が
+  // あるので、いつかツリーのactiveSomedayIdsと同じ考え方だが2段だけ:
+  // [0]=孫タスク欄を出す子、[1]=ひ孫タスク欄を出す孫。開いている予定が
+  // 切り替わったらリセットする(下のplanChildDetailPlanId参照)。
+  let activePlanChildIds = [null, null];
+  let planChildDetailPlanId = null;
 
-    if (depth < PLAN_CHILD_MAX_DEPTH) {
-      const addSubBtn = document.createElement("button");
-      addSubBtn.type = "button";
-      addSubBtn.className = "cal-plan-child-addsub";
-      addSubBtn.textContent = "+";
-      addSubBtn.title = "サブタスクを追加";
-      addSubBtn.addEventListener("click", () => {
-        openNameModal("", PLAN_CHILD_LABELS[depth]).then((name) => {
-          if (name === null || !name.trim()) return;
-          captureUndoSnapshot();
-          addPlanChildToTree(plan, child.id, name.trim());
-          savePlans();
-          renderCalendar();
-          showPlanDetail(dateStr, plan);
-        });
-      });
-      row.appendChild(addSubBtn);
+  // タスクページ(いつか)のチップと見た目/挙動を揃える: 子を持つ
+  // ノードは塗りつぶし角丸チップ+子数バッジで「掘り下げ先」だと分かり、
+  // タップすると下の階層欄に子が現れる。葉ノード(または既に掘り下げ済み
+  // の親を再タップ)は変更修正/子タスク追加/完了/削除の選択肢を出す —
+  // いつかのopenTaskChoiceModalをそのまま再利用している。
+  function createPlanChildChip(dateStr, plan, child, depth) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "cal-unplanned-chip";
+    const kids = planChildrenOf(plan, child.id);
+    if (kids.length) {
+      chip.classList.add("parent");
+      if (activePlanChildIds[depth - 1] === child.id) chip.classList.add("active-parent");
     }
+    chip.classList.toggle("cal-plan-child-chip-done", !!child.done);
+    const labelEl = document.createElement("span");
+    labelEl.className = "cal-unplanned-chip-label";
+    labelEl.textContent = child.label;
+    chip.appendChild(labelEl);
+    if (kids.length) {
+      const badge = document.createElement("span");
+      badge.className = "cal-child-count-badge";
+      badge.dataset.count = String(kids.length);
+      chip.appendChild(badge);
+    }
+    chip.addEventListener("click", () => handlePlanChildTap(dateStr, plan, child, depth));
+    return chip;
+  }
 
-    const removeBtn = document.createElement("button");
-    removeBtn.type = "button";
-    removeBtn.className = "cal-plan-child-remove";
-    removeBtn.textContent = "×";
-    removeBtn.addEventListener("click", () => {
-      captureUndoSnapshot();
-      removePlanChildAndDescendants(plan, child.id);
-      savePlans();
-      renderCalendar();
-      showPlanDetail(dateStr, plan);
-    });
-    row.appendChild(removeBtn);
-
-    section.appendChild(row);
-    planChildrenOf(plan, child.id).forEach((grandchild) => appendPlanChildRows(section, dateStr, plan, grandchild, depth + 1));
+  function buildPlanChildTier(dateStr, plan, parentId, title, depth) {
+    const box = document.createElement("div");
+    box.className = "calendar-unplanned calendar-subtask-row";
+    const titleEl = document.createElement("span");
+    titleEl.className = "calendar-unplanned-title";
+    titleEl.textContent = title;
+    box.appendChild(titleEl);
+    const list = document.createElement("div");
+    list.className = "calendar-unplanned-list";
+    planChildrenOf(plan, parentId).forEach((child) => list.appendChild(createPlanChildChip(dateStr, plan, child, depth)));
+    box.appendChild(list);
+    return box;
   }
 
   function buildPlanChildrenSection(dateStr, plan) {
+    if (planChildDetailPlanId !== plan.id) {
+      activePlanChildIds = [null, null];
+      planChildDetailPlanId = plan.id;
+    }
+
     const section = document.createElement("div");
     section.className = "cal-plan-children";
-    planChildrenOf(plan, null).forEach((child) => appendPlanChildRows(section, dateStr, plan, child, 1));
 
+    const topBox = document.createElement("div");
+    topBox.className = "calendar-unplanned";
+    const topTitle = document.createElement("span");
+    topTitle.className = "calendar-unplanned-title";
+    topTitle.textContent = "子タスク";
+    topBox.appendChild(topTitle);
+    const topList = document.createElement("div");
+    topList.className = "calendar-unplanned-list";
+    planChildrenOf(plan, null).forEach((child) => topList.appendChild(createPlanChildChip(dateStr, plan, child, 1)));
+    topBox.appendChild(topList);
     const addBtn = document.createElement("button");
     addBtn.type = "button";
-    addBtn.className = "btn btn-modal-cancel cal-plan-child-add";
-    addBtn.textContent = "+ 子タスク追加";
+    addBtn.className = "calendar-someday-add";
+    addBtn.setAttribute("aria-label", "子タスクを追加");
+    addBtn.textContent = "＋";
     addBtn.addEventListener("click", () => {
       openNameModal("", PLAN_CHILD_LABELS[0]).then((name) => {
         if (name === null || !name.trim()) return;
@@ -2140,8 +2145,78 @@
         showPlanDetail(dateStr, plan);
       });
     });
-    section.appendChild(addBtn);
+    topBox.appendChild(addBtn);
+    section.appendChild(topBox);
+
+    if (activePlanChildIds[0]) section.appendChild(buildPlanChildTier(dateStr, plan, activePlanChildIds[0], "孫タスク", 2));
+    if (activePlanChildIds[1]) section.appendChild(buildPlanChildTier(dateStr, plan, activePlanChildIds[1], "ひ孫タスク", 3));
+
     return section;
+  }
+
+  // 子を持つノードをタップ: まだ掘り下げていなければその子を下の階層欄に
+  // 表示するだけ、既に掘り下げ済み(もう一度タップ)なら葉と同じ選択肢
+  // パネルを開く — いつかのhandleSomedayChipTapと同じ振る舞い。
+  function handlePlanChildTap(dateStr, plan, child, depth) {
+    const hasChildren = planChildrenOf(plan, child.id).length > 0;
+    if (depth < PLAN_CHILD_MAX_DEPTH && hasChildren && activePlanChildIds[depth - 1] !== child.id) {
+      activePlanChildIds[depth - 1] = child.id;
+      if (depth < activePlanChildIds.length) activePlanChildIds[depth] = null;
+      showPlanDetail(dateStr, plan);
+      return;
+    }
+    promptPlanChildEditOrAddChild(dateStr, plan, child, depth);
+  }
+
+  function promptPlanChildEditOrAddChild(dateStr, plan, child, depth) {
+    // 子を持つノードは掘り下げ途中の未確定な括りなので、いつかと同じく
+    // 葉タスクだけ完了を出す。
+    const showComplete = !planChildrenOf(plan, child.id).length;
+    openTaskChoiceModal(child, {
+      showAddChild: depth < PLAN_CHILD_MAX_DEPTH,
+      showComplete,
+      completeLabel: child.done ? "完了を取り消す" : "完了",
+    }).then((choice) => {
+      if (choice === "edit") {
+        openNameModal(child.label).then((name) => {
+          if (name === null) return;
+          const label = name.trim();
+          if (!label) return;
+          captureUndoSnapshot();
+          child.label = label;
+          savePlans();
+          renderCalendar();
+          showPlanDetail(dateStr, plan);
+        });
+      } else if (choice === "addChild") {
+        openNameModal("", PLAN_CHILD_LABELS[depth]).then((name) => {
+          if (name === null || !name.trim()) return;
+          const label = name.trim();
+          if (!label) return;
+          captureUndoSnapshot();
+          addPlanChildToTree(plan, child.id, label);
+          activePlanChildIds[depth - 1] = child.id;
+          if (depth < activePlanChildIds.length) activePlanChildIds[depth] = null;
+          savePlans();
+          renderCalendar();
+          showPlanDetail(dateStr, plan);
+        });
+      } else if (choice === "complete") {
+        captureUndoSnapshot();
+        child.done = !child.done;
+        savePlans();
+        renderCalendar();
+        showPlanDetail(dateStr, plan);
+      } else if (choice === "delete") {
+        captureUndoSnapshot();
+        removePlanChildAndDescendants(plan, child.id);
+        if (activePlanChildIds[0] === child.id) activePlanChildIds = [null, null];
+        else if (activePlanChildIds[1] === child.id) activePlanChildIds[1] = null;
+        savePlans();
+        renderCalendar();
+        showPlanDetail(dateStr, plan);
+      }
+    });
   }
 
   function showPlanDetail(dateStr, plan) {
