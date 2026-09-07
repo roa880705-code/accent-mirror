@@ -2061,6 +2061,31 @@
     });
   }
 
+  // いつかツリーで血縁関係にある子孫を、その親タスクごとスケジュールへ
+  // ドロップした時に使う: rootTaskの子孫全員を、いつか側のid/parentIdでは
+  // なく新しいplanchild id/parentIdへ振り直しつつコピーする(いつか側の
+  // idを再利用すると、後で片方だけ削除・編集した時に意図せずもう片方の
+  // データへ影響してしまうため)。深さはいつか・予定どちらもmax 3階層
+  // (子/孫/ひ孫)で揃えてあるので、そのまま収まる。
+  function buildPlanChildrenFromSomedayTask(rootTask) {
+    const result = [];
+    // several ids can be minted within the same millisecond here (a
+    // synchronous recursive walk, unlike the one-click-at-a-time calls
+    // elsewhere), so a counter is added to keep every id unique regardless
+    // of timing.
+    const stamp = Date.now();
+    let counter = 0;
+    function walk(task, parentPlanId) {
+      childrenOf(task.id).forEach((child) => {
+        const newId = `planchild_${stamp}_${counter++}_${Math.random().toString(36).slice(2, 7)}`;
+        result.push({ id: newId, label: child.label, parentId: parentPlanId, done: false });
+        walk(child, newId);
+      });
+    }
+    walk(rootTask, null);
+    return result;
+  }
+
   // depth番目の階層に属する全ノードを集める(1=子, 2=孫, 3=ひ孫) — 「今
   // 掘り下げ中の1本」だけでなく、木全体を常に全展開した状態で見せるため、
   // 一つ上の階層の全ノードそれぞれの子をまとめて返す。
@@ -4516,23 +4541,15 @@
         }
       } else {
         ctx.chip.classList.remove("armed");
-        if (isParentTask(ctx.task.id)) {
-          // a task that's itself become a parent isn't broken down into
-          // something concrete yet, so it can't be turned into a scheduled
-          // action — only its (eventually leaf) descendants can be
-          ctx.phase = "blocked";
-          vibrate([10, 30, 10]);
-        } else {
-          ctx.phase = "schedule";
-          ctx.chip.classList.add("dragging");
-          vibrate(15);
-        }
+        // a parent task can be dragged too — dropping it onto the grid
+        // brings its whole family along (see the "schedule" phase drop
+        // handling in onSomedayChipDragEnd); dropping it on one of the
+        // flat-item zones (今日中/最優先/マンスリー/タスク一覧) still just
+        // promotes its children back to top-level, same as before.
+        ctx.phase = "schedule";
+        ctx.chip.classList.add("dragging");
+        vibrate(15);
       }
-    }
-
-    if (ctx.phase === "blocked") {
-      e.preventDefault();
-      return;
     }
 
     if (ctx.phase === "scroll") {
@@ -4830,11 +4847,6 @@
       return;
     }
 
-    if (ctx.phase === "blocked") {
-      somedayDragCtx = null;
-      return;
-    }
-
     if (ctx.phase === "schedule") {
       ctx.chip.classList.remove("dragging");
       somedayDragCtx = null;
@@ -4925,7 +4937,13 @@
       const endMin = startMin + PLAN_DEFAULT_MIN;
       const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-      addPlan(dateStr, { id, label: task.label, startMin, endMin, somedayParentId: task.parentId || null });
+      const newPlan = { id, label: task.label, startMin, endMin, somedayParentId: task.parentId || null };
+      // 血縁関係にある子孫ごとスケジュールへ落とした場合、その家系を
+      // まるごと予定の子タスクツリーへコピーし、いつか側からは(昇格せず)
+      // 家系全体を取り除く — 子タスクが無い普通のタスクはこれまで通り。
+      const taskIsParent = isParentTask(task.id);
+      if (taskIsParent) newPlan.children = buildPlanChildrenFromSomedayTask(task);
+      addPlan(dateStr, newPlan);
       const item = freshItem(task.label);
       item.planId = id;
       item.somedayParentId = task.parentId || null;
@@ -4933,7 +4951,11 @@
       sortItemsByPlan(dateStr);
       persistItemsForDate(dateStr);
       refreshTimerIfShowing(dateStr);
-      removeSomedayTaskPromotingChildren(task.id);
+      if (taskIsParent) {
+        removeSomedayTaskAndDescendants(task.id);
+      } else {
+        removeSomedayTaskPromotingChildren(task.id);
+      }
       saveSomeday();
       vibrate(20);
       renderCalendar();
