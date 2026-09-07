@@ -470,9 +470,72 @@
     return !!timetableVisibleDates[dateStr];
   }
 
+  // 時間割は「今日は午前のみ」「短縮日課」「木曜だけど月曜時間割」のような
+  // 例外に対応できるよう、読み取り専用の背景表示ではなく通常の予定と全く
+  // 同じもの(編集・移動・削除ができる)として追加する。オンにした時点の
+  // 時間割データをその日の予定として書き込むだけの一度きりの操作で、
+  // その後は普通の予定として扱われる — トグル自体は「今この状態を保存
+  // している/していない」を表すフラグではなく、あくまでON/OFFのボタン
+  // 操作そのもの。
+  //
+  // オフにした時は、時間割から追加されて以来一度も編集(改名/移動/
+  // リサイズ)されていないもの(plan.fromTimetable)だけをまとめて削除する
+  // — 手を加えた予定はもう独立した普通の予定なので残る。再度オンにすると
+  // (残っている編集済みのものと重複する可能性はあるが)その時点の時間割
+  // データからまた追加される。
+  function addTimetablePlansForDate(dateStr) {
+    const weekday = parseDateStr(dateStr).getDay();
+    const dayTimetable = timetable[weekday] || {};
+    let changed = false;
+    periodSettings.periods.forEach((period) => {
+      if (!period.enabled) return;
+      const subject = dayTimetable[period.id];
+      if (!subject) return;
+      const startMin = period.hour * 60 + period.minute;
+      const endMin = period.endHour * 60 + period.endMinute;
+      const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      addPlan(dateStr, { id, label: subject, startMin, endMin, fromTimetable: true });
+      const item = freshItem(subject);
+      item.planId = id;
+      ensureItemsArrayForDate(dateStr).push(item);
+      changed = true;
+    });
+    if (changed) {
+      sortItemsByPlan(dateStr);
+      persistItemsForDate(dateStr);
+      refreshTimerIfShowing(dateStr);
+    }
+  }
+
+  function removeUneditedTimetablePlansForDate(dateStr) {
+    const untouched = plansForDate(dateStr).filter((p) => p.fromTimetable);
+    if (!untouched.length) return;
+    untouched.forEach((plan) => {
+      removePlan(dateStr, plan.id);
+      const items = itemsArrayForDate(dateStr);
+      const idx = items.findIndex((it) => it.planId === plan.id);
+      if (idx < 0) return;
+      if (items[idx].elapsedMs > 0 || items[idx].running) {
+        // real recorded time exists: keep the item as a record, just unlink it
+        items[idx].planId = null;
+      } else {
+        items.splice(idx, 1);
+      }
+    });
+    sortItemsByPlan(dateStr);
+    persistItemsForDate(dateStr);
+    refreshTimerIfShowing(dateStr);
+  }
+
   function toggleTimetableVisibleForDate(dateStr) {
-    if (timetableVisibleDates[dateStr]) delete timetableVisibleDates[dateStr];
-    else timetableVisibleDates[dateStr] = true;
+    captureUndoSnapshot();
+    if (timetableVisibleDates[dateStr]) {
+      delete timetableVisibleDates[dateStr];
+      removeUneditedTimetablePlansForDate(dateStr);
+    } else {
+      timetableVisibleDates[dateStr] = true;
+      addTimetablePlansForDate(dateStr);
+    }
     saveTimetableVisibleDates();
   }
 
@@ -1940,6 +2003,9 @@
     if (name === null) return;
     captureUndoSnapshot();
     plan.label = name.trim() || plan.label;
+    // 手を加えた時点で「時間割からそのまま」ではなくなる — 時間割トグルの
+    // オフで一括削除される対象から外れ、以後は普通の予定として残る。
+    delete plan.fromTimetable;
     savePlans();
     const items = itemsArrayForDate(dateStr);
     const item = items.find((it) => it.planId === plan.id);
@@ -2565,6 +2631,9 @@
     vibrate(20);
     removePlan(dateStr, plan.id);
     const movedPlan = { ...plan, startMin: previewStartMin, endMin: previewStartMin + duration };
+    // 移動した時点で「時間割からそのまま」ではなくなる — 時間割トグルの
+    // オフで一括削除される対象から外れ、以後は普通の予定として残る。
+    delete movedPlan.fromTimetable;
     addPlan(hoverDate, movedPlan);
 
     if (dateStr === hoverDate) {
@@ -2648,6 +2717,9 @@
       captureUndoSnapshot();
       vibrate(20);
       plan.endMin = previewEndMin;
+      // リサイズした時点で「時間割からそのまま」ではなくなる — 時間割
+      // トグルのオフで一括削除される対象から外れ、以後は普通の予定として残る。
+      delete plan.fromTimetable;
       savePlans();
     }
     renderCalendar();
@@ -4893,27 +4965,6 @@
       dayCol.className = "calendar-day-col";
       dayCol.dataset.date = dateStr;
       const dayStart = new Date(`${dateStr}T00:00:00`).getTime();
-
-      // 時間割(設定ページで曜日ごとに登録した科目名)の背景表示 — 実際の
-      // 実績(.cal-block)/予定(.cal-plan-block)より先に追加しておく
-      // (両方ともz-indexで時間割より前面に来るので描画順自体は問わないが、
-      // 読み取り専用の背景レイヤーとして意味的に一番奥から積む)。
-      if (isTimetableVisibleForDate(dateStr)) {
-        const dayTimetable = timetable[d.getDay()] || {};
-        periodSettings.periods.forEach((period) => {
-          if (!period.enabled) return;
-          const subject = dayTimetable[period.id];
-          if (!subject) return;
-          const startMin = period.hour * 60 + period.minute;
-          const endMin = period.endHour * 60 + period.endMinute;
-          const block = document.createElement("div");
-          block.className = "cal-timetable-block";
-          block.style.top = `${minToPx(startMin)}px`;
-          block.style.height = `${minToPx(Math.max(1, endMin - startMin))}px`;
-          block.textContent = subject;
-          dayCol.appendChild(block);
-        });
-      }
 
       let segs = closedSegmentsForDate(dateStr).map((seg) => ({ ...seg, live: false }));
       if (dateStr === state.day) {

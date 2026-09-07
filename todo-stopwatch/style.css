@@ -2176,30 +2176,6 @@ body {
   z-index: 15;
 }
 
-/* 時間割の背景表示: 設定ページで曜日ごとに登録した科目名を、対応する
-   時限の時間帯に薄い背景ブロックとして敷く読み取り専用の参考レイヤー
-   — 実際の予定(.cal-plan-block)や実績(.cal-block)より奥(z-index)に
-   置き、ドラッグや編集の対象にはしない(編集は設定ページから)。 */
-.cal-timetable-block {
-  position: absolute;
-  z-index: 1;
-  box-sizing: border-box;
-  left: 1px;
-  right: 1px;
-  border-radius: 4px;
-  padding: 1px 3px;
-  font-size: 0.52rem;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--muted);
-  background: var(--panel);
-  border: 1px solid var(--panel-line);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  pointer-events: none;
-}
-
 /* a small chip that tracks the pointer 1:1 for the whole drag, positioned
    just above the finger/cursor so it stays visible instead of being hidden
    underneath it */
