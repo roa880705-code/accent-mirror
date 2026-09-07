@@ -2602,7 +2602,10 @@ body {
 
 .calendar-detail {
   flex: none;
-  max-height: 28%;
+  /* 28%だけだと画面が低い端末(実効ビューポートが小さいブラウザの
+     URLバー表示時など)でボタン類が欠けてしまうため、常に最低限の
+     高さ(操作ボタン一式+子タスク欄の頭出しぶん)を保証する。 */
+  max-height: max(28%, 260px);
   overflow-y: auto;
   border-top: 1px solid var(--line);
   padding-top: 5px;
