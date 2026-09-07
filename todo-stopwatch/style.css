@@ -1838,6 +1838,13 @@ body {
   overscroll-behavior-x: contain;
 }
 
+/* display:flex above otherwise beats the browser's default [hidden]{display:
+   none} once this list itself (not just its containing box) gets hidden —
+   全展開中、いつかの平らな一覧をツリー表示に差し替える際に使う。 */
+.calendar-unplanned-list[hidden] {
+  display: none;
+}
+
 .calendar-unplanned-empty {
   flex: none;
   font-size: 0.65rem;
@@ -1862,6 +1869,70 @@ body {
   background: var(--accent);
   pointer-events: none;
   z-index: 1;
+}
+
+/* --- 全展開(いつかツリー): 家族(いつかタスク1件+その子孫全員)ごとに
+   1つのミニ組織図として並べる表示。横スクロールのページ(マンスリー/
+   ウィークリー/デイリー/ログ)では家族を横に並べ(列=家族、行=深さ)、
+   タスク一覧ページ(.vertical付き)では家族を縦に並べる(行=家族、列=
+   深さ、既存のMiller Columnsと同じ「深いほど右」の向き)。どちらも
+   grid-auto-columns/rows: max-contentにすることで、家族(またはタスク
+   一覧の場合は各深さの列)の中で1番幅(高さ)を必要とする層に合わせて
+   区画サイズが自動で決まり、それより余裕のある層は単に余白になる —
+   これがJSでの位置計算を一切書かずに実現できる。線(.someday-branch-line、
+   drawSomedayTreeConnectors参照)を重ねて描けるようposition:relative。 */
+.someday-tree {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(4, auto);
+  grid-auto-columns: max-content;
+  column-gap: 16px;
+  row-gap: 8px;
+  padding: 6px 4px 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
+
+.someday-tree.vertical {
+  grid-auto-flow: row;
+  grid-template-rows: none;
+  grid-template-columns: repeat(4, auto);
+  grid-auto-rows: max-content;
+  column-gap: 16px;
+  row-gap: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.someday-tree[hidden] {
+  display: none;
+}
+
+.someday-tree-cell {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.someday-tree.vertical .someday-tree-cell {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.someday-tree.vertical .cal-unplanned-chip {
+  max-width: none;
+  width: 100%;
+  text-align: left;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.someday-tree.vertical .cal-unplanned-chip-label {
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .cal-unplanned-chip {
@@ -2037,21 +2108,6 @@ body {
   outline-offset: 1px;
 }
 
-/* 全展開中、子/孫/ひ孫の各列内で親ごとのグループを区切る見出し。横
-   スクロールのトレイでは小さな仕切りチップとして、タスク一覧ページの
-   縦リスト内では区切り線つきの小見出しとして働く(下の.tasklist-list
-   内の上書きを参照)。タップでその親の編集/子タスク追加を開ける。 */
-.someday-group-header {
-  flex: none;
-  align-self: center;
-  font-size: 0.58rem;
-  font-weight: 700;
-  color: var(--muted);
-  padding: 2px 6px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
 /* ドラッグ中のチップを、別のチップの真上に重ねている間の「ここへ落とすと
    このチップの子になる」合図。 */
 .cal-unplanned-chip.reparent-target {
@@ -2145,21 +2201,6 @@ body {
 .tasklist-list .cal-unplanned-chip-label {
   white-space: normal;
   overflow-wrap: break-word;
-}
-
-/* 縦一覧では横スクロールトレイ用の小さな仕切りチップではなく、区切り線
-   つきの全幅見出しにする(グループごとの境目が縦一列でもわかるように)。 */
-.tasklist-list .someday-group-header {
-  align-self: stretch;
-  text-align: left;
-  padding: 6px 4px 2px;
-  border-top: 1px solid var(--panel-line);
-  margin-top: 4px;
-}
-
-.tasklist-list .someday-group-header:first-child {
-  border-top: none;
-  margin-top: 0;
 }
 
 /* 「時間未定」タスクの常時表示行: 時間軸グリッドとは別の、スクロールし

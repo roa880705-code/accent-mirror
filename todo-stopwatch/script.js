@@ -702,6 +702,7 @@
   const calendarUnplannedList = document.getElementById("calendarUnplannedList");
   const calendarSomedayAddBtn = document.getElementById("calendarSomedayAddBtn");
   const calendarSomedayExpandAllBtn = document.getElementById("calendarSomedayExpandAllBtn");
+  const calendarSomedayTree = document.getElementById("calendarSomedayTree");
   // 最優先タスク欄(デイリーページ限定、階層を持たないフラットなトレイ)
   const calendarPriorityBox = document.getElementById("calendarPriorityBox");
   const calendarPriorityList = document.getElementById("calendarPriorityList");
@@ -718,6 +719,7 @@
   const weeklyUnplannedList = document.getElementById("weeklyUnplannedList");
   const weeklySomedayAddBtn = document.getElementById("weeklySomedayAddBtn");
   const weeklySomedayExpandAllBtn = document.getElementById("weeklySomedayExpandAllBtn");
+  const weeklySomedayTree = document.getElementById("weeklySomedayTree");
   const weeklySubtaskBox = document.getElementById("weeklySubtaskBox");
   const weeklySubtaskList = document.getElementById("weeklySubtaskList");
   const weeklyGrandchildBox = document.getElementById("weeklyGrandchildBox");
@@ -734,6 +736,7 @@
   const monthlyUnplannedList = document.getElementById("monthlyUnplannedList");
   const monthlySomedayAddBtn = document.getElementById("monthlySomedayAddBtn");
   const monthlySomedayExpandAllBtn = document.getElementById("monthlySomedayExpandAllBtn");
+  const monthlySomedayTree = document.getElementById("monthlySomedayTree");
   const monthlySubtaskBox = document.getElementById("monthlySubtaskBox");
   const monthlySubtaskList = document.getElementById("monthlySubtaskList");
   const monthlyGrandchildBox = document.getElementById("monthlyGrandchildBox");
@@ -744,6 +747,7 @@
   const taskUnplannedList = document.getElementById("taskUnplannedList");
   const taskSomedayAddBtn = document.getElementById("taskSomedayAddBtn");
   const taskSomedayExpandAllBtn = document.getElementById("taskSomedayExpandAllBtn");
+  const taskSomedayTree = document.getElementById("taskSomedayTree");
   const taskSubtaskBox = document.getElementById("taskSubtaskBox");
   const taskSubtaskList = document.getElementById("taskSubtaskList");
   const taskGrandchildBox = document.getElementById("taskGrandchildBox");
@@ -753,6 +757,11 @@
   const tasklistUnplannedList = document.getElementById("tasklistUnplannedList");
   const tasklistSomedayAddBtn = document.getElementById("tasklistSomedayAddBtn");
   const tasklistSomedayExpandAllBtn = document.getElementById("tasklistSomedayExpandAllBtn");
+  const tasklistSomedayTree = document.getElementById("tasklistSomedayTree");
+  // ページ順(calendar/weekly/monthly/task/tasklist)はsomedayLevelEls等の
+  // 既存の並びに合わせる — tasklistだけ縦積み(Miller Columnsと同じ深いほど
+  // 右)、他4つは横積み(家族ごとに列、深さごとに行)。
+  const somedayTreeEls = [calendarSomedayTree, weeklySomedayTree, monthlySomedayTree, taskSomedayTree, tasklistSomedayTree];
   const tasklistSubtaskBox = document.getElementById("tasklistSubtaskBox");
   const tasklistSubtaskList = document.getElementById("tasklistSubtaskList");
   const tasklistGrandchildBox = document.getElementById("tasklistGrandchildBox");
@@ -2748,10 +2757,10 @@
   // independently of any data change.
   function repositionSomedayConnectors() {
     if (somedayExpandAll) {
-      // 全展開中は各階層に複数の親が同時にアクティブになるため、1本の
-      // 連結線が1つの親から伸びる前提の既存ロジックとは噛み合わない —
-      // 親子関係は各グループの見出し(someday-group-header)で示すので、
-      // 連結線はここでは出さない。
+      // 全展開ツリー表示中は、1本の連結線が1つのアクティブな親から伸びる
+      // だけの前提のこの仕組みではなく、家族ごとに全ての親子ペアの線を
+      // 描くdrawSomedayTreeConnectorLines(renderSomedayTreeInto内で呼ぶ)
+      // が代わりを務める — ここでは通常モード用の連結線をただ隠す。
       somedayConnectorEls.forEach((row) => row.forEach((el) => {
         el.innerHTML = "";
         el.hidden = true;
@@ -2977,12 +2986,20 @@
     }
 
     chip.dataset.somedayId = task.id;
-    if (VERTICAL_SOMEDAY_LISTS.has(listEl)) {
+    if (isVerticalSomedayContext(listEl)) {
       chip.addEventListener("click", () => handleSomedayChipTap(task));
     } else {
       chip.addEventListener("pointerdown", (e) => startSomedayChipDrag(e, chip, task));
     }
     return chip;
+  }
+
+  // タスク一覧ページの縦一列(VERTICAL_SOMEDAY_LISTS)に加えて、全展開の
+  // ツリー表示でも縦積み側(.someday-tree.vertical、タスク一覧ページ用)の
+  // セルはタップのみ・ドラッグ操作を持たない(通常時のタスク一覧と同じ
+  // 方針)。セル自体(listEl)がその中にあるかをclosestで判定する。
+  function isVerticalSomedayContext(listEl) {
+    return VERTICAL_SOMEDAY_LISTS.has(listEl) || !!listEl.closest(".someday-tree.vertical");
   }
 
   function renderSomedayListInto(listEl, tasks) {
@@ -2997,25 +3014,131 @@
     tasks.forEach((task) => listEl.appendChild(createSomedayChip(task, listEl)));
   }
 
-  // 全展開モード用: groups=[{parent, children}, ...]を、親ごとの見出し+
-  // その子チップの並びとして1つのlistElにまとめて描画する。
-  function renderSomedayListGrouped(listEl, groups) {
-    listEl.innerHTML = "";
-    if (!groups.length) {
+  // --- 全展開: 家族(いつかタスク1件+その子孫全員)ごとのミニ組織図 ---
+
+  // 同じ兄弟グループの中では、子を持つタスクを先に並べる(安定ソートな
+  // ので、それぞれのグループ内での元の相対順は保ったまま)。
+  function sortSomedayChildrenForTree(tasks) {
+    return [...tasks].sort((a, b) => (isParentTask(b.id) ? 1 : 0) - (isParentTask(a.id) ? 1 : 0));
+  }
+
+  // rootTaskを起点に、その家族を深さ別(0=自分..3=ひ孫)に集める。深さ
+  // 優先(親を追加した直後にその子孫を辿ってから次の兄弟へ進む)なので、
+  // 同じ親から生えた子たちが各深さの並びの中で自然に隣り合う。
+  function collectSomedayFamilyLevels(rootTask) {
+    const levels = [[rootTask], [], [], []];
+    function walk(task, depth) {
+      if (depth >= SOMEDAY_MAX_DEPTH) return;
+      sortSomedayChildrenForTree(childrenOf(task.id)).forEach((child) => {
+        levels[depth + 1].push(child);
+        walk(child, depth + 1);
+      });
+    }
+    walk(rootTask, 0);
+    return levels;
+  }
+
+  // 全展開ツリー: 家族ごとに深さ0(自分自身)〜3(ひ孫)のセルをgrid-row/
+  // grid-columnで並べる。横スクロールのページ(isVertical=false)は
+  // 列=家族・行=深さ、タスク一覧ページ(isVertical=true)は行=家族・列=
+  // 深さ(既存のMiller Columnsと同じ「深いほど右」の向き)。CSS側の
+  // grid-auto-columns/rows: max-content(.someday-tree参照)が、家族(また
+  // はタスク一覧の場合は各深さの列)の中で1番幅/高さを必要とする層に
+  // 合わせて区画サイズを自動で決めるので、ここでは行列番号を割り振る
+  // だけでよい。
+  function renderSomedayTreeInto(containerEl, isVertical) {
+    containerEl.innerHTML = "";
+    const families = sortSomedayChildrenForTree(topLevelSomeday());
+    if (!families.length) {
       const empty = document.createElement("span");
       empty.className = "calendar-unplanned-empty";
       empty.textContent = "なし";
-      listEl.appendChild(empty);
+      containerEl.appendChild(empty);
       return;
     }
-    groups.forEach(({ parent, children }) => {
-      const header = document.createElement("span");
-      header.className = "someday-group-header";
-      header.textContent = parent.label;
-      header.title = `「${parent.label}」の子`;
-      header.addEventListener("click", () => promptSomedayEditOrAddChild(parent, somedayTaskDepth(parent)));
-      listEl.appendChild(header);
-      children.forEach((task) => listEl.appendChild(createSomedayChip(task, listEl)));
+
+    const connectorPairs = []; // { parentTask, childTasks } — 線はDOM配置が終わってから描く
+
+    families.forEach((family, familyIndex) => {
+      const levels = collectSomedayFamilyLevels(family);
+      levels.forEach((tasks, depth) => {
+        if (!tasks.length) return;
+        const cell = document.createElement("div");
+        cell.className = "someday-tree-cell";
+        if (isVertical) {
+          cell.style.gridRow = String(familyIndex + 1);
+          cell.style.gridColumn = String(depth + 1);
+        } else {
+          cell.style.gridColumn = String(familyIndex + 1);
+          cell.style.gridRow = String(depth + 1);
+        }
+        // 先にDOMへ挿入してから中身を作る — createSomedayChip側の
+        // isVerticalSomedayContext は closest(".someday-tree.vertical") で
+        // 判定するため、cellがまだ宙に浮いた状態(未接続)だと祖先を辿れず
+        // 常にfalseになってしまう。
+        containerEl.appendChild(cell);
+        tasks.forEach((task) => cell.appendChild(createSomedayChip(task, cell)));
+      });
+      levels.slice(0, SOMEDAY_MAX_DEPTH).forEach((tasksAtDepth) => {
+        tasksAtDepth.forEach((parentTask) => {
+          const childTasks = childrenOf(parentTask.id);
+          if (childTasks.length) connectorPairs.push({ parentTask, childTasks });
+        });
+      });
+    });
+
+    requestAnimationFrame(() => drawSomedayTreeConnectorLines(containerEl, connectorPairs, isVertical));
+  }
+
+  // 家族の連結線を描く。線自体はcontainerEl(=.someday-tree、スクロールする
+  // 当のコンテナ)の子として追加するので、スクロール位置ぶんのオフセット
+  // (scrollLeft/scrollTop)をローカル座標に足し込めば、あとはネイティブの
+  // スクロールでチップと線が一緒に動く(戻す/進む時に再計算し直す必要が
+  // ない)。幾何自体は既存のpositionSomedayConnector系と同じ(横向き=幹
+  // →横の梁→縦の枝、縦向き=幹→縦の梁→横の枝)。
+  function drawSomedayTreeConnectorLines(containerEl, connectorPairs, isVertical) {
+    containerEl.querySelectorAll(".someday-branch-line").forEach((el) => el.remove());
+    const rootRect = containerEl.getBoundingClientRect();
+    const scrollLeft = containerEl.scrollLeft;
+    const scrollTop = containerEl.scrollTop;
+    const half = SOMEDAY_BRANCH_LINE_W / 2;
+
+    connectorPairs.forEach(({ parentTask, childTasks }) => {
+      const parentChip = containerEl.querySelector(`[data-someday-id="${parentTask.id}"]`);
+      const childChips = childTasks.map((c) => containerEl.querySelector(`[data-someday-id="${c.id}"]`)).filter(Boolean);
+      if (!parentChip || !childChips.length) return;
+      const parentRect = parentChip.getBoundingClientRect();
+      const childRects = childChips.map((el) => el.getBoundingClientRect());
+
+      if (!isVertical) {
+        const parentX = parentRect.left + parentRect.width / 2 - rootRect.left + scrollLeft;
+        const stemTop = parentRect.bottom - rootRect.top + scrollTop;
+        const childAnchors = childRects.map((r) => ({
+          x: r.left + r.width / 2 - rootRect.left + scrollLeft,
+          top: r.top - rootRect.top + scrollTop,
+        }));
+        const branchY = Math.max(stemTop + 2, Math.min(...childAnchors.map((a) => a.top)) - SOMEDAY_BRANCH_GAP);
+        const allX = [parentX, ...childAnchors.map((a) => a.x)];
+        addSomedayBranchLine(containerEl, parentX - half, stemTop, SOMEDAY_BRANCH_LINE_W, branchY - stemTop);
+        addSomedayBranchLine(containerEl, Math.min(...allX), branchY - half, Math.max(...allX) - Math.min(...allX), SOMEDAY_BRANCH_LINE_W);
+        childAnchors.forEach((a) => {
+          addSomedayBranchLine(containerEl, a.x - half, branchY, SOMEDAY_BRANCH_LINE_W, a.top - branchY);
+        });
+      } else {
+        const parentY = parentRect.top + parentRect.height / 2 - rootRect.top + scrollTop;
+        const stemLeft = parentRect.right - rootRect.left + scrollLeft;
+        const childAnchors = childRects.map((r) => ({
+          y: r.top + r.height / 2 - rootRect.top + scrollTop,
+          left: r.left - rootRect.left + scrollLeft,
+        }));
+        const branchX = Math.max(stemLeft + 2, Math.min(...childAnchors.map((a) => a.left)) - SOMEDAY_BRANCH_GAP);
+        const allY = [parentY, ...childAnchors.map((a) => a.y)];
+        addSomedayBranchLine(containerEl, stemLeft, parentY - half, branchX - stemLeft, SOMEDAY_BRANCH_LINE_W);
+        addSomedayBranchLine(containerEl, branchX - half, Math.min(...allY), SOMEDAY_BRANCH_LINE_W, Math.max(...allY) - Math.min(...allY));
+        childAnchors.forEach((a) => {
+          addSomedayBranchLine(containerEl, branchX, a.y - half, a.left - branchX, SOMEDAY_BRANCH_LINE_W);
+        });
+      }
     });
   }
 
@@ -3057,25 +3180,25 @@
     }
   }
 
-  // 全展開モード用: 各階層(0=子,1=孫,2=ひ孫の列)について、その階層に子を
-  // 持つ全ての親をsomeday配列の並び順のまま集め、親ごとのグループとして
-  // 表示する — activeSomedayIds(1つの親だけを選ぶ通常モードの状態)は
-  // 見ない。
-  function renderSubtaskTraysExpanded() {
-    for (let level = 0; level < activeSomedayIds.length; level++) {
-      const cfg = somedayLevelEls[level + 1];
-      const parents = someday.filter((t) => somedayTaskDepth(t) === level && isParentTask(t.id));
-      cfg.boxes.forEach((b) => (b.hidden = parents.length === 0));
-      const groups = parents.map((parent) => ({ parent, children: childrenOf(parent.id) }));
-      cfg.lists.forEach((listEl) => renderSomedayListGrouped(listEl, groups));
-    }
-  }
-
   function renderSomedayList() {
-    somedayLevelEls[0].lists.forEach((listEl) => renderSomedayListInto(listEl, topLevelSomeday()));
     if (somedayExpandAll) {
-      renderSubtaskTraysExpanded();
+      // ツリー表示中は、通常モードの「いつかの平らな一覧」「1つの親だけ
+      // 選んで掘り下げる子/孫/ひ孫」は全部隠し、家族ごとのミニ組織図
+      // (renderSomedayTreeInto)に置き換える。タイトル/追加/全展開ボタンは
+      // いつかボックス側にそのまま残る(リスト部分だけ隠す)ので操作は
+      // 引き続きできる。
+      somedayLevelEls[0].lists.forEach((listEl) => (listEl.hidden = true));
+      somedayLevelEls.slice(1).forEach((cfg) => cfg.boxes.forEach((b) => (b.hidden = true)));
+      somedayTreeEls.forEach((treeEl, pageIdx) => {
+        treeEl.hidden = false;
+        renderSomedayTreeInto(treeEl, pageIdx === TASKLIST_PAGE_IDX);
+      });
     } else {
+      somedayTreeEls.forEach((treeEl) => (treeEl.hidden = true));
+      somedayLevelEls[0].lists.forEach((listEl) => {
+        listEl.hidden = false;
+        renderSomedayListInto(listEl, topLevelSomeday());
+      });
       renderSubtaskTrays();
     }
     repositionSomedayConnectors();
@@ -4134,10 +4257,9 @@
       // は行わない(このドラッグの意図は「別の場所へ落とす」ことであって
       // 「今の列内で順番を変える」ことではないため)。
       if (ctx.reparentTargetId) return;
-      // 全展開中は複数の親のグループが同じ列に同居しており、位置ベースの
-      // 並べ替えは「どのグループの間に挟まったか」が曖昧になるため行わない
-      // — この列での操作は配置転換のみに絞る。
-      if (somedayExpandAll) return;
+      // 全展開ツリー表示中は、ctx.listElが「その家族・その深さだけの
+      // セル」に自然にスコープされている(renderSomedayTreeInto参照)ので、
+      // 通常モードと同じ位置ベースの並べ替えロジックがそのまま安全に使える。
 
       const chipRect = ctx.chip.getBoundingClientRect();
       const chipCenter = chipRect.left + chipRect.width / 2;
@@ -4317,24 +4439,27 @@
         return;
       }
 
-      if (somedayExpandAll) {
-        // 移動中(onSomedayChipDragMove)側で並べ替え自体を行っていない
-        // ("全展開中は行わない"のガード参照)ので、DOM位置も変わっていない
-        // — 何もせず元の位置へ視覚的に戻すだけでよい。
-        somedayDragCtx = null;
-        return;
-      }
-
       const domOrder = Array.from(ctx.listEl.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
       const orderedIds = domOrder.map((n) => n.dataset.somedayId);
       // only the tasks actually shown in this scoped list (top-level, or one
-      // parent's children) get reordered — everything else keeps its slot
+      // parent's children — or in ツリー表示, one family's one depth) get
+      // reordered — everything else keeps its slot
       const reorderedSet = new Set(orderedIds);
       const reorderedTasks = orderedIds.map((id) => someday.find((t) => t.id === id));
       let ri = 0;
       someday = someday.map((t) => (reorderedSet.has(t.id) ? reorderedTasks[ri++] : t));
       saveSomeday();
       vibrate(15);
+
+      if (somedayExpandAll) {
+        // ツリー表示のセルはページごとに動的生成されるだけで、通常モード
+        // のような「他ページの同じスコープの一覧」というミラー関係が無い
+        // ので、素直に全体(5ページぶん)を作り直して揃える。
+        somedayDragCtx = null;
+        renderSomedayList();
+        return;
+      }
+
       const chipRef = ctx.chip;
       setTimeout(() => {
         chipRef.style.transition = "";
