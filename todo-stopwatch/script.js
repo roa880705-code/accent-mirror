@@ -2405,13 +2405,54 @@
 
     actions.append(editBtn, ...(monthlyBtn ? [monthlyBtn] : []), ...(completeBtn ? [completeBtn] : []), delBtn);
 
+    // パネル(calendarDetail)自体の高さをドラッグで調整できるつまみ。
+    // sticky化したヘッダーの中に置くので、ツリーをスクロールしていても
+    // 常に掴める位置に残る。
+    const resizeHandle = document.createElement("div");
+    resizeHandle.className = "cal-plan-detail-resize-handle";
+    resizeHandle.addEventListener("pointerdown", startCalendarDetailResize);
+
     // 情報行+操作ボタンを、子タスクツリーの真上に貼り付けたまま常時表示
     // する — ツリーが縦に伸びてcalendarDetail自体がスクロールしても、
     // 編集/マンスリー表示/完了などへその都度スクロールし直さずに済む。
     const header = document.createElement("div");
     header.className = "cal-plan-detail-header";
-    header.append(line, actions);
+    header.append(resizeHandle, line, actions);
     calendarDetail.append(header, childrenSection);
+  }
+
+  // calendarDetailの上端のつまみをドラッグして、パネルの高さ(CSSの
+  // max-height:28%の代わりに使うインラインmax-height)を調整する。上へ
+  // ドラッグするほど広がる(つまみがパネルの上端にあり、下端は画面下に
+  // 固定されているため)。一度調整した高さはページを離れるまで維持する
+  // (毎回デフォルトへ戻さない)。
+  function startCalendarDetailResize(e) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const detailEl = calendarDetail;
+    const container = detailEl.closest(".calendar");
+    if (!container) return;
+    const startY = e.clientY;
+    const startHeight = detailEl.getBoundingClientRect().height;
+
+    function onMove(ev) {
+      const dy = startY - ev.clientY;
+      const containerHeight = container.getBoundingClientRect().height;
+      // グリッドや上部のボックスが完全に潰れてしまわないよう、パネルの
+      // 高さには常に余白を残す上限を設ける。
+      const maxHeight = Math.max(120, containerHeight - 160);
+      const newHeight = Math.min(maxHeight, Math.max(80, startHeight + dy));
+      detailEl.style.maxHeight = `${newHeight}px`;
+    }
+    function onUp() {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+    }
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   }
 
   // タップ(=ドラッグせずに指を離した)は、他のタスク種別(最優先/今日中/

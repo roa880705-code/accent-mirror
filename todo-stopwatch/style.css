@@ -2483,6 +2483,30 @@ body {
   font-weight: 600;
 }
 
+/* 予定詳細パネル(calendarDetail)自体の高さをドラッグで調整するための
+   つまみ。ヘッダー(sticky)の中に置くことで、ツリーをスクロールしていて
+   も常に掴める位置に留まる。 */
+.cal-plan-detail-resize-handle {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 16px;
+  margin-top: -5px;
+  cursor: ns-resize;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.cal-plan-detail-resize-handle::before {
+  content: "";
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
 /* 子タスクツリーが縦に伸びてcalendarDetail自体がスクロールしても、
    情報行+操作ボタンはツリーの真上に貼り付いたまま常時見えるようにする */
 .cal-plan-detail-header {
