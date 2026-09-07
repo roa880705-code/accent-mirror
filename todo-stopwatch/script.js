@@ -450,10 +450,14 @@
     window.AppSync?.markDirty("dailyNotes:v1", dailyNotes);
   }
 
-  // 端末ごとの表示設定なので、他の設定と違いデバイス間の同期はしない
-  // (markDirtyを呼ばない)。
+  // 時限(各時限の開始/終了時刻や記号)は時間割(曜日ごとの科目名、
+  // timetable:v1)が時限idで参照する実データなので、こちらも同期する
+  // ―― 以前は「端末ごとの表示設定」と誤って扱いここを同期しておらず、
+  // 別端末(や別オリジンのミラー)では時間割の科目名だけが同期されて
+  // 時限定義が無いまま=登録した時間割が消えて見える不具合だった。
   function savePeriodSettings() {
     localStorage.setItem(PERIOD_SETTINGS_KEY, JSON.stringify(periodSettings));
+    window.AppSync?.markDirty("periodSettings:v1", periodSettings);
   }
 
   function saveTimetable() {
