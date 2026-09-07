@@ -1890,6 +1890,14 @@ body {
   opacity: 0.6;
 }
 
+/* a plan carrying its own child tasks reads as "filled" (solid) instead of
+   the ordinary hollow/dashed look, so it visually stands apart at a glance */
+.cal-plan-block.has-children {
+  border-style: solid;
+  background: var(--accent);
+  color: #fff;
+}
+
 .cal-plan-resize-handle {
   position: absolute;
   z-index: 12;
@@ -2470,6 +2478,49 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.cal-plan-children {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cal-plan-child-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-plan-child-label {
+  flex: 1 1 auto;
+  font-size: 0.72rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-plan-child-label.done {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.cal-plan-child-remove {
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.cal-plan-child-add {
+  align-self: flex-start;
+  padding: 4px 10px;
+  font-size: 0.68rem;
 }
 
 .cal-plan-edit,

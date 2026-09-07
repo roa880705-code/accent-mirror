@@ -2016,12 +2016,88 @@
     }
   }
 
+  // 予定にぶら下げる子タスク: 今はこのパネルからフラットに追加するだけ
+  // だが、要素の形(id/parentId)はいつかツリーと揃えてあるので、将来
+  // 「いつかの親タスクを子孫ごとスケジュールにはめ込む」機能が来た時に、
+  // そのままコピーしてこられる下地になっている。
+  function planLeafChildCount(plan) {
+    const children = plan.children || [];
+    if (!children.length) return 0;
+    const parentIds = new Set(children.map((c) => c.parentId).filter(Boolean));
+    return children.filter((c) => !parentIds.has(c.id)).length;
+  }
+
+  function buildPlanChildrenSection(dateStr, plan) {
+    const section = document.createElement("div");
+    section.className = "cal-plan-children";
+    (plan.children || []).forEach((child) => {
+      const row = document.createElement("div");
+      row.className = "cal-plan-child-row";
+      const check = document.createElement("input");
+      check.type = "checkbox";
+      check.checked = !!child.done;
+      check.addEventListener("change", () => {
+        captureUndoSnapshot();
+        child.done = check.checked;
+        savePlans();
+        // renderCalendar() ends by re-running renderCalendarDetail(), which
+        // hides/clears calendarDetail whenever no day-history is selected —
+        // so it must run BEFORE showPlanDetail, not after, or it wipes the
+        // panel we just meant to refresh.
+        renderCalendar();
+        showPlanDetail(dateStr, plan);
+      });
+      const label = document.createElement("span");
+      label.className = "cal-plan-child-label";
+      label.textContent = child.label;
+      label.classList.toggle("done", !!child.done);
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "cal-plan-child-remove";
+      removeBtn.textContent = "×";
+      removeBtn.addEventListener("click", () => {
+        captureUndoSnapshot();
+        plan.children = plan.children.filter((c) => c.id !== child.id);
+        savePlans();
+        renderCalendar();
+        showPlanDetail(dateStr, plan);
+      });
+      row.append(check, label, removeBtn);
+      section.appendChild(row);
+    });
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "btn btn-modal-cancel cal-plan-child-add";
+    addBtn.textContent = "+ 子タスク追加";
+    addBtn.addEventListener("click", () => {
+      openNameModal("", "子タスク名を入力").then((name) => {
+        if (name === null || !name.trim()) return;
+        captureUndoSnapshot();
+        if (!plan.children) plan.children = [];
+        plan.children.push({
+          id: `planchild_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          label: name.trim(),
+          parentId: null,
+          done: false,
+        });
+        savePlans();
+        renderCalendar();
+        showPlanDetail(dateStr, plan);
+      });
+    });
+    section.appendChild(addBtn);
+    return section;
+  }
+
   function showPlanDetail(dateStr, plan) {
     calendarDetail.hidden = false;
     calendarDetail.innerHTML = "";
     const line = document.createElement("div");
     line.className = "cal-block-detail";
     line.textContent = `${plan.label}: ${formatMinHM(plan.startMin)}〜${formatMinHM(plan.endMin)} (予定)`;
+
+    const childrenSection = buildPlanChildrenSection(dateStr, plan);
 
     const actions = document.createElement("div");
     actions.className = "cal-plan-actions";
@@ -2094,7 +2170,7 @@
     }
 
     actions.append(editBtn, ...(monthlyBtn ? [monthlyBtn] : []), ...(completeBtn ? [completeBtn] : []), delBtn);
-    calendarDetail.append(line, actions);
+    calendarDetail.append(line, childrenSection, actions);
   }
 
   // タップ(=ドラッグせずに指を離した)は、他のタスク種別(最優先/今日中/
@@ -2123,6 +2199,11 @@
   // an already-placed plan's vertical position while being moved lags the
   // finger by this fraction, so small grip shifts don't visibly relocate it
   const PLAN_DRAG_DAMPING = 0.45;
+  // how far (px) the finger must stray horizontally from where the move
+  // started before a different day column is even considered — lets the
+  // user shift their finger sideways to see the block they're holding
+  // without immediately bumping it onto the next day
+  const PLAN_DRAG_H_TOLERANCE = 32;
 
   // shared with the swipe-navigation block further down: how much a drag
   // must favor the horizontal axis before it's read as a swipe rather than a
@@ -2371,6 +2452,7 @@
       dateStr,
       plan,
       duration: plan.endMin - plan.startMin,
+      sourceCol: block.parentElement,
       startClientX: e.clientX,
       startClientY: e.clientY,
       startScrollTop: calendarWeekBody.scrollTop,
@@ -2491,7 +2573,13 @@
     const cols = Array.from(calendarWeekGrid.children);
     let targetCol = null;
     const bodyRect = calendarWeekBody.getBoundingClientRect();
-    if (e.clientY >= bodyRect.top && e.clientY <= bodyRect.bottom) {
+    // within the horizontal dead zone, stay locked onto the day the drag
+    // started on — only once the finger has deliberately strayed past it
+    // do we even look at which column it's currently over (see
+    // PLAN_DRAG_H_TOLERANCE above)
+    if (Math.abs(dx) <= PLAN_DRAG_H_TOLERANCE) {
+      targetCol = planDragCtx.sourceCol && planDragCtx.sourceCol.isConnected ? planDragCtx.sourceCol : null;
+    } else if (e.clientY >= bodyRect.top && e.clientY <= bodyRect.bottom) {
       for (const col of cols) {
         const rect = col.getBoundingClientRect();
         if (
@@ -2533,6 +2621,10 @@
     planDragCtx.block.style.height = `${minToPx(planDragCtx.duration)}px`;
     planDragCtx.block.style.left = "1px";
     planDragCtx.block.style.width = "calc(100% - 2px)";
+    // keep the block's own time label live during the move so the current
+    // would-be start time is visible without waiting for the drop
+    const timeEl = planDragCtx.block.querySelector(".cal-plan-time");
+    if (timeEl) timeEl.textContent = formatMinHM(startMin);
   }
 
   function onPlanDragEnd(e) {
@@ -5020,6 +5112,14 @@
             timeEl.className = "cal-plan-time";
             timeEl.textContent = formatMinHM(p.startMin);
             block.appendChild(timeEl);
+            const leafCount = planLeafChildCount(p);
+            block.classList.toggle("has-children", leafCount > 0);
+            if (leafCount > 0) {
+              const childBadge = document.createElement("span");
+              childBadge.className = "cal-child-count-badge";
+              childBadge.dataset.count = String(leafCount);
+              block.appendChild(childBadge);
+            }
             const linkedItem = itemsArrayForDate(dateStr).find((it) => it.planId === p.id);
             block.classList.toggle("cal-plan-completed", !!(linkedItem && linkedItem.completed));
             block.addEventListener("pointerdown", (e) => startPlanDrag(e, block, dateStr, p));
