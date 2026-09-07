@@ -2428,7 +2428,7 @@
     bufferRow.className = "cal-plan-buffer-row";
     const bufferCaption = document.createElement("span");
     bufferCaption.className = "cal-plan-buffer-caption";
-    bufferCaption.textContent = "移動時間";
+    bufferCaption.textContent = "バッファ";
     bufferRow.appendChild(bufferCaption);
 
     function buildBufferField(labelText, currentValue, onCommit) {
