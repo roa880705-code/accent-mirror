@@ -14,6 +14,11 @@
   const BRIEFING_MEMO_KEY = "todoStopwatch:briefingMemo:v1";
   const DAILY_NOTES_KEY = "todoStopwatch:dailyNotes:v1";
   const PRIORITY_TASKS_KEY = "todoStopwatch:priorityTasks:v1";
+  // 曜日ごとの時間割データ(科目名)自体は他の実データと同じく端末間で
+  // 同期する。表示のオン/オフ(ウィークリー/デイリーのボタン)は端末
+  // ごとの表示設定として同期しない(時限表示のenabledと同じ扱い)。
+  const TIMETABLE_KEY = "todoStopwatch:timetable:v1";
+  const TIMETABLE_VISIBLE_KEY = "todoStopwatch:timetableVisible:v1";
   // 端末ローカルの表示設定(今のところ同期はしない)。
   const PERIOD_SETTINGS_KEY = "todoStopwatch:periodSettings:v1";
   const MAX_HISTORY = 60;
@@ -289,17 +294,17 @@
   const DEFAULT_PERIOD_SETTINGS = {
     enabled: true,
     periods: [
-      { hour: 8, minute: 0, endHour: 9, endMinute: 0, symbol: "0", enabled: true, placement: "start" },
-      { hour: 9, minute: 0, endHour: 10, endMinute: 0, symbol: "1", enabled: true, placement: "start" },
-      { hour: 10, minute: 0, endHour: 11, endMinute: 0, symbol: "2", enabled: true, placement: "start" },
-      { hour: 11, minute: 0, endHour: 12, endMinute: 0, symbol: "3", enabled: true, placement: "start" },
-      { hour: 12, minute: 0, endHour: 13, endMinute: 0, symbol: "4", enabled: true, placement: "start" },
-      { hour: 14, minute: 0, endHour: 15, endMinute: 0, symbol: "5", enabled: true, placement: "start" },
-      { hour: 15, minute: 0, endHour: 16, endMinute: 0, symbol: "6", enabled: true, placement: "start" },
-      { hour: 16, minute: 0, endHour: 17, endMinute: 0, symbol: "7", enabled: true, placement: "start" },
-      { hour: 17, minute: 0, endHour: 18, endMinute: 0, symbol: "8", enabled: true, placement: "start" },
-      { hour: 18, minute: 0, endHour: 19, endMinute: 0, symbol: "9", enabled: true, placement: "start" },
-      { hour: 19, minute: 0, endHour: 20, endMinute: 0, symbol: "10", enabled: true, placement: "start" },
+      { id: "p0", hour: 8, minute: 0, endHour: 9, endMinute: 0, symbol: "0", enabled: true, placement: "start" },
+      { id: "p1", hour: 9, minute: 0, endHour: 10, endMinute: 0, symbol: "1", enabled: true, placement: "start" },
+      { id: "p2", hour: 10, minute: 0, endHour: 11, endMinute: 0, symbol: "2", enabled: true, placement: "start" },
+      { id: "p3", hour: 11, minute: 0, endHour: 12, endMinute: 0, symbol: "3", enabled: true, placement: "start" },
+      { id: "p4", hour: 12, minute: 0, endHour: 13, endMinute: 0, symbol: "4", enabled: true, placement: "start" },
+      { id: "p5", hour: 14, minute: 0, endHour: 15, endMinute: 0, symbol: "5", enabled: true, placement: "start" },
+      { id: "p6", hour: 15, minute: 0, endHour: 16, endMinute: 0, symbol: "6", enabled: true, placement: "start" },
+      { id: "p7", hour: 16, minute: 0, endHour: 17, endMinute: 0, symbol: "7", enabled: true, placement: "start" },
+      { id: "p8", hour: 17, minute: 0, endHour: 18, endMinute: 0, symbol: "8", enabled: true, placement: "start" },
+      { id: "p9", hour: 18, minute: 0, endHour: 19, endMinute: 0, symbol: "9", enabled: true, placement: "start" },
+      { id: "p10", hour: 19, minute: 0, endHour: 20, endMinute: 0, symbol: "10", enabled: true, placement: "start" },
     ],
   };
 
@@ -333,6 +338,10 @@
                   : Math.min(23 * 60 + 55, startMin + 60);
                 if (endMin <= startMin) endMin = Math.min(23 * 60 + 55, startMin + 5);
                 return {
+                  // 時間割(曜日ごとの科目名)は時限をidで参照する。この
+                  // フィールドを持たない旧データ(時間割機能より前に保存
+                  // された時限)には、ここで一度だけ新しいidを振る。
+                  id: typeof p.id === "string" && p.id ? p.id : `period_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
                   hour,
                   minute,
                   endHour: Math.floor(endMin / 60),
@@ -351,6 +360,31 @@
     return { enabled: true, periods: DEFAULT_PERIOD_SETTINGS.periods.map((p) => ({ ...p })) };
   }
 
+  // 曜日ごとの時間割: { [weekday(0=日..6=土, Date.getDay()と同じ)]: {
+  // [periodId]: "科目名" } }。
+  function loadTimetable() {
+    try {
+      const raw = localStorage.getItem(TIMETABLE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      // corrupt storage, fall through to empty
+    }
+    return {};
+  }
+
+  // 時間割の表示オン/オフ(ウィークリー/デイリーのボタン)は端末ごとの
+  // 表示設定なので同期しない。
+  function loadTimetableVisible() {
+    try {
+      return localStorage.getItem(TIMETABLE_VISIBLE_KEY) === "1";
+    } catch (e) {
+      return false;
+    }
+  }
+
   let state = loadState();
   let history = loadHistory();
   let drafts = loadDrafts();
@@ -366,6 +400,8 @@
   let briefingMemos = loadBriefingMemos();
   let dailyNotes = loadDailyNotes();
   let periodSettings = loadPeriodSettings();
+  let timetable = loadTimetable();
+  let timetableVisible = loadTimetableVisible();
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -411,6 +447,16 @@
   // (markDirtyを呼ばない)。
   function savePeriodSettings() {
     localStorage.setItem(PERIOD_SETTINGS_KEY, JSON.stringify(periodSettings));
+  }
+
+  function saveTimetable() {
+    localStorage.setItem(TIMETABLE_KEY, JSON.stringify(timetable));
+    window.AppSync?.markDirty("timetable:v1", timetable);
+  }
+
+  // 端末ごとの表示設定なので、他の設定と違いデバイス間の同期はしない。
+  function saveTimetableVisible() {
+    localStorage.setItem(TIMETABLE_VISIBLE_KEY, timetableVisible ? "1" : "0");
   }
 
   // dayTitles(配列)のうち、この日付が start〜end の範囲に含まれるものだけ
@@ -660,6 +706,10 @@
   const periodEnabledToggle = document.getElementById("periodEnabledToggle");
   const periodSettingsList = document.getElementById("periodSettingsList");
   const periodAddBtn = document.getElementById("periodAddBtn");
+  const timetableDayTabs = document.getElementById("timetableDayTabs");
+  const timetablePeriodList = document.getElementById("timetablePeriodList");
+  const weeklyTimetableToggleBtn = document.getElementById("weeklyTimetableToggleBtn");
+  const calendarTimetableToggleBtn = document.getElementById("calendarTimetableToggleBtn");
   const appHeaderEl = document.querySelector(".app-header");
   const breakdownEl = document.getElementById("breakdown");
   const historyEl = document.getElementById("history");
@@ -1247,6 +1297,8 @@
         row.classList.toggle("period-row-disabled", !period.enabled);
         savePeriodSettings();
         refreshCalendarHours();
+        renderTimetableSettingsUI();
+        renderCalendar();
       });
 
       const symbolInput = document.createElement("input");
@@ -1259,6 +1311,8 @@
         period.symbol = symbolInput.value;
         savePeriodSettings();
         refreshCalendarHours();
+        renderTimetableSettingsUI();
+        renderCalendar();
       });
 
       const deleteBtn = document.createElement("button");
@@ -1269,8 +1323,16 @@
       deleteBtn.addEventListener("click", () => {
         periodSettings.periods.splice(idx, 1);
         savePeriodSettings();
+        // この時限を参照していた時間割の科目名も一緒に手放す(削除した
+        // 時限の枠だけ残り続けても表示のしようがないため)。
+        Object.keys(timetable).forEach((day) => {
+          if (timetable[day] && period.id in timetable[day]) delete timetable[day][period.id];
+        });
+        saveTimetable();
         renderPeriodSettingsUI();
         refreshCalendarHours();
+        renderTimetableSettingsUI();
+        renderCalendar();
       });
 
       top.append(enabledCheckbox, symbolInput, deleteBtn);
@@ -1293,6 +1355,7 @@
         savePeriodSettings();
         renderPeriodSettingsUI();
         refreshCalendarHours();
+        renderCalendar();
       }
 
       // 開始/終了、どちらも同じ形(時セレクト:分セレクト)なので共通化 —
@@ -1418,6 +1481,7 @@
     let endMin = Math.min(23 * 60 + 55, startMin + 60);
     if (endMin <= startMin) endMin = Math.min(23 * 60 + 55, startMin + 5);
     periodSettings.periods.push({
+      id: `period_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       hour: Math.floor(startMin / 60),
       minute: startMin % 60,
       endHour: Math.floor(endMin / 60),
@@ -1429,9 +1493,90 @@
     savePeriodSettings();
     renderPeriodSettingsUI();
     refreshCalendarHours();
+    renderTimetableSettingsUI();
+    renderCalendar();
   });
 
   renderPeriodSettingsUI();
+
+  // --- 設定ページ: 時間割 ---
+
+  // 表示は月火水木金土日の順(他の曜日UIと同じ)だが、キー自体はDate.
+  // getDay()と同じ0=日..6=土で持つ(実際のカレンダー描画側と揃えるため)。
+  const TIMETABLE_WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+  let activeTimetableDay = new Date().getDay();
+
+  function renderTimetableSettingsUI() {
+    timetableDayTabs.innerHTML = "";
+    TIMETABLE_WEEKDAY_ORDER.forEach((day) => {
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = "timetable-day-tab";
+      tab.classList.toggle("active", day === activeTimetableDay);
+      tab.textContent = WEEKDAYS[day];
+      tab.addEventListener("click", () => {
+        activeTimetableDay = day;
+        renderTimetableSettingsUI();
+      });
+      timetableDayTabs.appendChild(tab);
+    });
+
+    timetablePeriodList.innerHTML = "";
+    const enabledPeriods = periodSettings.periods
+      .filter((p) => p.enabled)
+      .slice()
+      .sort((a, b) => a.hour * 60 + a.minute - (b.hour * 60 + b.minute));
+    if (!enabledPeriods.length) {
+      const note = document.createElement("p");
+      note.className = "timetable-empty-note";
+      note.textContent = "上の「時限表示」に時限を登録すると、ここで曜日ごとの科目名を入力できるようになります。";
+      timetablePeriodList.appendChild(note);
+      return;
+    }
+    enabledPeriods.forEach((period) => {
+      const row = document.createElement("div");
+      row.className = "timetable-period-row";
+
+      const symbol = document.createElement("span");
+      symbol.className = "timetable-period-symbol";
+      symbol.textContent = period.symbol;
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "timetable-subject-input";
+      input.maxLength = 12;
+      input.placeholder = "科目名";
+      input.setAttribute("aria-label", `${WEEKDAYS[activeTimetableDay]}曜${period.symbol}限の科目名`);
+      input.value = (timetable[activeTimetableDay] && timetable[activeTimetableDay][period.id]) || "";
+      input.addEventListener("change", () => {
+        const value = input.value.trim();
+        if (!timetable[activeTimetableDay]) timetable[activeTimetableDay] = {};
+        if (value) timetable[activeTimetableDay][period.id] = value;
+        else delete timetable[activeTimetableDay][period.id];
+        saveTimetable();
+        renderCalendar();
+      });
+
+      row.append(symbol, input);
+      timetablePeriodList.appendChild(row);
+    });
+  }
+
+  renderTimetableSettingsUI();
+
+  function updateTimetableToggleBtns() {
+    [weeklyTimetableToggleBtn, calendarTimetableToggleBtn].forEach((btn) => btn.classList.toggle("active", timetableVisible));
+  }
+  updateTimetableToggleBtns();
+
+  function toggleTimetableVisible() {
+    timetableVisible = !timetableVisible;
+    saveTimetableVisible();
+    updateTimetableToggleBtns();
+    renderCalendar();
+  }
+  weeklyTimetableToggleBtn.addEventListener("click", toggleTimetableVisible);
+  calendarTimetableToggleBtn.addEventListener("click", toggleTimetableVisible);
 
   // --- breakdown page ---
 
@@ -4712,6 +4857,27 @@
       dayCol.className = "calendar-day-col";
       dayCol.dataset.date = dateStr;
       const dayStart = new Date(`${dateStr}T00:00:00`).getTime();
+
+      // 時間割(設定ページで曜日ごとに登録した科目名)の背景表示 — 実際の
+      // 実績(.cal-block)/予定(.cal-plan-block)より先に追加しておく
+      // (両方ともz-indexで時間割より前面に来るので描画順自体は問わないが、
+      // 読み取り専用の背景レイヤーとして意味的に一番奥から積む)。
+      if (timetableVisible) {
+        const dayTimetable = timetable[d.getDay()] || {};
+        periodSettings.periods.forEach((period) => {
+          if (!period.enabled) return;
+          const subject = dayTimetable[period.id];
+          if (!subject) return;
+          const startMin = period.hour * 60 + period.minute;
+          const endMin = period.endHour * 60 + period.endMinute;
+          const block = document.createElement("div");
+          block.className = "cal-timetable-block";
+          block.style.top = `${minToPx(startMin)}px`;
+          block.style.height = `${minToPx(Math.max(1, endMin - startMin))}px`;
+          block.textContent = subject;
+          dayCol.appendChild(block);
+        });
+      }
 
       let segs = closedSegmentsForDate(dateStr).map((seg) => ({ ...seg, live: false }));
       if (dateStr === state.day) {

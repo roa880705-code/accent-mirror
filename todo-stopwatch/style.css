@@ -670,6 +670,92 @@ body {
   padding: 5px 6px;
 }
 
+/* --- 設定ページ: 時間割 --- */
+
+.timetable-day-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+.timetable-day-tab {
+  all: unset;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 34px;
+  text-align: center;
+  padding: 6px 4px;
+  border-radius: 7px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1.5px solid var(--panel-line);
+  cursor: pointer;
+}
+
+.timetable-day-tab.active {
+  background: var(--tab-daily-soft);
+  color: var(--tab-daily);
+  border-color: var(--tab-daily);
+}
+
+.timetable-day-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.timetable-period-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.timetable-period-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timetable-period-symbol {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tab-daily);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.timetable-subject-input {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--card-bg);
+  border: 1px solid var(--panel-line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.timetable-subject-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.timetable-empty-note {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 /* --- sidework bar (fixed, top of timer tab) --- */
 
 .sidework-bar {
@@ -1360,6 +1446,43 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+/* prev/label/next を、時間割トグルボタンを挟んでも従来通りspace-between
+   で均等に広がらせるため、この3つだけを別の内側グループにまとめる。 */
+.calendar-header-nav {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.timetable-toggle-btn {
+  all: unset;
+  box-sizing: border-box;
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--panel);
+  color: var(--muted);
+  border: 1.5px solid var(--panel-line);
+  white-space: nowrap;
+}
+
+.timetable-toggle-btn.active {
+  background: var(--tab-daily);
+  color: #fff;
+  border-color: var(--tab-daily);
+}
+
+.timetable-toggle-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .calendar-month-label {
@@ -2030,6 +2153,30 @@ body {
 .cal-plan-preview {
   opacity: 0.7;
   z-index: 15;
+}
+
+/* 時間割の背景表示: 設定ページで曜日ごとに登録した科目名を、対応する
+   時限の時間帯に薄い背景ブロックとして敷く読み取り専用の参考レイヤー
+   — 実際の予定(.cal-plan-block)や実績(.cal-block)より奥(z-index)に
+   置き、ドラッグや編集の対象にはしない(編集は設定ページから)。 */
+.cal-timetable-block {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  left: 1px;
+  right: 1px;
+  border-radius: 4px;
+  padding: 1px 3px;
+  font-size: 0.52rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 
 /* a small chip that tracks the pointer 1:1 for the whole drag, positioned

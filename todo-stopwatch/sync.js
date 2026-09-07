@@ -22,6 +22,7 @@
     "briefingMemo:v1": "todoStopwatch:briefingMemo:v1",
     "dailyNotes:v1": "todoStopwatch:dailyNotes:v1",
     "priorityTasks:v1": "todoStopwatch:priorityTasks:v1",
+    "timetable:v1": "todoStopwatch:timetable:v1",
   };
 
   // A running timer calls its save function once a second regardless of
