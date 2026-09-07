@@ -4491,17 +4491,21 @@
         clearTimeout(ctx.longPressTimer);
         ctx.longPressTimer = null;
       }
-      if (Math.abs(dx) > Math.abs(dy)) {
+      if (ctx.heldLongEnough) {
+        // 既に長押しで保持済みなら、その後の動きが縦寄りでも横寄りでも
+        // すべて並べ替えの継続として扱う — スケジュール内で予定を動かす
+        // 時と同様、保持した指が上下に少しずれても「持ち上げ(スケジュ
+        // ール化)」には化けないようにして、指で画面が見づらくなるのを
+        // 防ぐ。
         ctx.chip.classList.remove("armed");
-        if (ctx.heldLongEnough) {
-          ctx.phase = "reorder";
-          ctx.chip.classList.add("reordering");
-          ctx.chip.style.transition = "none";
-          vibrate(15);
-          startChipReorderAutoScroll(ctx, () => runTrayReorderStep(ctx));
-        } else {
-          ctx.phase = "scroll";
-        }
+        ctx.phase = "reorder";
+        ctx.chip.classList.add("reordering");
+        ctx.chip.style.transition = "none";
+        vibrate(15);
+        startChipReorderAutoScroll(ctx, () => runTrayReorderStep(ctx));
+      } else if (Math.abs(dx) > Math.abs(dy)) {
+        ctx.chip.classList.remove("armed");
+        ctx.phase = "scroll";
       } else {
         ctx.chip.classList.remove("armed");
         ctx.phase = "schedule";
@@ -4762,21 +4766,23 @@
         clearTimeout(ctx.longPressTimer);
         ctx.longPressTimer = null;
       }
-      // A clearly vertical movement always means "lift this into the grid,"
-      // whether or not the long-press already fired — only an ambiguous
-      // horizontal movement needs the long-press to tell a scroll swipe
-      // apart from "pick this chip up to reorder it."
-      if (Math.abs(dx) > Math.abs(dy)) {
+      // 未確定(長押しがまだ成立していない)状態でのみ、動きの向きで
+      // 「横スワイプ=トレイのスクロール」「縦スワイプ=スケジュールへ
+      // 持ち上げ」を判定する。既に長押しで保持済み(heldLongEnough)なら
+      // その後の動きが縦寄りでも横寄りでも並べ替えの継続として扱う —
+      // スケジュール内で予定を動かす時と同様、保持した指が上下に少し
+      // ずれても「持ち上げ(スケジュール化)」には化けないようにして、
+      // 指で画面が見づらくなるのを防ぐ。
+      if (ctx.heldLongEnough) {
         ctx.chip.classList.remove("armed");
-        if (ctx.heldLongEnough) {
-          ctx.phase = "reorder";
-          ctx.chip.classList.add("reordering");
-          ctx.chip.style.transition = "none";
-          vibrate(15);
-          startChipReorderAutoScroll(ctx, () => runSomedayReorderStep(ctx));
-        } else {
-          ctx.phase = "scroll";
-        }
+        ctx.phase = "reorder";
+        ctx.chip.classList.add("reordering");
+        ctx.chip.style.transition = "none";
+        vibrate(15);
+        startChipReorderAutoScroll(ctx, () => runSomedayReorderStep(ctx));
+      } else if (Math.abs(dx) > Math.abs(dy)) {
+        ctx.chip.classList.remove("armed");
+        ctx.phase = "scroll";
       } else {
         ctx.chip.classList.remove("armed");
         // a parent task can be dragged too — dropping it onto the grid
