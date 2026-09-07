@@ -1915,7 +1915,7 @@ body {
   position: absolute;
   z-index: 1;
   box-sizing: border-box;
-  border-radius: 3px;
+  border-radius: 0;
   background-color: var(--card-bg);
   /* 10分ごとの横縞: 1本あたりの実ピクセル高さ(=10分ぶんの高さ)は
      background-size、実時刻に揃えるための位置合わせはbackground-position-y
