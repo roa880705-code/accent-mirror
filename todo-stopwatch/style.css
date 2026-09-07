@@ -2682,7 +2682,10 @@ body {
 }
 
 /* 子タスクツリーが縦に伸びてcalendarDetail自体がスクロールしても、
-   情報行+操作ボタンはツリーの真上に貼り付いたまま常時見えるようにする */
+   情報行+操作ボタンはツリーの真上に貼り付いたまま常時見えるようにする。
+   flex:1で、パネル(calendarDetail)の高さに余裕がある分だけ伸びる
+   ようにし、メモ欄(cal-plan-detail-body内)がパネルの下端まで広く
+   使えるようにする。 */
 .cal-plan-detail-header {
   position: sticky;
   top: 0;
@@ -2690,14 +2693,86 @@ body {
   background: var(--paper);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  flex: 1 1 auto;
+  gap: 6px;
   padding-bottom: 4px;
+}
+
+/* 名前欄: 別途「編集」ボタンを介さず、ここへ直接入力して確定できる。 */
+.cal-plan-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.cal-plan-name-input {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--line);
+  padding: 2px 0;
+}
+
+.cal-plan-name-input:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.cal-plan-time-label {
+  flex: none;
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* バッファ+操作ボタン(左)と、常時表示のメモ欄(右、残りの幅と
+   パネル下端までの高さいっぱい)を横に並べる。 */
+.cal-plan-detail-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 90px;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.cal-plan-detail-left-col {
+  flex: none;
+  width: 128px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .cal-plan-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cal-plan-memo-textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  resize: none;
+}
+
+.cal-plan-memo-textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* タスクページ(いつか一覧)のMiller Columnsと同じ向き: 子/孫/ひ孫を
@@ -2768,24 +2843,11 @@ body {
   opacity: 0.6;
 }
 
-.cal-plan-edit,
 .cal-plan-monthly-toggle,
-.cal-plan-memo-btn,
+.cal-plan-complete,
 .cal-plan-delete {
   padding: 5px 12px;
   font-size: 0.68rem;
-}
-
-.cal-plan-memo-preview {
-  margin: 0;
-  padding: 6px 8px;
-  background: var(--panel);
-  border-radius: 6px;
-  font-size: 0.7rem;
-  line-height: 1.5;
-  color: var(--ink);
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .calendar-legend {

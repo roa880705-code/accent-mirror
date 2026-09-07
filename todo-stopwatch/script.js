@@ -1654,6 +1654,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-07", text: "予定詳細パネルを整理しました。名前欄は直接入力で変更でき、メモ欄は常時表示・バッファ横いっぱいに広く使えるようになり、ボタンは左側にまとめました。" },
     { date: "2026-09-07", text: "予定・タスクをタップした際の編集メニューから、それぞれに自由記述の「メモ」を追加・編集できるようにしました。" },
     { date: "2026-09-07", text: "予定詳細の「子タスク」欄で、見出しと＋ボタンの間が離れすぎていたのを詰めました。" },
     { date: "2026-09-07", text: "バッファ(移動時間)の設定に「クリア」ボタンを追加しました。前後どちらも一度で未設定に戻せます。" },
@@ -2130,11 +2131,13 @@
     };
   }
 
-  async function renamePlan(dateStr, plan) {
-    const name = await openNameModal(plan.label);
-    if (name === null) return;
+  // 予定詳細パネルの名前欄(常時編集可能なinput)から直接呼ばれる。
+  // モーダルを介さず、その場で名前を変更する。
+  function applyPlanRename(dateStr, plan, rawLabel) {
+    const label = rawLabel.trim();
+    if (!label || label === plan.label) return false;
     captureUndoSnapshot();
-    plan.label = name.trim() || plan.label;
+    plan.label = label;
     // 手を加えた時点で「時間割からそのまま」ではなくなる — 時間割トグルの
     // オフで一括削除される対象から外れ、以後は普通の予定として残る。
     delete plan.fromTimetable;
@@ -2142,10 +2145,11 @@
     const items = itemsArrayForDate(dateStr);
     const item = items.find((it) => it.planId === plan.id);
     if (item) {
-      item.label = plan.label;
+      item.label = label;
       persistItemsForDate(dateStr);
       refreshTimerIfShowing(dateStr);
     }
+    return true;
   }
 
   // 予定にぶら下げる子タスク: 要素の形(id/parentId)はいつかツリーと揃えて
@@ -2471,38 +2475,33 @@
   function showPlanDetail(dateStr, plan) {
     calendarDetail.hidden = false;
     calendarDetail.innerHTML = "";
-    const line = document.createElement("div");
-    line.className = "cal-block-detail";
-    line.textContent = `${plan.label}: ${formatMinHM(plan.startMin)}〜${formatMinHM(plan.endMin)} (予定)`;
+
+    // 名前欄: 別途「編集」ボタンを押さなくても、ここへ直接入力して
+    // (フォーカスを外すと)そのまま予定名を変更できる。
+    const nameRow = document.createElement("div");
+    nameRow.className = "cal-plan-name-row";
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "cal-plan-name-input";
+    nameInput.maxLength = 40;
+    nameInput.value = plan.label;
+    nameInput.addEventListener("change", () => {
+      if (!applyPlanRename(dateStr, plan, nameInput.value)) {
+        nameInput.value = plan.label; // 空欄などは元の名前へ戻す
+        return;
+      }
+      renderCalendar();
+      showPlanDetail(dateStr, plan);
+    });
+    const timeLabel = document.createElement("span");
+    timeLabel.className = "cal-plan-time-label";
+    timeLabel.textContent = `${formatMinHM(plan.startMin)}〜${formatMinHM(plan.endMin)}`;
+    nameRow.append(nameInput, timeLabel);
 
     const childrenSection = buildPlanChildrenSection(dateStr, plan);
 
     const actions = document.createElement("div");
     actions.className = "cal-plan-actions";
-
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.className = "btn btn-modal-ok cal-plan-edit";
-    editBtn.textContent = "編集";
-    editBtn.addEventListener("click", () => {
-      renamePlan(dateStr, plan).then(() => showPlanDetail(dateStr, plan));
-    });
-
-    const memoBtn = document.createElement("button");
-    memoBtn.type = "button";
-    memoBtn.className = "btn btn-modal-cancel cal-plan-memo-btn";
-    memoBtn.textContent = plan.memo ? "メモ" : "メモ追加";
-    memoBtn.addEventListener("click", () => {
-      openMemoModal(plan.memo).then((text) => {
-        if (text === null) return;
-        captureUndoSnapshot();
-        const trimmed = text.trim();
-        if (trimmed) plan.memo = trimmed;
-        else delete plan.memo;
-        savePlans();
-        showPlanDetail(dateStr, plan);
-      });
-    });
 
     const delBtn = document.createElement("button");
     delBtn.type = "button";
@@ -2540,12 +2539,12 @@
       monthlyBtn = document.createElement("button");
       monthlyBtn.type = "button";
       monthlyBtn.className = "btn btn-modal-cancel cal-plan-monthly-toggle";
-      monthlyBtn.textContent = item.showOnMonthly ? "マンスリーでは非表示" : "マンスリーにもタスクとして表示";
+      monthlyBtn.textContent = item.showOnMonthly ? "マンスリーでは非表示" : "マンスリーに表示";
       monthlyBtn.addEventListener("click", () => {
         // toggleShowOnMonthly -> refreshTimerIfShowing は render() 経由で
         // renderCalendar() まで届き、selectedDayDetail が無い間はこの
         // パネル自体を空にしてしまう(renderCalendarDetail参照)ので、
-        // editBtn と同じくトグル後にパネルを丸ごと作り直して復元する。
+        // トグル後にパネルを丸ごと作り直して復元する。
         toggleShowOnMonthly(dateStr, item);
         showPlanDetail(dateStr, plan);
       });
@@ -2563,7 +2562,9 @@
       });
     }
 
-    actions.append(editBtn, memoBtn, ...(monthlyBtn ? [monthlyBtn] : []), ...(completeBtn ? [completeBtn] : []), delBtn);
+    // ボタン類(マンスリーに表示/完了/削除)は左側にまとめて縦に並べる
+    // (右側にメモ欄が広く表示されるため)。
+    actions.append(...(monthlyBtn ? [monthlyBtn] : []), ...(completeBtn ? [completeBtn] : []), delBtn);
 
     // 移動時間バッファ(前後)の入力欄 — 設定方法は後で作り直す前提の、
     // 今はとりあえず動かすための簡易UI(数値入力2つ)。
@@ -2640,21 +2641,37 @@
     resizeHandle.className = "cal-plan-detail-resize-handle";
     resizeHandle.addEventListener("pointerdown", startCalendarDetailResize);
 
-    // メモがあれば、毎回モーダルを開かなくても内容が見えるようプレビュー
-    // を出す。
-    let memoPreview = null;
-    if (plan.memo) {
-      memoPreview = document.createElement("p");
-      memoPreview.className = "cal-plan-memo-preview";
-      memoPreview.textContent = plan.memo;
-    }
+    // メモ欄: モーダルを介さず常時表示し、フォーカスを外すとそのまま
+    // 保存する。バッファ+操作ボタンの右側から、パネルの下端まで広く
+    // 使えるようにする(cal-plan-detail-body参照)。
+    const memoTextarea = document.createElement("textarea");
+    memoTextarea.className = "cal-plan-memo-textarea";
+    memoTextarea.placeholder = "メモ";
+    memoTextarea.value = plan.memo || "";
+    memoTextarea.addEventListener("change", () => {
+      captureUndoSnapshot();
+      const trimmed = memoTextarea.value.trim();
+      if (trimmed) plan.memo = trimmed;
+      else delete plan.memo;
+      savePlans();
+      showPlanDetail(dateStr, plan);
+    });
+
+    // 左側: バッファ入力+操作ボタンをまとめた縦一列。
+    const leftCol = document.createElement("div");
+    leftCol.className = "cal-plan-detail-left-col";
+    leftCol.append(bufferRow, actions);
+
+    const body = document.createElement("div");
+    body.className = "cal-plan-detail-body";
+    body.append(leftCol, memoTextarea);
 
     // 情報行+操作ボタンを、子タスクツリーの真上に貼り付けたまま常時表示
     // する — ツリーが縦に伸びてcalendarDetail自体がスクロールしても、
-    // 編集/マンスリー表示/完了などへその都度スクロールし直さずに済む。
+    // 名前欄/マンスリー表示/完了などへその都度スクロールし直さずに済む。
     const header = document.createElement("div");
     header.className = "cal-plan-detail-header";
-    header.append(resizeHandle, line, ...(memoPreview ? [memoPreview] : []), bufferRow, actions);
+    header.append(resizeHandle, nameRow, body);
     calendarDetail.append(header, childrenSection);
   }
 
