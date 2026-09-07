@@ -3593,6 +3593,26 @@
     requestAnimationFrame(repositionSomedayConnectors);
   }
 
+  // 予定をタップして編集モード(詳細パネル表示中)になっている間は、その
+  // ページの「今日中」「タスク」欄(いつかの平ら一覧・全展開ツリー・
+  // 子/孫/ひ孫の掘り下げ欄すべて含む)を隠して、予定の編集に画面を譲る。
+  // renderSomedayList()がタスク欄の中身の表示/非表示を毎回決め直した
+  // 直後に呼ぶこと — 編集中でない場合はそちらが決めた状態をそのまま
+  // 尊重し、ここでは何もしない。
+  function applyCalendarPlanEditingVisibility() {
+    const editing = !!selectedPlanId;
+    calendarUnscheduledRow.hidden = editing;
+    calendarUnplannedBox.hidden = editing;
+    if (!editing) return;
+    const prefix = calendarUnplannedBox.id === "weeklyUnplannedBox" ? "weekly" : "calendar";
+    ["SomedayTree", "SubtaskConnector", "SubtaskBox", "GrandchildConnector", "GrandchildBox", "GreatGrandchildConnector", "GreatGrandchildBox"].forEach(
+      (suffix) => {
+        const el = document.getElementById(`${prefix}${suffix}`);
+        if (el) el.hidden = true;
+      }
+    );
+  }
+
   // Hides every 子/孫/ひ孫タスク layer, leaving just いつか — used whenever
   // the user taps somewhere else (the grid, a day header, a plan block...)
   // instead of continuing to drill into the いつか hierarchy.
@@ -5289,6 +5309,7 @@
     tickCalendarLive();
 
     renderSomedayList();
+    applyCalendarPlanEditingVisibility();
     renderCalendarDetail();
 
     if (calendarAutoScrollPending) {
