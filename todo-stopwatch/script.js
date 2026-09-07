@@ -294,17 +294,17 @@
   const DEFAULT_PERIOD_SETTINGS = {
     enabled: true,
     periods: [
-      { id: "p0", hour: 8, minute: 0, endHour: 9, endMinute: 0, symbol: "0", enabled: true, placement: "start" },
-      { id: "p1", hour: 9, minute: 0, endHour: 10, endMinute: 0, symbol: "1", enabled: true, placement: "start" },
-      { id: "p2", hour: 10, minute: 0, endHour: 11, endMinute: 0, symbol: "2", enabled: true, placement: "start" },
-      { id: "p3", hour: 11, minute: 0, endHour: 12, endMinute: 0, symbol: "3", enabled: true, placement: "start" },
-      { id: "p4", hour: 12, minute: 0, endHour: 13, endMinute: 0, symbol: "4", enabled: true, placement: "start" },
-      { id: "p5", hour: 14, minute: 0, endHour: 15, endMinute: 0, symbol: "5", enabled: true, placement: "start" },
-      { id: "p6", hour: 15, minute: 0, endHour: 16, endMinute: 0, symbol: "6", enabled: true, placement: "start" },
-      { id: "p7", hour: 16, minute: 0, endHour: 17, endMinute: 0, symbol: "7", enabled: true, placement: "start" },
-      { id: "p8", hour: 17, minute: 0, endHour: 18, endMinute: 0, symbol: "8", enabled: true, placement: "start" },
-      { id: "p9", hour: 18, minute: 0, endHour: 19, endMinute: 0, symbol: "9", enabled: true, placement: "start" },
-      { id: "p10", hour: 19, minute: 0, endHour: 20, endMinute: 0, symbol: "10", enabled: true, placement: "start" },
+      { id: "p0", hour: 8, minute: 0, endHour: 9, endMinute: 0, symbol: "0", enabled: true, placement: "middle" },
+      { id: "p1", hour: 9, minute: 0, endHour: 10, endMinute: 0, symbol: "1", enabled: true, placement: "middle" },
+      { id: "p2", hour: 10, minute: 0, endHour: 11, endMinute: 0, symbol: "2", enabled: true, placement: "middle" },
+      { id: "p3", hour: 11, minute: 0, endHour: 12, endMinute: 0, symbol: "3", enabled: true, placement: "middle" },
+      { id: "p4", hour: 12, minute: 0, endHour: 13, endMinute: 0, symbol: "4", enabled: true, placement: "middle" },
+      { id: "p5", hour: 14, minute: 0, endHour: 15, endMinute: 0, symbol: "5", enabled: true, placement: "middle" },
+      { id: "p6", hour: 15, minute: 0, endHour: 16, endMinute: 0, symbol: "6", enabled: true, placement: "middle" },
+      { id: "p7", hour: 16, minute: 0, endHour: 17, endMinute: 0, symbol: "7", enabled: true, placement: "middle" },
+      { id: "p8", hour: 17, minute: 0, endHour: 18, endMinute: 0, symbol: "8", enabled: true, placement: "middle" },
+      { id: "p9", hour: 18, minute: 0, endHour: 19, endMinute: 0, symbol: "9", enabled: true, placement: "middle" },
+      { id: "p10", hour: 19, minute: 0, endHour: 20, endMinute: 0, symbol: "10", enabled: true, placement: "middle" },
     ],
   };
 
@@ -348,7 +348,7 @@
                   endMinute: endMin % 60,
                   symbol: String(p.symbol ?? ""),
                   enabled: p.enabled !== false,
-                  placement: p.placement === "middle" ? "middle" : "start",
+                  placement: p.placement === "start" ? "start" : "middle",
                 };
               }),
           };
@@ -1588,7 +1588,7 @@
       endMinute: endMin % 60,
       symbol: String(periodSettings.periods.length),
       enabled: true,
-      placement: "start",
+      placement: "middle",
     });
     savePeriodSettings();
     renderPeriodSettingsUI();
