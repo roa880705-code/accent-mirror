@@ -638,6 +638,38 @@ body {
   font-weight: 700;
 }
 
+.period-row-time-range-sep {
+  flex: none;
+  color: var(--muted);
+  font-weight: 700;
+  padding: 0 2px;
+}
+
+.period-row-placement {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 26px;
+}
+
+.period-row-placement-label {
+  flex: none;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.period-placement-select {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--card-bg);
+  border: 1px solid var(--panel-line);
+  border-radius: 6px;
+  padding: 5px 6px;
+}
+
 /* --- sidework bar (fixed, top of timer tab) --- */
 
 .sidework-bar {

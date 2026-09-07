@@ -282,24 +282,24 @@
   }
 
   // 学校の時限表示のデフォルト: 8-9時を0限、9-13時を1-4限、13-14時は
-  // 昼休みで表示なし、14-20時を5-10限として、各時間枠の開始時に振る。
-  // 設定ページ(時限表示のオン/オフ、各時限ごとの記号・開始時刻・
-  // 個別のオン/オフ)で編集できる。開始時刻はhour:minuteの組で持ち、
-  // minuteは常に5分刻み(0,5,10,...,55)。
+  // 昼休みで表示なし、14-20時を5-10限として、各時間枠の開始〜終了で
+  // 振る。設定ページ(時限表示のオン/オフ、各時限ごとの記号・開始/終了
+  // 時刻・表示位置(始まり/中間)・個別のオン/オフ)で編集できる。時刻は
+  // hour:minuteの組で持ち、minuteは常に5分刻み(0,5,10,...,55)。
   const DEFAULT_PERIOD_SETTINGS = {
     enabled: true,
     periods: [
-      { hour: 8, minute: 0, symbol: "0", enabled: true },
-      { hour: 9, minute: 0, symbol: "1", enabled: true },
-      { hour: 10, minute: 0, symbol: "2", enabled: true },
-      { hour: 11, minute: 0, symbol: "3", enabled: true },
-      { hour: 12, minute: 0, symbol: "4", enabled: true },
-      { hour: 14, minute: 0, symbol: "5", enabled: true },
-      { hour: 15, minute: 0, symbol: "6", enabled: true },
-      { hour: 16, minute: 0, symbol: "7", enabled: true },
-      { hour: 17, minute: 0, symbol: "8", enabled: true },
-      { hour: 18, minute: 0, symbol: "9", enabled: true },
-      { hour: 19, minute: 0, symbol: "10", enabled: true },
+      { hour: 8, minute: 0, endHour: 9, endMinute: 0, symbol: "0", enabled: true, placement: "start" },
+      { hour: 9, minute: 0, endHour: 10, endMinute: 0, symbol: "1", enabled: true, placement: "start" },
+      { hour: 10, minute: 0, endHour: 11, endMinute: 0, symbol: "2", enabled: true, placement: "start" },
+      { hour: 11, minute: 0, endHour: 12, endMinute: 0, symbol: "3", enabled: true, placement: "start" },
+      { hour: 12, minute: 0, endHour: 13, endMinute: 0, symbol: "4", enabled: true, placement: "start" },
+      { hour: 14, minute: 0, endHour: 15, endMinute: 0, symbol: "5", enabled: true, placement: "start" },
+      { hour: 15, minute: 0, endHour: 16, endMinute: 0, symbol: "6", enabled: true, placement: "start" },
+      { hour: 16, minute: 0, endHour: 17, endMinute: 0, symbol: "7", enabled: true, placement: "start" },
+      { hour: 17, minute: 0, endHour: 18, endMinute: 0, symbol: "8", enabled: true, placement: "start" },
+      { hour: 18, minute: 0, endHour: 19, endMinute: 0, symbol: "9", enabled: true, placement: "start" },
+      { hour: 19, minute: 0, endHour: 20, endMinute: 0, symbol: "10", enabled: true, placement: "start" },
     ],
   };
 
@@ -321,12 +321,27 @@
             enabled: parsed.enabled !== false,
             periods: parsed.periods
               .filter((p) => p && Number.isFinite(p.hour))
-              .map((p) => ({
-                hour: Math.max(0, Math.min(23, Math.round(p.hour))),
-                minute: normalizePeriodMinute(p.minute),
-                symbol: String(p.symbol ?? ""),
-                enabled: p.enabled !== false,
-              })),
+              .map((p) => {
+                const hour = Math.max(0, Math.min(23, Math.round(p.hour)));
+                const minute = normalizePeriodMinute(p.minute);
+                const startMin = hour * 60 + minute;
+                // 旧データ(終了時刻を持たない)は開始の60分後をデフォルトの
+                // 終了時刻とする。終了が開始以前になっている壊れたデータも
+                // 同様に開始+5分へ補正する。
+                let endMin = Number.isFinite(p.endHour)
+                  ? Math.max(0, Math.min(23, Math.round(p.endHour))) * 60 + normalizePeriodMinute(p.endMinute)
+                  : Math.min(23 * 60 + 55, startMin + 60);
+                if (endMin <= startMin) endMin = Math.min(23 * 60 + 55, startMin + 5);
+                return {
+                  hour,
+                  minute,
+                  endHour: Math.floor(endMin / 60),
+                  endMinute: endMin % 60,
+                  symbol: String(p.symbol ?? ""),
+                  enabled: p.enabled !== false,
+                  placement: p.placement === "middle" ? "middle" : "start",
+                };
+              }),
           };
         }
       }
@@ -1246,51 +1261,129 @@
 
       top.append(enabledCheckbox, symbolInput, deleteBtn);
 
+      // 開始時刻が終了時刻以降にならないよう、変更のたびに揃え直す
+      // (終了 <= 開始になったら終了を開始+5分へ押し出す)。
+      function clampPeriodTimes() {
+        const startMin = period.hour * 60 + period.minute;
+        const endMin = period.endHour * 60 + period.endMinute;
+        if (endMin <= startMin) {
+          const fixed = Math.min(23 * 60 + 55, startMin + 5);
+          period.endHour = Math.floor(fixed / 60);
+          period.endMinute = fixed % 60;
+        }
+      }
+
+      function onPeriodTimeChange() {
+        clampPeriodTimes();
+        sortPeriodsByStartTime();
+        savePeriodSettings();
+        renderPeriodSettingsUI();
+        refreshCalendarHours();
+      }
+
+      // 開始/終了、どちらも同じ形(時セレクト:分セレクト)なので共通化 —
+      // getter/setterで対象のフィールド(hour/minuteかendHour/endMinuteか)
+      // だけを切り替える。
+      function buildTimeSelects(getHour, setHour, getMinute, setMinute, hourLabel, minuteLabel) {
+        const hourSelect = document.createElement("select");
+        hourSelect.className = "period-hour-select";
+        hourSelect.setAttribute("aria-label", hourLabel);
+        for (let h = 0; h < 24; h++) {
+          const opt = document.createElement("option");
+          opt.value = String(h);
+          opt.textContent = `${h}時`;
+          if (h === getHour()) opt.selected = true;
+          hourSelect.appendChild(opt);
+        }
+        hourSelect.addEventListener("change", () => {
+          setHour(Number(hourSelect.value));
+          onPeriodTimeChange();
+        });
+
+        const minuteSelect = document.createElement("select");
+        minuteSelect.className = "period-minute-select";
+        minuteSelect.setAttribute("aria-label", minuteLabel);
+        for (let m = 0; m < 60; m += 5) {
+          const opt = document.createElement("option");
+          opt.value = String(m);
+          opt.textContent = String(m).padStart(2, "0");
+          if (m === getMinute()) opt.selected = true;
+          minuteSelect.appendChild(opt);
+        }
+        minuteSelect.addEventListener("change", () => {
+          setMinute(Number(minuteSelect.value));
+          onPeriodTimeChange();
+        });
+
+        return [hourSelect, minuteSelect];
+      }
+
       const timeRow = document.createElement("div");
       timeRow.className = "period-row-time";
 
-      const hourSelect = document.createElement("select");
-      hourSelect.className = "period-hour-select";
-      hourSelect.setAttribute("aria-label", "時限の開始時(時)");
-      for (let h = 0; h < 24; h++) {
+      const [startHourSelect, startMinuteSelect] = buildTimeSelects(
+        () => period.hour,
+        (v) => (period.hour = v),
+        () => period.minute,
+        (v) => (period.minute = v),
+        "時限の開始時(時)",
+        "時限の開始時(分・5分刻み)"
+      );
+      const startSep = document.createElement("span");
+      startSep.className = "period-row-time-sep";
+      startSep.textContent = ":";
+
+      const rangeSep = document.createElement("span");
+      rangeSep.className = "period-row-time-range-sep";
+      rangeSep.textContent = "〜";
+
+      const [endHourSelect, endMinuteSelect] = buildTimeSelects(
+        () => period.endHour,
+        (v) => (period.endHour = v),
+        () => period.endMinute,
+        (v) => (period.endMinute = v),
+        "時限の終了時(時)",
+        "時限の終了時(分・5分刻み)"
+      );
+      const endSep = document.createElement("span");
+      endSep.className = "period-row-time-sep";
+      endSep.textContent = ":";
+
+      timeRow.append(startHourSelect, startSep, startMinuteSelect, rangeSep, endHourSelect, endSep, endMinuteSelect);
+
+      // 時限マークをその枠の「始まり」と「中間(開始〜終了の中央)」の
+      // どちらに表示するか — initCalendarHours側でこの値を見て位置を
+      // 決める(cal-period-labelはtranslateY(-50%)で縦中心に揃うので、
+      // どちらの位置指定でも見た目の高さは同じ考え方で扱える)。
+      const placementRow = document.createElement("div");
+      placementRow.className = "period-row-placement";
+
+      const placementLabel = document.createElement("span");
+      placementLabel.className = "period-row-placement-label";
+      placementLabel.textContent = "表示位置";
+
+      const placementSelect = document.createElement("select");
+      placementSelect.className = "period-placement-select";
+      placementSelect.setAttribute("aria-label", "時限マークの表示位置");
+      [
+        { value: "start", label: "始まりに配置" },
+        { value: "middle", label: "中間に配置" },
+      ].forEach(({ value, label }) => {
         const opt = document.createElement("option");
-        opt.value = String(h);
-        opt.textContent = `${h}時`;
-        if (h === period.hour) opt.selected = true;
-        hourSelect.appendChild(opt);
-      }
-      hourSelect.addEventListener("change", () => {
-        period.hour = Number(hourSelect.value);
-        sortPeriodsByStartTime();
+        opt.value = value;
+        opt.textContent = label;
+        if (value === period.placement) opt.selected = true;
+        placementSelect.appendChild(opt);
+      });
+      placementSelect.addEventListener("change", () => {
+        period.placement = placementSelect.value;
         savePeriodSettings();
-        renderPeriodSettingsUI();
         refreshCalendarHours();
       });
 
-      const sep = document.createElement("span");
-      sep.className = "period-row-time-sep";
-      sep.textContent = ":";
+      placementRow.append(placementLabel, placementSelect);
 
-      const minuteSelect = document.createElement("select");
-      minuteSelect.className = "period-minute-select";
-      minuteSelect.setAttribute("aria-label", "時限の開始時(分・5分刻み)");
-      for (let m = 0; m < 60; m += 5) {
-        const opt = document.createElement("option");
-        opt.value = String(m);
-        opt.textContent = String(m).padStart(2, "0");
-        if (m === period.minute) opt.selected = true;
-        minuteSelect.appendChild(opt);
-      }
-      minuteSelect.addEventListener("change", () => {
-        period.minute = Number(minuteSelect.value);
-        sortPeriodsByStartTime();
-        savePeriodSettings();
-        renderPeriodSettingsUI();
-        refreshCalendarHours();
-      });
-
-      timeRow.append(hourSelect, sep, minuteSelect);
-      row.append(top, timeRow);
+      row.append(top, timeRow, placementRow);
       periodSettingsList.appendChild(row);
     });
   }
@@ -1303,13 +1396,21 @@
 
   periodAddBtn.addEventListener("click", () => {
     const last = periodSettings.periods[periodSettings.periods.length - 1];
-    const lastStart = last ? last.hour * 60 + last.minute : 7 * 60;
-    const nextStart = Math.min(23 * 60 + 55, lastStart + 60);
+    // 新しい時限は、直前の時限の「終了」時刻から続けて始まる(以前は
+    // 開始+60分固定だったが、終了時刻を明示的に持つようになったので、
+    // 昼休みのような空白の後もそのまま続けられる)。
+    const lastEnd = last ? last.endHour * 60 + last.endMinute : 7 * 60;
+    const startMin = Math.min(23 * 60 + 55, lastEnd);
+    let endMin = Math.min(23 * 60 + 55, startMin + 60);
+    if (endMin <= startMin) endMin = Math.min(23 * 60 + 55, startMin + 5);
     periodSettings.periods.push({
-      hour: Math.floor(nextStart / 60),
-      minute: nextStart % 60,
+      hour: Math.floor(startMin / 60),
+      minute: startMin % 60,
+      endHour: Math.floor(endMin / 60),
+      endMinute: endMin % 60,
       symbol: String(periodSettings.periods.length),
       enabled: true,
+      placement: "start",
     });
     savePeriodSettings();
     renderPeriodSettingsUI();
@@ -4464,11 +4565,14 @@
       hoursEl.appendChild(label);
     }
     if (!periodSettings.enabled) return;
-    periodSettings.periods.forEach(({ hour, minute, symbol, enabled }) => {
+    periodSettings.periods.forEach(({ hour, minute, endHour, endMinute, symbol, enabled, placement }) => {
       if (!enabled) return;
+      const startMin = hour * 60 + minute;
+      const endMin = endHour * 60 + endMinute;
+      const posMin = placement === "middle" ? (startMin + endMin) / 2 : startMin;
       const label = document.createElement("div");
       label.className = "cal-period-label";
-      label.style.top = `${minToPx(hour * 60 + minute)}px`;
+      label.style.top = `${minToPx(posMin)}px`;
       label.textContent = symbol;
       hoursEl.appendChild(label);
     });
