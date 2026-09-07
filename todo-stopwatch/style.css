@@ -1670,6 +1670,27 @@ body {
   background: var(--accent);
 }
 
+/* ウィークリー限定: 日付ヘッダーごとの時間割トグル(デイリーは1日しか
+   表示しないのでページ上部の.timetable-toggle-btn 1つで足りる)。 */
+.cdh-timetable-toggle {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.52rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cdh-timetable-toggle.active {
+  background: var(--tab-daily);
+  color: #fff;
+  border-color: var(--tab-daily);
+}
+
 .calendar-week-body {
   flex: 1;
   min-height: 0;

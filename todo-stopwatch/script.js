@@ -375,14 +375,21 @@
     return {};
   }
 
-  // 時間割の表示オン/オフ(ウィークリー/デイリーのボタン)は端末ごとの
-  // 表示設定なので同期しない。
-  function loadTimetableVisible() {
+  // 時間割の表示オン/オフは日付ごとに独立して持つ(ウィークリーで複数日を
+  // 同時に見るときも、日ごとに個別のオン/オフができるように) — 端末ごとの
+  // 表示設定なので同期しない。{ [dateStr]: true } のみを保持し、オフは
+  // キー自体を持たないことで表す(触っていない日は常にオフがデフォルト)。
+  function loadTimetableVisibleDates() {
     try {
-      return localStorage.getItem(TIMETABLE_VISIBLE_KEY) === "1";
+      const raw = localStorage.getItem(TIMETABLE_VISIBLE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+      }
     } catch (e) {
-      return false;
+      // corrupt storage, fall through to empty
     }
+    return {};
   }
 
   let state = loadState();
@@ -401,7 +408,7 @@
   let dailyNotes = loadDailyNotes();
   let periodSettings = loadPeriodSettings();
   let timetable = loadTimetable();
-  let timetableVisible = loadTimetableVisible();
+  let timetableVisibleDates = loadTimetableVisibleDates();
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -455,8 +462,18 @@
   }
 
   // 端末ごとの表示設定なので、他の設定と違いデバイス間の同期はしない。
-  function saveTimetableVisible() {
-    localStorage.setItem(TIMETABLE_VISIBLE_KEY, timetableVisible ? "1" : "0");
+  function saveTimetableVisibleDates() {
+    localStorage.setItem(TIMETABLE_VISIBLE_KEY, JSON.stringify(timetableVisibleDates));
+  }
+
+  function isTimetableVisibleForDate(dateStr) {
+    return !!timetableVisibleDates[dateStr];
+  }
+
+  function toggleTimetableVisibleForDate(dateStr) {
+    if (timetableVisibleDates[dateStr]) delete timetableVisibleDates[dateStr];
+    else timetableVisibleDates[dateStr] = true;
+    saveTimetableVisibleDates();
   }
 
   // dayTitles(配列)のうち、この日付が start〜end の範囲に含まれるものだけ
@@ -708,7 +725,6 @@
   const periodAddBtn = document.getElementById("periodAddBtn");
   const timetableDayTabs = document.getElementById("timetableDayTabs");
   const timetablePeriodList = document.getElementById("timetablePeriodList");
-  const weeklyTimetableToggleBtn = document.getElementById("weeklyTimetableToggleBtn");
   const calendarTimetableToggleBtn = document.getElementById("calendarTimetableToggleBtn");
   const appHeaderEl = document.querySelector(".app-header");
   const breakdownEl = document.getElementById("breakdown");
@@ -1564,19 +1580,18 @@
 
   renderTimetableSettingsUI();
 
-  function updateTimetableToggleBtns() {
-    [weeklyTimetableToggleBtn, calendarTimetableToggleBtn].forEach((btn) => btn.classList.toggle("active", timetableVisible));
-  }
-  updateTimetableToggleBtns();
-
-  function toggleTimetableVisible() {
-    timetableVisible = !timetableVisible;
-    saveTimetableVisible();
-    updateTimetableToggleBtns();
+  // デイリーは常に1日だけを表示するので、ヘッダーのボタン1つでそのまま
+  // 「今表示中の日付」を切り替えられる(weekAnchorがCAL_DAYS===1の間、
+  // その1日を指す)。ボタン自体のアクティブ状態は、日付をまたぐたびに
+  // renderCalendar()のCAL_DAYS===1側で更新する(ここではまだweekAnchorが
+  // 未初期化なので、初期状態の反映もrenderCalendar側に任せる)。ウィーク
+  // リー側は日ごとに複数の日付を同時に見るので、ページ全体で1つのボタン
+  // ではなく各日付ヘッダーに個別のトグルを持たせている(renderCalendar
+  // 内、CAL_DAYS!==1側のappendChild(timetableToggle)参照)。
+  calendarTimetableToggleBtn.addEventListener("click", () => {
+    toggleTimetableVisibleForDate(weekAnchor);
     renderCalendar();
-  }
-  weeklyTimetableToggleBtn.addEventListener("click", toggleTimetableVisible);
-  calendarTimetableToggleBtn.addEventListener("click", toggleTimetableVisible);
+  });
 
   // --- breakdown page ---
 
@@ -4778,6 +4793,7 @@
       dailyNotesInput.scrollTop = 0;
       dailyNotesInput.setSelectionRange(0, 0);
       renderPriorityBox();
+      calendarTimetableToggleBtn.classList.toggle("active", isTimetableVisibleForDate(weekAnchor));
     } else {
       calendarWeekLabel.textContent = `${start.getMonth() + 1}/${start.getDate()} 〜 ${end.getMonth() + 1}/${end.getDate()}`;
     }
@@ -4842,6 +4858,26 @@
         // 日付をタップした場合はデイリーへ飛ぶ(jumpDailyToDate)。
         appendDayTitleStack(header, dateStr);
 
+        // 時間割の表示オン/オフは日付ごとなので、複数日を同時に見る
+        // ウィークリーでは各日付ヘッダーに個別のトグルを持たせる(デイリー
+        // は1日しか表示しないので、ページ上部の1つのボタンで足りる —
+        // calendarTimetableToggleBtn参照)。headerが<button>要素なので
+        // 入れ子は<button>ではなく<span role="button">にし、タップ時は
+        // stopPropagationでヘッダー自体の日付ジャンプに伝播させない。
+        const timetableToggle = document.createElement("span");
+        timetableToggle.className = "cdh-timetable-toggle";
+        timetableToggle.setAttribute("role", "button");
+        timetableToggle.setAttribute("tabindex", "0");
+        timetableToggle.textContent = "時間割";
+        timetableToggle.title = "この日の時間割の表示切替";
+        timetableToggle.classList.toggle("active", isTimetableVisibleForDate(dateStr));
+        timetableToggle.addEventListener("click", (e) => {
+          e.stopPropagation();
+          toggleTimetableVisibleForDate(dateStr);
+          renderCalendar();
+        });
+        header.appendChild(timetableToggle);
+
         const draft = drafts[dateStr];
         if (dateStr > state.day && draft && draft.length) {
           const dot = document.createElement("span");
@@ -4862,7 +4898,7 @@
       // 実績(.cal-block)/予定(.cal-plan-block)より先に追加しておく
       // (両方ともz-indexで時間割より前面に来るので描画順自体は問わないが、
       // 読み取り専用の背景レイヤーとして意味的に一番奥から積む)。
-      if (timetableVisible) {
+      if (isTimetableVisibleForDate(dateStr)) {
         const dayTimetable = timetable[d.getDay()] || {};
         periodSettings.periods.forEach((period) => {
           if (!period.enabled) return;
