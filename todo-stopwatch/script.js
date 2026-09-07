@@ -2086,6 +2086,32 @@
     return result;
   }
 
+  // 上のbuildPlanChildrenFromSomedayTaskの逆向き: 予定をいつかトレイへ
+  // ドラッグで戻した時、その予定の子タスクツリーの階層構造を保ったまま
+  // いつか側へ複製する。スケジュール中に完了扱いにした子タスク(葉のみ
+  // 完了にできる)は戻さず除外する。
+  function restorePlanChildrenToSomeday(plan, rootSomedayId) {
+    const stamp = Date.now();
+    let counter = 0;
+    function walk(planParentId, somedayParentId) {
+      planChildrenOf(plan, planParentId).forEach((child) => {
+        if (child.done) return; // スケジュール中に完了した子タスクは戻さない
+        const newId = `someday_${stamp}_${counter++}_${Math.random().toString(36).slice(2, 7)}`;
+        someday.push({ id: newId, label: child.label, parentId: somedayParentId });
+        walk(child.id, newId);
+      });
+    }
+    walk(null, rootSomedayId);
+  }
+
+  // 予定をいつかトレイへ戻す際の入口: 予定自身をルートとして追加した
+  // うえで、子タスクツリーがあれば(完了済みを除いて)そのまま複製する。
+  function restorePlanToSomeday(plan, parentId) {
+    const rootId = `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    someday.push({ id: rootId, label: plan.label, parentId });
+    if (plan.children && plan.children.length) restorePlanChildrenToSomeday(plan, rootId);
+  }
+
   // depth番目の階層に属する全ノードを集める(1=子, 2=孫, 3=ひ孫) — 「今
   // 掘り下げ中の1本」だけでなく、木全体を常に全展開した状態で見せるため、
   // 一つ上の階層の全ノードそれぞれの子をまとめて返す。
@@ -2900,14 +2926,14 @@
           // parent if it had one and that parent is still around
           const restoreParentId = somedayRestoreParentId(items[idx].somedayParentId);
           items.splice(idx, 1);
-          someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: plan.label, parentId: restoreParentId });
+          restorePlanToSomeday(plan, restoreParentId);
           saveSomeday();
         }
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
       } else {
         // a plan with no linked item goes straight to いつか
-        someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: plan.label, parentId: somedayRestoreParentId(plan.somedayParentId) });
+        restorePlanToSomeday(plan, somedayRestoreParentId(plan.somedayParentId));
         saveSomeday();
       }
       vibrate(20);
