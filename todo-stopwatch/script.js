@@ -2104,11 +2104,33 @@
     walk(null, rootSomedayId);
   }
 
+  // 予定の子タスクツリーの実際の深さ(完了済み=戻らない葉は数えない) —
+  // 元ひ孫だった予定が、スケジュール中に自分の子タスクを新しく抱えた
+  // ケースで、元の場所へ戻すと深さ超過にならないかを調べるのに使う。
+  function planChildrenSubtreeMaxDepth(plan) {
+    function depthOf(parentId) {
+      const kids = planChildrenOf(plan, parentId).filter((k) => !k.done);
+      if (!kids.length) return 0;
+      return 1 + Math.max(...kids.map((k) => depthOf(k.id)));
+    }
+    return depthOf(null);
+  }
+
   // 予定をいつかトレイへ戻す際の入口: 予定自身をルートとして追加した
   // うえで、子タスクツリーがあれば(完了済みを除いて)そのまま複製する。
+  // 例えば元々ひ孫階層だったタスクが、予定として存在していた間に自分の
+  // 子タスクを新たに抱えていた場合、元の親(孫)の下へそのまま戻すと
+  // いつかツリーの上限(ひ孫まで)を超えてしまう — その時は元の親には
+  // 戻さず、収まるようトップレベルへ戻す(子タスクを失わせないため)。
   function restorePlanToSomeday(plan, parentId) {
+    let targetParentId = parentId;
+    if (targetParentId) {
+      const parentDepth = somedayTaskDepth(someday.find((t) => t.id === targetParentId));
+      const childDepth = plan.children && plan.children.length ? planChildrenSubtreeMaxDepth(plan) : 0;
+      if (parentDepth + 1 + childDepth > SOMEDAY_MAX_DEPTH) targetParentId = null;
+    }
     const rootId = `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    someday.push({ id: rootId, label: plan.label, parentId });
+    someday.push({ id: rootId, label: plan.label, parentId: targetParentId });
     if (plan.children && plan.children.length) restorePlanChildrenToSomeday(plan, rootId);
   }
 
@@ -2750,8 +2772,11 @@
 
     // デイリー限定の「最優先」トレイへドロップした場合は、スケジュールを
     // 外してフラットな最優先タスクへ変える(過去の日はこの箱自体が非表示
-    // なので、rectが取れずここには来ない)。
-    const overPriorityBox = rectContains(calendarPriorityBox.getBoundingClientRect(), e.clientX, e.clientY);
+    // なので、rectが取れずここには来ない)。最優先・今日中はどちらも階層を
+    // 持たないフラットな置き場なので、子タスクを抱えた予定はそもそも
+    // 対象にしない(子タスクが消えてしまうため)。
+    const planHasChildren = !!(planDragCtx.plan.children && planDragCtx.plan.children.length);
+    const overPriorityBox = !planHasChildren && rectContains(calendarPriorityBox.getBoundingClientRect(), e.clientX, e.clientY);
     calendarPriorityBox.classList.toggle("drop-target", overPriorityBox);
     planDragCtx.overPriorityBox = overPriorityBox;
     if (overPriorityBox) {
@@ -2769,16 +2794,19 @@
     let overDayUnscheduled = false;
     const unschedCols = unscheduledZoneCols();
     if (unschedCols.length) {
-      for (const col of unschedCols) {
-        if (col.dataset.date !== planDragCtx.dateStr) continue;
-        if (rectContains(col.getBoundingClientRect(), e.clientX, e.clientY)) {
-          overDayUnscheduled = true;
-          break;
+      if (!planHasChildren) {
+        for (const col of unschedCols) {
+          if (col.dataset.date !== planDragCtx.dateStr) continue;
+          if (rectContains(col.getBoundingClientRect(), e.clientX, e.clientY)) {
+            overDayUnscheduled = true;
+            break;
+          }
         }
       }
       unschedCols.forEach((c) => c.classList.toggle("drop-target", overDayUnscheduled && c.dataset.date === planDragCtx.dateStr));
     } else {
       overDayUnscheduled =
+        !planHasChildren &&
         calendarUnscheduledRow.dataset.date === planDragCtx.dateStr &&
         rectContains(calendarUnscheduledRow.getBoundingClientRect(), e.clientX, e.clientY);
       calendarUnscheduledRow.classList.toggle("drop-target", overDayUnscheduled);
@@ -4637,8 +4665,10 @@
       // 専用行(calendarUnscheduledRow)の各列を独立してチェックする。
       // 列を持たないデイリーの「今日中」トレイでは、列の代わりにトレイ
       // 自身(dataset.dateが表示中の唯一の日付)を対象にする。
+      // 子タスクを持つタスクは、階層を持てないこのフラットな置き場には
+      // 落とせない(下のtargetPriorityListも同様)ので、対象から外す。
       const unschedCols = unscheduledZoneCols();
-      if (!targetCol) {
+      if (!targetCol && !isParentTask(ctx.task.id)) {
         if (unschedCols.length) {
           for (const col of unschedCols) {
             if (col.dataset.date < state.day) continue;
@@ -4711,7 +4741,7 @@
       // を持たないフラットな置き場)。表示中の日付が今日以降のときだけ
       // ドロップ先として有効。
       let targetPriorityList = false;
-      if (weekAnchor >= state.day) {
+      if (weekAnchor >= state.day && !isParentTask(ctx.task.id)) {
         const priorityRect = calendarPriorityBox.getBoundingClientRect();
         targetPriorityList = rectContains(priorityRect, e.clientX, e.clientY);
       }
