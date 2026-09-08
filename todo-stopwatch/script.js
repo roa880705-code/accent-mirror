@@ -1803,6 +1803,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-08", text: "今週中の「全展開」を、いつかの全展開ツリーと同じ「タスクごとに列を分けて横に並べ、それぞれの子孫を列の下に表示する」見た目に変更しました。" },
     { date: "2026-09-08", text: "今週中の子タスクを抱えたタスクをタップした時の挙動を、いつかと同じ仕様に変更しました。他のタスクは横並びのまま動かず、タップしたタスクの子孫だけが専用の欄に展開されます。" },
     { date: "2026-09-08", text: "今週中で一度展開したタスクが、再タップしても折りたたまれなくなる不具合を修正しました。また、いつかと同じように親子関係を示す連結線を表示するようにしました。" },
     { date: "2026-09-08", text: "今週中の色付きチップ(子タスクを抱えたタスク)をタップすると、子・孫までまとめてその場に展開して確認できるようにしました。また「全展開」ボタンを押した際に展開内容が画面に表示されず見えなくなっていた不具合も修正しました。" },
@@ -5052,20 +5053,25 @@
   // 今週中の展開表示専用の連結線描画。親が上・子がすぐ下という縦積みの
   // レイアウトなので、幾何はdrawSomedayTreeConnectorLinesのisVertical=
   // false相当(幹を下に伸ばし、横の梁から各子へ短く下ろす)と同じ形。
-  // lineHostElは実際に線(.someday-branch-line)を追加する場所、rootElは
-  // チップ検索とpositionの基準にする共通の祖先(.calendar/.page、
-  // position:relative)— 全展開中はfamilyラッパー自身がその両方を兼ねる
-  // (親も子も同じラッパー内に収まるため)が、通常のドリルダウン中は
-  // 親チップが今週中の行、子孫が別の専用行と別々の場所にあるため、
-  // 両方を含む共通の祖先をrootElとして渡す必要がある。
-  function drawThisWeekConnectorLines(lineHostEl, rootEl, pairs) {
-    lineHostEl.querySelectorAll(".someday-branch-line").forEach((el) => el.remove());
+  // lineHostElは実際に線(.someday-branch-line)を追加する場所・座標の
+  // 基準(position:relativeであること)、scopeElはチップ検索の範囲
+  // (THISWEEK_ROOT_NODE_IDは複数の家族で使い回すため、家族ごとに範囲を
+  // 絞らないと最初に見つかった無関係なチップに繋がってしまう)。通常の
+  // ドリルダウン中は専用行(親チップは別の行にあるので両方を含む
+  // .calendar/.pageまるごと)がその両方を兼ね、全展開のツリー表示中は
+  // 家族ごとのdisplay:contentsラッパー(位置は持たないのでscopeElのみに
+  // 使う)と、実際に箱を持つツリー全体(lineHostEl/rootEl)とで役割を
+  // 分ける。
+  // 呼び出し側で(複数回呼ばれる場合は最初の1回だけ)lineHostElの既存の
+  // 線を消してから呼ぶこと — ここでは消さない(全展開ツリーは家族ごとに
+  // 別々に呼ばれるため、ここで毎回消すと前の家族の線を消してしまう)。
+  function drawThisWeekConnectorLines(lineHostEl, rootEl, scopeEl, pairs) {
     if (!pairs.length) return;
     const rootRect = rootEl.getBoundingClientRect();
     const half = SOMEDAY_BRANCH_LINE_W / 2;
     pairs.forEach(({ parentId, children }) => {
-      const parentChip = rootEl.querySelector(`[data-thisweek-node-id="${parentId}"]`);
-      const childChips = children.map((c) => rootEl.querySelector(`[data-thisweek-node-id="${c.id}"]`)).filter(Boolean);
+      const parentChip = scopeEl.querySelector(`[data-thisweek-node-id="${parentId}"]`);
+      const childChips = children.map((c) => scopeEl.querySelector(`[data-thisweek-node-id="${c.id}"]`)).filter(Boolean);
       if (!parentChip || !childChips.length) return;
       const parentRect = parentChip.getBoundingClientRect();
       const childRects = childChips.map((el) => el.getBoundingClientRect());
@@ -5087,6 +5093,65 @@
     });
   }
 
+  // 全展開表示: いつかの全展開ツリー(renderSomedayTreeInto/isVertical=
+  // false)と同じ、CSS Gridで「列=アイテム・行=深さ」に並べる方式。
+  // 各アイテムは深さ0(自分自身)のセルを必ず持ち、子孫がいる分だけ
+  // 深さ1〜3のセルを追加する。家族(1アイテム分のセル一式)は
+  // display:contentsのラッパーで束ね、グリッドのレイアウトには影響
+  // させずに連結線描画の検索範囲としてだけ使う(THISWEEK_ROOT_NODE_ID
+  // は全家族で使い回す値なので、範囲を絞らないと最初に見つかった
+  // 無関係なチップに繋がってしまうため)。
+  function buildThisWeekTreeInto(listEl, items, weekStart) {
+    listEl.innerHTML = "";
+    if (!items.length) {
+      const empty = document.createElement("span");
+      empty.className = "calendar-unplanned-empty";
+      empty.textContent = "今週中のタスクなし";
+      listEl.appendChild(empty);
+      return;
+    }
+    // 子を持つタスクを先に並べる(いつかのsortSomedayChildrenForTreeと
+    // 同じ考え方) — 元の相対順は保つ安定ソート。
+    const ordered = [...items].sort((a, b) => {
+      const bHas = b.children && b.children.length ? 1 : 0;
+      const aHas = a.children && a.children.length ? 1 : 0;
+      return bHas - aHas;
+    });
+    const families = [];
+    ordered.forEach((item, familyIndex) => {
+      const familyWrap = document.createElement("div");
+      familyWrap.className = "cal-thisweek-tree-family";
+      listEl.appendChild(familyWrap);
+
+      const rootCell = document.createElement("div");
+      rootCell.className = "cal-thisweek-tree-cell";
+      rootCell.style.gridColumn = String(familyIndex + 1);
+      rootCell.style.gridRow = "1";
+      familyWrap.appendChild(rootCell);
+      rootCell.appendChild(createThisWeekChip(item, weekStart, true));
+
+      for (let depth = 1; depth <= PLAN_CHILD_MAX_DEPTH; depth++) {
+        const nodes = planChildrenAtDepth(item, depth);
+        if (!nodes.length) break;
+        const cell = document.createElement("div");
+        cell.className = "cal-thisweek-tree-cell";
+        cell.style.gridColumn = String(familyIndex + 1);
+        cell.style.gridRow = String(depth + 1);
+        familyWrap.appendChild(cell);
+        nodes.forEach((child) => cell.appendChild(createThisWeekChildChip(child, item)));
+      }
+      families.push({ familyWrap, item });
+    });
+    // レイアウト確定後(チップの実際の位置が定まった1フレーム後)に
+    // 連結線を引く — buildPlanChildrenSectionと同じ考え方。
+    requestAnimationFrame(() => {
+      listEl.querySelectorAll(".someday-branch-line").forEach((el) => el.remove());
+      families.forEach(({ familyWrap, item }) => {
+        drawThisWeekConnectorLines(listEl, listEl, familyWrap, thisWeekConnectorPairs(item));
+      });
+    });
+  }
+
   function renderThisWeekTray() {
     const weekStart = currentWeekStartKey();
     const items = itemsArrayForWeek(weekStart);
@@ -5095,14 +5160,18 @@
     if (activeThisWeekItem && !items.includes(activeThisWeekItem)) activeThisWeekItem = null;
 
     // 全展開中だけ、今週中の行自体を「1行だけの横スクロール」から
-    // 「折り返して縦に伸びる」表示へ切り替える(全アイテムを同時に見せる
-    // ため、多少行の見た目が変わるのは織り込み済み)。通常のドリル
-    // ダウン(1件だけタップして展開)では、いつか同様、上の行は常に
-    // 横並びの一覧のまま変えず、子孫は専用の別行に表示する。
+    // いつかの全展開ツリーと同じ「列=アイテム・行=深さ」のグリッド
+    // 表示へ切り替える。通常のドリルダウン(1件だけタップして展開)
+    // では、いつか同様、上の行は常に横並びの一覧のまま変えず、子孫は
+    // 専用の別行に表示する。
     [weeklyThisWeekBoxEl, dailyThisWeekBoxEl].forEach((box) => box.classList.toggle("grouped", thisWeekExpandAll));
     [weeklyThisWeekList, dailyThisWeekList].forEach((list) => {
-      list.innerHTML = "";
       list.classList.toggle("grouped", thisWeekExpandAll);
+      if (thisWeekExpandAll) {
+        buildThisWeekTreeInto(list, items, weekStart);
+        return;
+      }
+      list.innerHTML = "";
       if (!items.length) {
         const empty = document.createElement("span");
         empty.className = "calendar-unplanned-empty";
@@ -5111,19 +5180,7 @@
         return;
       }
       items.forEach((item) => {
-        const hasChildren = !!(item.children && item.children.length);
-        if (thisWeekExpandAll && hasChildren) {
-          const family = document.createElement("div");
-          family.className = "cal-thisweek-family";
-          family.appendChild(createThisWeekChip(item, weekStart, true));
-          family.appendChild(buildThisWeekChildrenTree(item));
-          list.appendChild(family);
-          // レイアウト確定後(チップの実際の位置が定まった1フレーム後)に
-          // 連結線を引く — buildPlanChildrenSectionと同じ考え方。
-          requestAnimationFrame(() => drawThisWeekConnectorLines(family, family, thisWeekConnectorPairs(item)));
-        } else {
-          list.appendChild(createThisWeekChip(item, weekStart, item === activeThisWeekItem));
-        }
+        list.appendChild(createThisWeekChip(item, weekStart, item === activeThisWeekItem));
       });
     });
 
@@ -5138,8 +5195,9 @@
     });
     requestAnimationFrame(() => {
       [weeklyThisWeekDrilldownEl, dailyThisWeekDrilldownEl].forEach((drilldownEl) => {
+        drilldownEl.querySelectorAll(".someday-branch-line").forEach((el) => el.remove());
         const rootEl = drilldownEl.closest(".calendar, .page");
-        if (rootEl) drawThisWeekConnectorLines(drilldownEl, rootEl, thisWeekConnectorPairs(activeThisWeekItem));
+        if (rootEl) drawThisWeekConnectorLines(drilldownEl, rootEl, rootEl, thisWeekConnectorPairs(activeThisWeekItem));
       });
     });
   }

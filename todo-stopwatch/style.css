@@ -2230,34 +2230,42 @@ body {
   display: none;
 }
 
-/* 今週中のトレイで、1件でも子孫を展開中のアイテムがある間だけ切り替わる
-   表示: 元は1行だけの横スクロールだが、展開した子孫チップが行の先へ
-   延々と続くだけで画面に映らなくなってしまうため、折り返して縦に伸びる
-   表示にする。 */
+/* 今週中の「全展開」中だけ切り替わる表示: いつかの全展開ツリー
+   (.someday-tree)と同じ、列=アイテム・行=深さのCSS Grid。
+   grid-auto-columns: max-contentが、各アイテムの家族の中で1番幅を
+   必要とする層に合わせて列幅を自動で決める。 */
 .calendar-unplanned-list.grouped {
-  flex-wrap: wrap;
-  overflow-x: visible;
-  overflow-y: visible;
-  align-items: flex-start;
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(4, auto);
+  grid-auto-columns: max-content;
+  column-gap: 16px;
+  row-gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  align-items: start;
 }
 
 .calendar-unplanned.grouped {
   align-items: flex-start;
 }
 
-/* 展開中の今週中アイテム1件分: 自分のチップ+その子孫ツリーを縦に積み、
-   横に並ぶ他のアイテムを巻き込まないよう常に1行分の幅いっぱいを使う。 */
-.cal-thisweek-family {
-  position: relative;
+/* 全展開ツリーの、1アイテム(家族)分のセル一式をまとめるだけの
+   ラッパー — display:contentsなので自身はレイアウトに参加せず、
+   中のセル(.cal-thisweek-tree-cell)がそのまま親のグリッドの
+   直接の子として並ぶ。連結線描画がTHISWEEK_ROOT_NODE_IDを家族ごとに
+   絞り込んで探すための、DOM上の検索範囲としてだけ使う。 */
+.cal-thisweek-tree-family {
+  display: contents;
+}
+
+.cal-thisweek-tree-cell {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  /* 連結線(親の下端から子の上端まで)が枝分かれとして見える最低限の
-     縦の余白を確保する — 詰めすぎると幹・横の梁・枝が全部同じ場所に
-     潰れて線が読めなくなる。 */
-  gap: 12px;
-  flex: 1 1 100%;
-  width: 100%;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
 }
 
 .cal-thisweek-children {
