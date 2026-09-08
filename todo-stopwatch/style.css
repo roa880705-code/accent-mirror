@@ -1558,14 +1558,25 @@ body {
   outline-offset: 1px;
 }
 
-/* ウィークリー/デイリー各ページの見出し直下に置く、今週中/いつか欄の
-   表示・非表示トグル(設定ページの同じ2項目と同じ状態を指す — どちらから
-   切り替えても即座に連動する)。.timetable-toggle-btnと同じ見た目で揃える。 */
-.calendar-box-toggle-row {
+/* ウィークリー/デイリー各ページのヘッダー右側にまとめる、時間割(デイリー
+   のみ)/今週中/いつか欄のトグルボタン一式。calendar-headerのjustify-
+   content:space-betweenが左のcalendar-header-navと右のこのグループの
+   2つだけを両端に振り分け、ここでは複数ボタンをまとめて少しの間隔で
+   並べる。 */
+.calendar-header-toggles {
   flex: none;
   display: flex;
   gap: 6px;
-  padding: 2px 0 0;
+}
+
+/* 今週中/いつかのトグルは、時間割トグルと役割は同じでも、設定ページの
+   同じ2項目と同じ状態を指す(どちらから切り替えても即座に連動する)。
+   見た目は.timetable-toggle-btnそのままだが、on状態の色だけ少し薄めの
+   緑に変えて時間割トグル(濃いteal)と見分けられるようにする。 */
+.box-toggle-btn.active {
+  background: var(--live-soft);
+  color: var(--live);
+  border-color: var(--live);
 }
 
 .calendar-month-label {
@@ -1757,7 +1768,8 @@ body {
    表示しないのでページ上部の.timetable-toggle-btn 1つで足りる)。 */
 .cdh-timetable-toggle {
   flex: none;
-  padding: 1px 6px;
+  padding: 0 6px;
+  line-height: 1.2;
   border-radius: 999px;
   font-size: 0.52rem;
   font-weight: 700;
