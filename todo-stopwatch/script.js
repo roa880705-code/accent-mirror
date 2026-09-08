@@ -1759,6 +1759,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-08", text: "マンスリーページの各週の下に、その週専用の「今週中」欄(横スクロール)を追加しました。ウィークリー/デイリーの今週中と同じデータで、どちらから編集しても連動します。" },
     { date: "2026-09-08", text: "タスクページに「最優先」「今日中」「今週中」欄を追加しました。スケジュールに時間をはめ込んでいない全てのタスクを、いつかと合わせて一箇所で確認できます。" },
     { date: "2026-09-08", text: "設定ページに「表示設定」を追加し、「今週中」「いつか」欄をカレンダー系ページで非表示にできるようにしました(非表示にしてもタスクページからは引き続き確認・移動できます)。" },
     { date: "2026-09-08", text: "予定の詳細パネルに「ブロック表示」を追加しました。スケジュール上の予定ブロックに、メモまたは子タスクの一覧を追加表示できます(既定はOFF)。" },
@@ -4953,8 +4954,7 @@
     renderFlat(tasklistThisWeekList, weekTasks, "今週中タスク", "今週中のタスクなし", (item) => promptWeeklyTaskEdit(weekStart, item));
   }
 
-  async function addThisWeekTask() {
-    const weekStart = currentWeekStartKey();
+  async function addThisWeekTask(weekStart = currentWeekStartKey()) {
     const name = await openNameModal("");
     if (name === null) return;
     const label = name.trim();
@@ -4964,8 +4964,12 @@
     persistItemsForWeek(weekStart);
     renderCalendar();
   }
-  weeklyThisWeekAddBtn.addEventListener("click", addThisWeekTask);
-  dailyThisWeekAddBtn.addEventListener("click", addThisWeekTask);
+  // addEventListenerへ関数参照を直接渡すと、クリックのPointerEventが第一
+  // 引数(weekStart)に化けてしまう(デフォルト引数は「未指定」の時しか
+  // 効かず、addEventListenerは常にイベントを渡すため)ので、必ず引数なし
+  // で呼ぶラッパーを挟む。
+  weeklyThisWeekAddBtn.addEventListener("click", () => addThisWeekTask());
+  dailyThisWeekAddBtn.addEventListener("click", () => addThisWeekTask());
 
   // いつかの完了(completeSomedayTask)と同じ扱い: 階層/置き場から外れて
   // 今日のログに完了実績として残る。
@@ -6647,6 +6651,7 @@
     }
 
     refreshAllMonthlyContent();
+    refreshAllMonthlyThisWeekRows();
   }
 
   function tickCalendarLive() {
@@ -6905,11 +6910,83 @@
 
   // Refreshes every already-rendered cell's content (called whenever task/
   // plan data changes) without rebuilding the week list or moving scroll.
+  // monthlyWeeksの直下には日付7列の.monthly-week-rowと、その下に挟んだ
+  // その週専用の.monthly-thisweek-row(今週中)が交互に並ぶので、日付セルを
+  // 持つ行だけを対象にする。
   function refreshAllMonthlyContent() {
     Array.from(monthlyWeeks.children).forEach((rowEl) => {
+      if (!rowEl.classList.contains("monthly-week-row")) return;
       Array.from(rowEl.children).forEach((cell) => {
         refreshMonthlyCellContent(cell, cell.dataset.date);
       });
+    });
+  }
+
+  // 月表示の各週の下に挟む、その週専用の「今週中」欄(横スクロール)。
+  // ウィークリー/デイリーの今週中と同じ週キー(月曜日の日付)のデータを
+  // 直接参照するので、値の変更はどちらから行っても即座に他方へ反映
+  // される。このページには時間軸グリッドが無いため、タスクページの
+  // 今週中欄と同じくタップで既存の選択肢モーダルを開くだけの表示にする
+  // (並べ替え/スケジュールへのドラッグはここでは扱わない)。
+  function buildMonthlyThisWeekRow(mondayStr) {
+    const row = document.createElement("div");
+    row.className = "calendar-unplanned monthly-thisweek-row";
+    row.dataset.weekStart = mondayStr;
+    const title = document.createElement("span");
+    title.className = "calendar-unplanned-title";
+    title.textContent = "今週中";
+    row.appendChild(title);
+    const list = document.createElement("div");
+    list.className = "calendar-unplanned-list";
+    row.appendChild(list);
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "calendar-someday-add";
+    addBtn.setAttribute("aria-label", "今週中のタスクを追加");
+    addBtn.textContent = "＋";
+    addBtn.addEventListener("click", () => addThisWeekTask(mondayStr));
+    row.appendChild(addBtn);
+    refreshMonthlyThisWeekRow(row, mondayStr);
+    return row;
+  }
+
+  function refreshMonthlyThisWeekRow(row, weekStart) {
+    const list = row.querySelector(".calendar-unplanned-list");
+    const items = itemsArrayForWeek(weekStart);
+    list.innerHTML = "";
+    if (!items.length) {
+      const empty = document.createElement("span");
+      empty.className = "calendar-unplanned-empty";
+      empty.textContent = "今週中のタスクなし";
+      list.appendChild(empty);
+      return;
+    }
+    items.forEach((item) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "cal-unplanned-chip";
+      const label = document.createElement("span");
+      label.className = "cal-unplanned-chip-label";
+      label.textContent = labelOf(item, "今週中タスク");
+      chip.appendChild(label);
+      const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
+      if (directChildCount > 0) {
+        const badge = document.createElement("span");
+        badge.className = "cal-child-count-badge";
+        badge.dataset.count = String(directChildCount);
+        chip.appendChild(badge);
+      }
+      chip.addEventListener("click", () => promptWeeklyTaskEdit(weekStart, item));
+      list.appendChild(chip);
+    });
+  }
+
+  // renderMonthlyGrid()が行を作り直す時はbuildMonthlyThisWeekRow自身が
+  // 中身も入れて返すので不要だが、データだけが変わった(renderCalendar経由
+  // の全体再描画)時は既存の行をそのまま使って中身だけ差し替える。
+  function refreshAllMonthlyThisWeekRows() {
+    monthlyWeeks.querySelectorAll(".monthly-thisweek-row").forEach((row) => {
+      refreshMonthlyThisWeekRow(row, row.dataset.weekStart);
     });
   }
 
@@ -6933,6 +7010,7 @@
     monthlyWeeks.innerHTML = "";
     for (let cursor = gridStart; cursor <= lastDayStr; cursor = addDaysStr(cursor, 7)) {
       monthlyWeeks.appendChild(buildMonthlyWeekRow(cursor));
+      monthlyWeeks.appendChild(buildMonthlyThisWeekRow(cursor));
     }
 
     // monthlyRowH depends on how many weeks this month needed and on the
