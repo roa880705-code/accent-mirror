@@ -875,6 +875,13 @@
   const periodEnabledToggle = document.getElementById("periodEnabledToggle");
   const showThisWeekBoxToggle = document.getElementById("showThisWeekBoxToggle");
   const showSomedayBoxToggle = document.getElementById("showSomedayBoxToggle");
+  // 設定ページのチェックボックスと同じ状態を指す、ウィークリー/デイリー
+  // 各ページ自身のヘッダーに置くトグルボタン。3箇所どこから切り替えても
+  // 即座に他へ連動する(updateBoxDisplayToggleUI参照)。
+  const weeklyThisWeekToggleBtn = document.getElementById("weeklyThisWeekToggleBtn");
+  const weeklySomedayToggleBtn = document.getElementById("weeklySomedayToggleBtn");
+  const calendarThisWeekToggleBtn = document.getElementById("calendarThisWeekToggleBtn");
+  const calendarSomedayToggleBtn = document.getElementById("calendarSomedayToggleBtn");
   const monthlyUnplannedBoxEl = document.getElementById("monthlyUnplannedBox");
   const periodSettingsList = document.getElementById("periodSettingsList");
   const periodAddBtn = document.getElementById("periodAddBtn");
@@ -1710,17 +1717,49 @@
     refreshCalendarHours();
   });
 
+  // 設定ページのチェックボックス2つ + ウィークリー/デイリー各ページの
+  // ボタン2つずつ、計6箇所の見た目を1箇所にまとめて揃える。
+  function updateBoxDisplayToggleUI() {
+    showThisWeekBoxToggle.checked = displaySettings.showThisWeekBox;
+    showSomedayBoxToggle.checked = displaySettings.showSomedayBox;
+    weeklyThisWeekToggleBtn.classList.toggle("active", displaySettings.showThisWeekBox);
+    calendarThisWeekToggleBtn.classList.toggle("active", displaySettings.showThisWeekBox);
+    weeklySomedayToggleBtn.classList.toggle("active", displaySettings.showSomedayBox);
+    calendarSomedayToggleBtn.classList.toggle("active", displaySettings.showSomedayBox);
+  }
+
+  function toggleShowThisWeekBox() {
+    displaySettings.showThisWeekBox = !displaySettings.showThisWeekBox;
+    saveDisplaySettings();
+    updateBoxDisplayToggleUI();
+    renderCalendar();
+  }
+
+  function toggleShowSomedayBox() {
+    displaySettings.showSomedayBox = !displaySettings.showSomedayBox;
+    saveDisplaySettings();
+    updateBoxDisplayToggleUI();
+    renderCalendar();
+  }
+
   showThisWeekBoxToggle.addEventListener("change", () => {
     displaySettings.showThisWeekBox = showThisWeekBoxToggle.checked;
     saveDisplaySettings();
+    updateBoxDisplayToggleUI();
     renderCalendar();
   });
 
   showSomedayBoxToggle.addEventListener("change", () => {
     displaySettings.showSomedayBox = showSomedayBoxToggle.checked;
     saveDisplaySettings();
+    updateBoxDisplayToggleUI();
     renderCalendar();
   });
+
+  weeklyThisWeekToggleBtn.addEventListener("click", toggleShowThisWeekBox);
+  calendarThisWeekToggleBtn.addEventListener("click", toggleShowThisWeekBox);
+  weeklySomedayToggleBtn.addEventListener("click", toggleShowSomedayBox);
+  calendarSomedayToggleBtn.addEventListener("click", toggleShowSomedayBox);
 
   periodAddBtn.addEventListener("click", () => {
     const last = periodSettings.periods[periodSettings.periods.length - 1];
@@ -1751,16 +1790,14 @@
   renderPeriodSettingsUI();
 
   // --- 設定ページ: 表示設定 ---
-  showThisWeekBoxToggle.checked = displaySettings.showThisWeekBox;
-  showSomedayBoxToggle.checked = displaySettings.showSomedayBox;
+  updateBoxDisplayToggleUI();
 
   // --- 設定ページ: お知らせ ---
   // アップデートのたびにここへ1件追記していく、簡易な更新履歴。新しい
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
-    { date: "2026-09-08", text: "マンスリーの各週の今週中欄を、薄緑の角丸カードとして週と週の間に浮くように配置し直しました。いつかのタスクをドラッグしてこの欄へ直接落とせるようにもなりました(子タスクを抱えたタスクもそのまま運べます)。" },
-    { date: "2026-09-08", text: "マンスリーページの各週の下に、その週専用の「今週中」欄(横スクロール)を追加しました。ウィークリー/デイリーの今週中と同じデータで、どちらから編集しても連動します。" },
+    { date: "2026-09-08", text: "マンスリーへの「今週中」欄の組み込みは見送りました。代わりに、ウィークリー/デイリーそれぞれのページ上部から直接、「今週中」「いつか」欄の表示・非表示を切り替えられるようにしました(設定ページの同じ項目とも連動します)。" },
     { date: "2026-09-08", text: "タスクページに「最優先」「今日中」「今週中」欄を追加しました。スケジュールに時間をはめ込んでいない全てのタスクを、いつかと合わせて一箇所で確認できます。" },
     { date: "2026-09-08", text: "設定ページに「表示設定」を追加し、「今週中」「いつか」欄をカレンダー系ページで非表示にできるようにしました(非表示にしてもタスクページからは引き続き確認・移動できます)。" },
     { date: "2026-09-08", text: "予定の詳細パネルに「ブロック表示」を追加しました。スケジュール上の予定ブロックに、メモまたは子タスクの一覧を追加表示できます(既定はOFF)。" },
@@ -5652,6 +5689,25 @@
     if (ctx.phase === "schedule") {
       e.preventDefault();
       showDragGhost(e.clientX, e.clientY, ctx.task.label);
+
+      // 複数の対象(グリッド列/マンスリーセル/最優先/今週中/タスク一覧)を
+      // 順に判定していくが、途中で一致した対象はそこで早期returnし、
+      // それより後ろの対象は「今回のイベントでは判定しない」だけで済ませて
+      // いる。そのため、指がドラッグの通り道で一瞬だけ別の対象の上を
+      // 通って立ったフラグを、ここで最初に一律リセットしておかないと、
+      // 次に別の対象へ早期returnした時にも古いフラグが残り続け、実際の
+      // 指の位置と無関係な対象へ誤って落ちてしまう(例: 今週中欄の上を
+      // 通り過ぎてグリッドへ着地したのに、今週中側にタスクが登録されて
+      // しまう)。
+      ctx.targetMonthlyCell = null;
+      ctx.targetPriorityList = false;
+      ctx.targetThisWeekBox = false;
+      ctx.targetTaskList = null;
+      document.querySelectorAll(".monthly-cell.drop-target").forEach((c) => c.classList.remove("drop-target"));
+      calendarPriorityBox.classList.remove("drop-target");
+      calendarThisWeekBox.classList.remove("drop-target");
+      listWrap.classList.remove("drop-target");
+
       const cols = Array.from(calendarWeekGrid.children);
       let targetCol = null;
       let overZone = false;
@@ -5718,9 +5774,7 @@
 
       if (targetCol) {
         document.querySelectorAll(".monthly-cell.drop-target").forEach((c) => c.classList.remove("drop-target"));
-        document.querySelectorAll(".monthly-thisweek-row.drop-target").forEach((r) => r.classList.remove("drop-target"));
         ctx.targetMonthlyCell = null;
-        ctx.targetMonthlyThisWeekRow = null;
         if (overZone) {
           clearDragPreview();
         } else {
@@ -5756,27 +5810,7 @@
       }
       monthlyCells.forEach((c) => c.classList.toggle("drop-target", c === targetMonthlyCell));
       ctx.targetMonthlyCell = targetMonthlyCell;
-      if (targetMonthlyCell) {
-        // まだ今回のイベントで再計算していない今週中欄側のフラグ/表示が、
-        // 前回の位置(今週中欄の上)のまま残らないようここでリセットする。
-        document.querySelectorAll(".monthly-thisweek-row.drop-target").forEach((r) => r.classList.remove("drop-target"));
-        ctx.targetMonthlyThisWeekRow = null;
-        return;
-      }
-
-      // マンスリー各週専用の今週中欄への割り当て判定。子タスクを抱えた
-      // タスク(親)もそのまま対象にする(今週中はいつか同様、階層を許容)。
-      let targetMonthlyThisWeekRow = null;
-      const monthlyThisWeekRows = Array.from(document.querySelectorAll(".monthly-thisweek-row"));
-      for (const row of monthlyThisWeekRows) {
-        if (rectContains(row.getBoundingClientRect(), e.clientX, e.clientY)) {
-          targetMonthlyThisWeekRow = row;
-          break;
-        }
-      }
-      monthlyThisWeekRows.forEach((r) => r.classList.toggle("drop-target", r === targetMonthlyThisWeekRow));
-      ctx.targetMonthlyThisWeekRow = targetMonthlyThisWeekRow;
-      if (targetMonthlyThisWeekRow) return;
+      if (targetMonthlyCell) return;
 
       // Still nothing — we may be over デイリー専用の「最優先」トレイ(階層
       // を持たないフラットな置き場)。表示中の日付が今日以降のときだけ
@@ -5938,7 +5972,6 @@
     Array.from(document.querySelectorAll(".cal-unscheduled-day.drop-target")).forEach((z) => z.classList.remove("drop-target"));
     calendarUnscheduledRow.classList.remove("drop-target");
     Array.from(document.querySelectorAll(".monthly-cell.drop-target")).forEach((c) => c.classList.remove("drop-target"));
-    Array.from(document.querySelectorAll(".monthly-thisweek-row.drop-target")).forEach((r) => r.classList.remove("drop-target"));
     calendarPriorityBox.classList.remove("drop-target");
     calendarThisWeekBox.classList.remove("drop-target");
     listWrap.classList.remove("drop-target");
@@ -5964,17 +5997,10 @@
     if (ctx.phase === "schedule") {
       ctx.chip.classList.remove("dragging");
       somedayDragCtx = null;
-      const { task, targetCol, targetMonthlyCell, targetMonthlyThisWeekRow, targetTaskList, targetPriorityList, targetThisWeekBox, clientY, overZone } = ctx;
+      const { task, targetCol, targetMonthlyCell, targetTaskList, targetPriorityList, targetThisWeekBox, clientY, overZone } = ctx;
 
-      if (targetCol || targetMonthlyCell || targetMonthlyThisWeekRow || targetTaskList || targetPriorityList || targetThisWeekBox) {
+      if (targetCol || targetMonthlyCell || targetTaskList || targetPriorityList || targetThisWeekBox) {
         captureUndoSnapshot();
-      }
-
-      if (targetMonthlyThisWeekRow) {
-        addSomedayTaskToThisWeek(targetMonthlyThisWeekRow.dataset.weekStart, task);
-        vibrate(20);
-        renderCalendar();
-        return;
       }
 
       if (targetThisWeekBox) {
@@ -6687,7 +6713,6 @@
     }
 
     refreshAllMonthlyContent();
-    refreshAllMonthlyThisWeekRows();
   }
 
   function tickCalendarLive() {
@@ -6946,83 +6971,11 @@
 
   // Refreshes every already-rendered cell's content (called whenever task/
   // plan data changes) without rebuilding the week list or moving scroll.
-  // monthlyWeeksの直下には日付7列の.monthly-week-rowと、その下に挟んだ
-  // その週専用の.monthly-thisweek-row(今週中)が交互に並ぶので、日付セルを
-  // 持つ行だけを対象にする。
   function refreshAllMonthlyContent() {
     Array.from(monthlyWeeks.children).forEach((rowEl) => {
-      if (!rowEl.classList.contains("monthly-week-row")) return;
       Array.from(rowEl.children).forEach((cell) => {
         refreshMonthlyCellContent(cell, cell.dataset.date);
       });
-    });
-  }
-
-  // 月表示の各週の下に挟む、その週専用の「今週中」欄(横スクロール)。
-  // ウィークリー/デイリーの今週中と同じ週キー(月曜日の日付)のデータを
-  // 直接参照するので、値の変更はどちらから行っても即座に他方へ反映
-  // される。このページには時間軸グリッドが無いため、タスクページの
-  // 今週中欄と同じくタップで既存の選択肢モーダルを開くだけの表示にする
-  // (並べ替え/スケジュールへのドラッグはここでは扱わない)。
-  function buildMonthlyThisWeekRow(mondayStr) {
-    const row = document.createElement("div");
-    row.className = "calendar-unplanned monthly-thisweek-row";
-    row.dataset.weekStart = mondayStr;
-    const title = document.createElement("span");
-    title.className = "calendar-unplanned-title";
-    title.textContent = "今週中";
-    row.appendChild(title);
-    const list = document.createElement("div");
-    list.className = "calendar-unplanned-list";
-    row.appendChild(list);
-    const addBtn = document.createElement("button");
-    addBtn.type = "button";
-    addBtn.className = "calendar-someday-add";
-    addBtn.setAttribute("aria-label", "今週中のタスクを追加");
-    addBtn.textContent = "＋";
-    addBtn.addEventListener("click", () => addThisWeekTask(mondayStr));
-    row.appendChild(addBtn);
-    refreshMonthlyThisWeekRow(row, mondayStr);
-    return row;
-  }
-
-  function refreshMonthlyThisWeekRow(row, weekStart) {
-    const list = row.querySelector(".calendar-unplanned-list");
-    const items = itemsArrayForWeek(weekStart);
-    list.innerHTML = "";
-    if (!items.length) {
-      const empty = document.createElement("span");
-      empty.className = "calendar-unplanned-empty";
-      empty.textContent = "今週中のタスクなし";
-      list.appendChild(empty);
-      return;
-    }
-    items.forEach((item) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "cal-unplanned-chip";
-      const label = document.createElement("span");
-      label.className = "cal-unplanned-chip-label";
-      label.textContent = labelOf(item, "今週中タスク");
-      chip.appendChild(label);
-      const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
-      if (directChildCount > 0) {
-        const badge = document.createElement("span");
-        badge.className = "cal-child-count-badge";
-        badge.dataset.count = String(directChildCount);
-        chip.appendChild(badge);
-      }
-      chip.addEventListener("click", () => promptWeeklyTaskEdit(weekStart, item));
-      list.appendChild(chip);
-    });
-  }
-
-  // renderMonthlyGrid()が行を作り直す時はbuildMonthlyThisWeekRow自身が
-  // 中身も入れて返すので不要だが、データだけが変わった(renderCalendar経由
-  // の全体再描画)時は既存の行をそのまま使って中身だけ差し替える。
-  function refreshAllMonthlyThisWeekRows() {
-    monthlyWeeks.querySelectorAll(".monthly-thisweek-row").forEach((row) => {
-      refreshMonthlyThisWeekRow(row, row.dataset.weekStart);
     });
   }
 
@@ -7046,7 +6999,6 @@
     monthlyWeeks.innerHTML = "";
     for (let cursor = gridStart; cursor <= lastDayStr; cursor = addDaysStr(cursor, 7)) {
       monthlyWeeks.appendChild(buildMonthlyWeekRow(cursor));
-      monthlyWeeks.appendChild(buildMonthlyThisWeekRow(cursor));
     }
 
     // monthlyRowH depends on how many weeks this month needed and on the
