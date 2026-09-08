@@ -1799,6 +1799,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-08", text: "今週中の色付きチップ(子タスクを抱えたタスク)をタップすると、子・孫までまとめてその場に展開して確認できるようにしました。また「全展開」ボタンを押した際に展開内容が画面に表示されず見えなくなっていた不具合も修正しました。" },
     { date: "2026-09-08", text: "「今週中」欄にも、いつかと同じ「全展開」ボタンを追加しました。子タスクをその場で並べて確認でき、展開中はいつか欄を自動的に隠してスペースを譲ります。また、子タスクを抱えた今週中タスクは、いつかの親タスクと同じ色付き・四角寄りのチップで表示されるようにしました。" },
     { date: "2026-09-08", text: "「今週中」のタスクを、ウィークリーの「当日中」欄(曜日ごとの列)やデイリーの「今日中」欄へドラッグして、その日のタスクへ直接移せるようにしました(子タスクを抱えたタスクは対象外です)。" },
     { date: "2026-09-08", text: "デイリーページの「今日中」「今週中」「いつか」欄の見出し右側にも、ウィークリーと同じ縦線を追加しました。また、ウィークリーの「当日中」欄がタスクの無い日ばかりだと極端に狭くなり、そのせいでタスクをドロップできなくなっていた不具合を修正しました。" },
@@ -4926,7 +4927,23 @@
     return mondayOfWeek(weekAnchor);
   }
 
-  // 今週中の1アイテム分のチップ本体(通常表示/全展開どちらでも使う)。
+  // 今週中アイテムのうち、個別にタップして展開した(子孫を表示中の)もの
+  // の集合。thisWeekTasks[weekStart]の各アイテムはオブジェクトの参照が
+  // 再レンダーをまたいで保たれる(persistItemsForWeekはJSONへ書き出す
+  // だけで、メモリ上のオブジェクト自体は差し替えない)ので、idを新設せず
+  // オブジェクト参照そのものをキーにできる。ページ間・週の切り替えを
+  // またいでも保持する必要は無いセッション限りの表示状態。
+  const thisWeekExpandedItems = new Set();
+  function thisWeekItemIsExpanded(item) {
+    return thisWeekExpandAll || thisWeekExpandedItems.has(item);
+  }
+  function toggleThisWeekItemExpanded(item) {
+    if (thisWeekExpandedItems.has(item)) thisWeekExpandedItems.delete(item);
+    else thisWeekExpandedItems.add(item);
+    renderThisWeekTray();
+  }
+
+  // 今週中の1アイテム分のチップ本体(通常表示/展開どちらでも使う)。
   // 子タスクを抱えている場合は、いつかの親チップと同じ「色付き・四角
   // 寄りの枠」にして、コンテナであることが一目で分かるようにする
   // (今週中はいつかと違い家系が複数無いので、家系ごとの色分けは不要 —
@@ -4948,30 +4965,68 @@
       badge.dataset.count = String(directChildCount);
       chip.appendChild(badge);
     }
+    // 子タスクを抱えたチップは、タップ(=移動を伴わない指離し)すると
+    // 編集モーダルではなく子孫の展開/折りたたみを切り替える(いつかの
+    // 親チップをタップすると掘り下げるのと同じ考え方) — 実際の切り替え
+    // 自体はonTrayItemDragEndの"pending"フェーズで行う。
     chip.addEventListener("pointerdown", (e) => startTrayItemDrag(e, chip, item, weekStart, "cal-unplanned-chip", "今週中タスク", "week"));
     return chip;
   }
 
-  // 全展開中、親チップの直後に並べる子チップ。今週中の子タスクには
-  // まだ個別の編集/ドラッグUIが無いため、表示専用(タップ・ドラッグ
-  // どちらも無し)。
-  function createThisWeekChildChip(child) {
+  // 展開中、子/孫/ひ孫チップとして並べる表示専用チップ。今週中の子タスク
+  // にはまだ個別の編集UIが無いため、タップ・ドラッグどちらも持たない
+  // (子を持つ孫チップ等は、いつかと同じ色付き・四角い枠だけ付けて
+  // 「まだ下に続きがある」ことが分かるようにする)。
+  function createThisWeekChildChip(child, rootItem) {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "cal-unplanned-chip";
     chip.style.cursor = "default";
+    const kids = planChildrenOf(rootItem, child.id);
+    if (kids.length) chip.classList.add("parent");
     const label = document.createElement("span");
     label.className = "cal-unplanned-chip-label";
     label.textContent = child.label || "子タスク";
     chip.appendChild(label);
+    if (kids.length) {
+      const badge = document.createElement("span");
+      badge.className = "cal-child-count-badge";
+      badge.dataset.count = String(kids.length);
+      chip.appendChild(badge);
+    }
     return chip;
+  }
+
+  // 展開中のアイテム1つ分、子/孫/ひ孫を階層ごとの行に分けて並べる
+  // (予定詳細パネルのbuildPlanChildrenSectionと同じ深さの数え方・
+  // データ形なので、そちらのplanChildrenOf/AtDepthをそのまま使い回せる)。
+  function buildThisWeekChildrenTree(item) {
+    const wrap = document.createElement("div");
+    wrap.className = "cal-thisweek-children";
+    for (let depth = 1; depth <= PLAN_CHILD_MAX_DEPTH; depth++) {
+      const nodes = planChildrenAtDepth(item, depth);
+      if (!nodes.length) break;
+      const row = document.createElement("div");
+      row.className = "cal-thisweek-children-row";
+      nodes.forEach((child) => row.appendChild(createThisWeekChildChip(child, item)));
+      wrap.appendChild(row);
+    }
+    return wrap;
   }
 
   function renderThisWeekTray() {
     const weekStart = currentWeekStartKey();
     const items = itemsArrayForWeek(weekStart);
+    // 1件でも展開中(子孫を表示中)のアイテムがあれば、トレイ自体を
+    // 「1行だけの横スクロール」から「折り返して縦に伸びる」表示へ切り替
+    // える。横一列のままだと展開した子孫がその行の先へ延々と続くだけで、
+    // 画面には映らない(スクロールしないと見えない)ままになってしまう
+    // ため。
+    const anyExpanded = items.some((item) => item.children && item.children.length && thisWeekItemIsExpanded(item));
+    [weeklyThisWeekBoxEl, dailyThisWeekBoxEl].forEach((box) => box.classList.toggle("grouped", anyExpanded));
     [weeklyThisWeekList, dailyThisWeekList].forEach((list) => {
       list.innerHTML = "";
+      list.classList.toggle("grouped", anyExpanded);
       if (!items.length) {
         const empty = document.createElement("span");
         empty.className = "calendar-unplanned-empty";
@@ -4980,11 +5035,15 @@
         return;
       }
       items.forEach((item) => {
-        list.appendChild(createThisWeekChip(item, weekStart));
-        // 全展開中は、子タスクを親チップの直後にそのまま並べて見せる
-        // (いつかの全展開ツリーと同じ「親のすぐ後ろに子」という考え方)。
-        if (thisWeekExpandAll && item.children && item.children.length) {
-          item.children.filter((c) => !c.parentId).forEach((child) => list.appendChild(createThisWeekChildChip(child)));
+        const hasChildren = !!(item.children && item.children.length);
+        if (hasChildren && thisWeekItemIsExpanded(item)) {
+          const family = document.createElement("div");
+          family.className = "cal-thisweek-family";
+          family.appendChild(createThisWeekChip(item, weekStart));
+          family.appendChild(buildThisWeekChildrenTree(item));
+          list.appendChild(family);
+        } else {
+          list.appendChild(createThisWeekChip(item, weekStart));
         }
       });
     });
@@ -5479,8 +5538,14 @@
 
     if (ctx.phase === "pending") {
       trayDragCtx = null;
-      if (ctx.scopeType === "week") promptWeeklyTaskEdit(ctx.dateStr, ctx.item);
-      else promptRegularTaskEdit(ctx.dateStr, ctx.item);
+      if (ctx.scopeType === "week") {
+        // 子タスクを抱えたチップは、いつかの親チップ同様タップで編集
+        // モーダルではなく子孫の展開/折りたたみを切り替える。
+        if (ctx.item.children && ctx.item.children.length) toggleThisWeekItemExpanded(ctx.item);
+        else promptWeeklyTaskEdit(ctx.dateStr, ctx.item);
+      } else {
+        promptRegularTaskEdit(ctx.dateStr, ctx.item);
+      }
       return;
     }
 

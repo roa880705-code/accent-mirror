@@ -2230,6 +2230,47 @@ body {
   display: none;
 }
 
+/* 今週中のトレイで、1件でも子孫を展開中のアイテムがある間だけ切り替わる
+   表示: 元は1行だけの横スクロールだが、展開した子孫チップが行の先へ
+   延々と続くだけで画面に映らなくなってしまうため、折り返して縦に伸びる
+   表示にする。 */
+.calendar-unplanned-list.grouped {
+  flex-wrap: wrap;
+  overflow-x: visible;
+  overflow-y: visible;
+  align-items: flex-start;
+}
+
+.calendar-unplanned.grouped {
+  align-items: flex-start;
+}
+
+/* 展開中の今週中アイテム1件分: 自分のチップ+その子孫ツリーを縦に積み、
+   横に並ぶ他のアイテムを巻き込まないよう常に1行分の幅いっぱいを使う。 */
+.cal-thisweek-family {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+.cal-thisweek-children {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cal-thisweek-children-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .calendar-unplanned-empty {
   flex: none;
   font-size: 0.65rem;
