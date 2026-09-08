@@ -1799,6 +1799,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-08", text: "今週中で一度展開したタスクが、再タップしても折りたたまれなくなる不具合を修正しました。また、いつかと同じように親子関係を示す連結線を表示するようにしました。" },
     { date: "2026-09-08", text: "今週中の色付きチップ(子タスクを抱えたタスク)をタップすると、子・孫までまとめてその場に展開して確認できるようにしました。また「全展開」ボタンを押した際に展開内容が画面に表示されず見えなくなっていた不具合も修正しました。" },
     { date: "2026-09-08", text: "「今週中」欄にも、いつかと同じ「全展開」ボタンを追加しました。子タスクをその場で並べて確認でき、展開中はいつか欄を自動的に隠してスペースを譲ります。また、子タスクを抱えた今週中タスクは、いつかの親タスクと同じ色付き・四角寄りのチップで表示されるようにしました。" },
     { date: "2026-09-08", text: "「今週中」のタスクを、ウィークリーの「当日中」欄(曜日ごとの列)やデイリーの「今日中」欄へドラッグして、その日のタスクへ直接移せるようにしました(子タスクを抱えたタスクは対象外です)。" },
@@ -2969,6 +2970,9 @@
   const PLAN_MIN_DURATION = 5; // minimum length a hand-drawn plan can shrink to
   const PLAN_LONGPRESS_MS = 500;
   const PLAN_MOVE_TOLERANCE = 8;
+  // 今週中の子タスクを抱えたチップの、実質タップ判定用の緩めの許容値
+  // (PLAN_MOVE_TOLERANCEの3倍) — 詳細はonTrayItemDragEndのコメント参照。
+  const TAP_LIKE_RELEASE_TOLERANCE = 24;
   // an already-placed plan's vertical position while being moved lags the
   // finger by this fraction, so small grip shifts don't visibly relocate it
   const PLAN_DRAG_DAMPING = 0.45;
@@ -4948,11 +4952,17 @@
   // 寄りの枠」にして、コンテナであることが一目で分かるようにする
   // (今週中はいつかと違い家系が複数無いので、家系ごとの色分けは不要 —
   // 常に共通のaccent色で塗る)。
+  // 展開中の連結線描画(drawThisWeekConnectorLines)がルートチップを
+  // 探すための固定id。今週中アイテム自身はsomeday/plan.childrenのような
+  // idを持たないため、子タスク側のidと衝突しないこの文字列で代用する。
+  const THISWEEK_ROOT_NODE_ID = "__thisweek_root__";
+
   function createThisWeekChip(item, weekStart) {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "cal-unplanned-chip";
     chip.trayItem = item;
+    chip.dataset.thisweekNodeId = THISWEEK_ROOT_NODE_ID;
     const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
     if (directChildCount > 0) chip.classList.add("parent");
     const label = document.createElement("span");
@@ -4982,6 +4992,7 @@
     chip.type = "button";
     chip.className = "cal-unplanned-chip";
     chip.style.cursor = "default";
+    chip.dataset.thisweekNodeId = child.id;
     const kids = planChildrenOf(rootItem, child.id);
     if (kids.length) chip.classList.add("parent");
     const label = document.createElement("span");
@@ -5014,6 +5025,54 @@
     return wrap;
   }
 
+  // ルート(アイテム自身、id=THISWEEK_ROOT_NODE_ID)→直接の子、および
+  // 子を持つ子孫それぞれ→その子、という親子ペアを全て集める
+  // (planConnectorPairsに「ルート→直接の子」のペアを1つ足しただけ)。
+  function thisWeekConnectorPairs(item) {
+    const pairs = [];
+    const directChildren = planChildrenOf(item, null);
+    if (directChildren.length) pairs.push({ parentId: THISWEEK_ROOT_NODE_ID, children: directChildren });
+    (item.children || []).forEach((node) => {
+      const kids = planChildrenOf(item, node.id);
+      if (kids.length) pairs.push({ parentId: node.id, children: kids });
+    });
+    return pairs;
+  }
+
+  // 今週中の展開表示専用の連結線描画。親が上・子がすぐ下という縦積みの
+  // レイアウトなので、幾何はdrawSomedayTreeConnectorLinesのisVertical=
+  // false相当(幹を下に伸ばし、横の梁から各子へ短く下ろす)と同じ形。
+  // containerElはfamilyブロック(position:relative)自身で、スクロールは
+  // 持たないためオフセット計算は不要。
+  function drawThisWeekConnectorLines(containerEl, pairs) {
+    containerEl.querySelectorAll(".someday-branch-line").forEach((el) => el.remove());
+    if (!pairs.length) return;
+    const rootRect = containerEl.getBoundingClientRect();
+    const half = SOMEDAY_BRANCH_LINE_W / 2;
+    pairs.forEach(({ parentId, children }) => {
+      const parentChip = containerEl.querySelector(`[data-thisweek-node-id="${parentId}"]`);
+      const childChips = children.map((c) => containerEl.querySelector(`[data-thisweek-node-id="${c.id}"]`)).filter(Boolean);
+      if (!parentChip || !childChips.length) return;
+      const parentRect = parentChip.getBoundingClientRect();
+      const childRects = childChips.map((el) => el.getBoundingClientRect());
+
+      const parentX = parentRect.left + parentRect.width / 2 - rootRect.left;
+      const stemTop = parentRect.bottom - rootRect.top;
+      const childAnchors = childRects.map((r) => ({
+        x: r.left + r.width / 2 - rootRect.left,
+        top: r.top - rootRect.top,
+      }));
+      const branchY = Math.max(stemTop + 2, Math.min(...childAnchors.map((a) => a.top)) - SOMEDAY_BRANCH_GAP);
+      const allX = [parentX, ...childAnchors.map((a) => a.x)];
+
+      addSomedayBranchLine(containerEl, parentX - half, stemTop, SOMEDAY_BRANCH_LINE_W, branchY - stemTop);
+      addSomedayBranchLine(containerEl, Math.min(...allX), branchY - half, Math.max(...allX) - Math.min(...allX), SOMEDAY_BRANCH_LINE_W);
+      childAnchors.forEach((a) => {
+        addSomedayBranchLine(containerEl, a.x - half, branchY, SOMEDAY_BRANCH_LINE_W, a.top - branchY);
+      });
+    });
+  }
+
   function renderThisWeekTray() {
     const weekStart = currentWeekStartKey();
     const items = itemsArrayForWeek(weekStart);
@@ -5042,6 +5101,9 @@
           family.appendChild(createThisWeekChip(item, weekStart));
           family.appendChild(buildThisWeekChildrenTree(item));
           list.appendChild(family);
+          // レイアウト確定後(チップの実際の位置が定まった1フレーム後)に
+          // 連結線を引く — buildPlanChildrenSectionと同じ考え方。
+          requestAnimationFrame(() => drawThisWeekConnectorLines(family, thisWeekConnectorPairs(item)));
         } else {
           list.appendChild(createThisWeekChip(item, weekStart));
         }
@@ -5292,6 +5354,7 @@
     if (!trayDragCtx) return;
     const ctx = trayDragCtx;
     ctx.lastClientX = e.clientX;
+    ctx.lastClientY = e.clientY;
 
     if (ctx.phase === "pending") {
       const dx = e.clientX - ctx.startClientX;
@@ -5535,6 +5598,25 @@
     calendarThisWeekBox.classList.remove("drop-target");
     clearDragPreview();
     clearDragGhost();
+
+    // 実機では数pxの指の揺れだけで「pending」のまま最後まで留まらず、
+    // schedule/reorder等へ倒れてしまうことがある。今週中の子タスクを
+    // 抱えたチップの場合、そのフェーズ側は「有効な移動先が無い/実質
+    // 変化なし」の無反応で終わるだけなので、タップしたのに展開が
+    // 一切戻せないように見えてしまう。指の最終位置が開始位置のすぐ
+    // 近くのままなら、倒れた先のフェーズが何であれ実質タップとして
+    // 展開/折りたたみの切り替えを優先する。
+    const releaseDx = (ctx.lastClientX ?? ctx.startClientX) - ctx.startClientX;
+    const releaseDy = (ctx.lastClientY ?? ctx.startClientY) - ctx.startClientY;
+    const releasedNearStart = Math.hypot(releaseDx, releaseDy) < TAP_LIKE_RELEASE_TOLERANCE;
+    if (ctx.phase !== "pending" && ctx.scopeType === "week" && ctx.item.children && ctx.item.children.length && releasedNearStart) {
+      ctx.chip.classList.remove("dragging", "reordering");
+      ctx.chip.style.transition = "";
+      ctx.chip.style.transform = "";
+      trayDragCtx = null;
+      toggleThisWeekItemExpanded(ctx.item);
+      return;
+    }
 
     if (ctx.phase === "pending") {
       trayDragCtx = null;

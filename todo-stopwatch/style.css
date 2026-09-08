@@ -2248,10 +2248,14 @@ body {
 /* 展開中の今週中アイテム1件分: 自分のチップ+その子孫ツリーを縦に積み、
    横に並ぶ他のアイテムを巻き込まないよう常に1行分の幅いっぱいを使う。 */
 .cal-thisweek-family {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  /* 連結線(親の下端から子の上端まで)が枝分かれとして見える最低限の
+     縦の余白を確保する — 詰めすぎると幹・横の梁・枝が全部同じ場所に
+     潰れて線が読めなくなる。 */
+  gap: 12px;
   flex: 1 1 100%;
   width: 100%;
 }
@@ -2259,7 +2263,7 @@ body {
 .cal-thisweek-children {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 12px;
   padding-left: 16px;
   width: 100%;
   box-sizing: border-box;
