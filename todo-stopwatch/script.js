@@ -1705,6 +1705,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-08", text: "「今週中」のタスクを、今日中・最優先と同じ操作でスケジュール(予定)へドラッグして登録できるようにしました。子タスクを抱えたタスクもそのまま予定の子タスクとして運ばれます。" },
     { date: "2026-09-08", text: "「今週中」欄へ、いつかのタスクやスケジュール済みの予定をドラッグして直接落とせるようにしました。子タスクを抱えたタスク/予定もそのまま(子数バッジ付きの1チップとして)まとめて運べます。" },
     { date: "2026-09-07", text: "ウィークリーページを月曜始まり(月〜日)の表示に変更しました。" },
     { date: "2026-09-07", text: "ウィークリーページとデイリーページに、今日中といつかの間に「今週中」欄を追加しました。今週やりたいタスクを横スクロールの一覧で管理できます(スケジュールへのドラッグ登録はまだ未対応です)。" },
@@ -4898,8 +4899,10 @@
   let trayDragCtx = null;
 
   // scopeTypeは"day"(既定、itemsArrayForDate/persistItemsForDateで永続化
-  // する今日中・最優先)か"week"(itemsArrayForWeek/persistItemsForWeekで
-  // 永続化する今週中 — スケジュールへの持ち上げにはまだ対応しない)。
+  // する今日中・最優先。持ち上げは自分の日付の列だけが対象)か"week"
+  // (itemsArrayForWeek/persistItemsForWeekで永続化する今週中。特定の
+  // 曜日に紐付いていないので、表示中の週の列すべて(過去日は除く)が
+  // 持ち上げの対象になる — いつかへの差し戻しはまだ未対応)。
   function startTrayItemDrag(e, chip, item, dateStr, itemClass, fallbackLabel, scopeType = "day") {
     if (e.button !== undefined && e.button !== 0) return;
     e.stopPropagation();
@@ -4988,16 +4991,16 @@
       } else {
         // heldLongEnoughなら縦方向が横方向よりはるかに大きい場合だけ、
         // そうでなければ常に、「縦寄りの動き」とみなす。scopeTypeが
-        // "day"(今日中/最優先)ならスケジュールへの持ち上げ、"week"
-        // (今週中、まだスケジュール対応なし)なら並べ替えの継続として
-        // 扱う。保持済みで縦寄りでない(=保持した指のちょっとしたぶれの
-        // 範囲)場合も並べ替えの継続 — スケジュール内で予定を動かす時と
-        // 同様、保持した指が上下に少しずれても「持ち上げ」には化けない
-        // ようにして、指で画面が見づらくなるのを防ぐ。
+        // "day"(今日中/最優先)でも"week"(今週中)でも同じくスケジュール
+        // への持ち上げとして扱う(下のscheduleフェーズ側でscopeType別に
+        // 挙動を分ける)。保持済みで縦寄りでない(=保持した指のちょっと
+        // したぶれの範囲)場合は並べ替えの継続 — スケジュール内で予定を
+        // 動かす時と同様、保持した指が上下に少しずれても「持ち上げ」には
+        // 化けないようにして、指で画面が見づらくなるのを防ぐ。
         const liftedVertically = ctx.heldLongEnough
           ? Math.abs(dy) > Math.abs(dx) * CHIP_HOLD_LIFT_AXIS_RATIO
           : Math.abs(dx) <= Math.abs(dy);
-        if (ctx.scopeType !== "week" && liftedVertically) {
+        if (liftedVertically) {
           ctx.chip.classList.remove("armed");
           ctx.phase = "schedule";
           ctx.chip.classList.add("dragging");
@@ -5042,6 +5045,44 @@
     if (ctx.phase === "schedule") {
       e.preventDefault();
       showDragGhost(e.clientX, e.clientY, labelOf(ctx.item, ctx.fallbackLabel));
+
+      if (ctx.scopeType === "week") {
+        // 今週中はいつかへの差し戻しにまだ対応していない(将来の課題)ので
+        // 今日中/最優先と違いいつかトレイの判定は行わない。特定の曜日に
+        // 紐付いていないタスクなので、今日中/最優先の「自分の日付の列
+        // だけ」より対象を広げ、表示中の週の列すべて(過去日は除く)を
+        // 対象にする。
+        const bodyRect = calendarWeekBody.getBoundingClientRect();
+        const weekCols = Array.from(calendarWeekGrid.children);
+        let weekTargetCol = null;
+        for (const col of weekCols) {
+          if (col.dataset.date < state.day) continue;
+          const rect = col.getBoundingClientRect();
+          if (
+            e.clientX >= rect.left &&
+            e.clientX <= rect.right &&
+            e.clientY >= Math.max(rect.top, bodyRect.top) &&
+            e.clientY <= Math.min(rect.bottom, bodyRect.bottom)
+          ) {
+            weekTargetCol = col;
+            break;
+          }
+        }
+        weekCols.forEach((c) => c.classList.toggle("drop-target", c === weekTargetCol));
+        ctx.targetCol = weekTargetCol;
+        ctx.clientY = e.clientY;
+        if (weekTargetCol) {
+          const colRect = weekTargetCol.getBoundingClientRect();
+          const relY = e.clientY - colRect.top;
+          const rawMin = pxToMin(relY);
+          let startMin = Math.round(rawMin / 15) * 15;
+          startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+          showDragPreview(weekTargetCol, labelOf(ctx.item, ctx.fallbackLabel), startMin, PLAN_DEFAULT_MIN);
+        } else {
+          clearDragPreview();
+        }
+        return;
+      }
 
       const boxRect = calendarUnplannedBox.getBoundingClientRect();
       const overBox = rectContains(boxRect, e.clientX, e.clientY);
@@ -5160,8 +5201,45 @@
 
     if (ctx.phase === "schedule") {
       ctx.chip.classList.remove("dragging");
-      const { item, dateStr, targetCol, clientY, overUnplannedBox, fallbackLabel } = ctx;
+      const { item, dateStr, targetCol, clientY, overUnplannedBox, fallbackLabel, scopeType } = ctx;
       trayDragCtx = null;
+
+      if (scopeType === "week") {
+        if (!targetCol) return;
+        const weekStart = dateStr; // trayDragCtxの4番目の引数はweek scopeでは週の月曜日キー
+        const targetDate = targetCol.dataset.date;
+        const rect = targetCol.getBoundingClientRect();
+        const relY = clientY - rect.top;
+        const rawMin = pxToMin(relY);
+        let startMin = Math.round(rawMin / 15) * 15;
+        startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+        const endMin = startMin + PLAN_DEFAULT_MIN;
+        const planId = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+        captureUndoSnapshot();
+        const newPlan = { id: planId, label: labelOf(item, fallbackLabel), startMin, endMin };
+        // 子タスクを抱えていた場合はそのまま予定側の子タスクツリーへ運ぶ
+        // (いつかから予定へスケジュールする時と同じ方針)。メモも一緒に
+        // 引き継ぐ。
+        if (item.children && item.children.length) newPlan.children = item.children.map((c) => ({ ...c }));
+        if (item.memo) newPlan.memo = item.memo;
+        addPlan(targetDate, newPlan);
+        const newItem = freshItem(labelOf(item, fallbackLabel));
+        newItem.planId = planId;
+        ensureItemsArrayForDate(targetDate).push(newItem);
+        sortItemsByPlan(targetDate);
+        persistItemsForDate(targetDate);
+        refreshTimerIfShowing(targetDate);
+
+        const weekItems = itemsArrayForWeek(weekStart);
+        const idx = weekItems.indexOf(item);
+        if (idx >= 0) weekItems.splice(idx, 1);
+        persistItemsForWeek(weekStart);
+
+        vibrate(20);
+        renderCalendar();
+        return;
+      }
 
       if (overUnplannedBox) {
         if (item.elapsedMs > 0 || item.running) {
