@@ -131,6 +131,10 @@
       }
       pushKey(syncKey);
     });
+    if (editPushTimer) {
+      clearTimeout(editPushTimer);
+      pushEditCount();
+    }
   }
 
   async function pullAll() {
@@ -205,28 +209,89 @@
     }
   }
 
-  // アクセス数の把握用に、サインインの有無を問わず、このブラウザ
-  // タブでのセッション中1回だけ空の行をpage_visitsへ記録する(誰が
-  // 開いたかは分からない匿名カウント)。sessionStorageで同一タブ内の
-  // 再読み込みによる重複だけを防ぐ — タブを閉じて開き直す/別端末なら
-  // 新規に1件記録される。失敗しても画面には一切影響させない。
-  const VISIT_LOGGED_KEY = "todoStopwatch:visitLogged:v1";
-  function logVisitOnce() {
+  // 匿名の端末ID: サインイン不要で「継続利用(何日にまたがって開いたか)」
+  // や「編集した数」を端末ごとに紐付けて把握するための、localStorageに
+  // 一度だけ生成して保存するランダムID(個人情報は含まない)。
+  const DEVICE_ID_KEY = "todoStopwatch:deviceId:v1";
+  function getOrCreateDeviceId() {
     try {
-      if (sessionStorage.getItem(VISIT_LOGGED_KEY)) return;
-      sessionStorage.setItem(VISIT_LOGGED_KEY, "1");
-      client.from("page_visits").insert({}).then(({ error }) => {
+      let id = localStorage.getItem(DEVICE_ID_KEY);
+      if (!id) {
+        id = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem(DEVICE_ID_KEY, id);
+      }
+      return id;
+    } catch {
+      return null;
+    }
+  }
+
+  function todayStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  // アクセス数・継続利用状況の把握用に、サインインの有無を問わず、この
+  // 端末で「日付が変わって初めて開いた時」だけpage_visitsへ1行記録し、
+  // device_stats(端末ごとの初回/最終アクセス日時)も更新する(誰が開いた
+  // かは分からない匿名カウント、端末ごとのdevice_idだけ紐付く)。タブを
+  // 閉じずに日をまたいで開きっぱなしにするケースにも対応できるよう、
+  // 起動時だけでなくINTERVALでも日付が変わっていないか確認する。
+  // 失敗しても画面には一切影響させない。
+  const VISIT_DATE_KEY = "todoStopwatch:visitLoggedDate:v1";
+  const VISIT_RECHECK_MS = 15 * 60 * 1000;
+  function logVisitIfNewDay() {
+    try {
+      const today = todayStr();
+      if (localStorage.getItem(VISIT_DATE_KEY) === today) return;
+      localStorage.setItem(VISIT_DATE_KEY, today);
+      const deviceId = getOrCreateDeviceId();
+      const now = new Date().toISOString();
+      client.from("page_visits").insert({ device_id: deviceId }).then(({ error }) => {
         if (error) log("visit log failed", error);
+      });
+      client.from("device_stats").upsert({ device_id: deviceId, last_seen: now }, { onConflict: "device_id" }).then(({ error }) => {
+        if (error) log("device_stats upsert failed", error);
       });
     } catch (err) {
       log("visit log failed", err);
     }
   }
 
+  // 「編集した数」の把握用: script.jsのcaptureUndoSnapshot()(実質的な
+  // ユーザー操作のたびに呼ばれる、undo用のスナップショット取得)から
+  // window.AppSync.recordEdit()経由で呼ばれるカウンター。1秒おきに動く
+  // タイマーの自動保存では呼ばれないため、実際の編集操作の回数に近い値に
+  // なる。ローカルの累計値をlocalStorageに保持し、Supabaseへの反映は
+  // EDIT_PUSH_THROTTLE_MSごとに間引いて送る(1編集ごとに通信しない)。
+  const EDIT_COUNT_KEY = "todoStopwatch:editCount:v1";
+  const EDIT_PUSH_THROTTLE_MS = 8000;
+  let editPushTimer = null;
+  function pushEditCount() {
+    editPushTimer = null;
+    const deviceId = getOrCreateDeviceId();
+    if (!deviceId) return;
+    const count = Number(localStorage.getItem(EDIT_COUNT_KEY) || 0);
+    client.from("device_stats").upsert({ device_id: deviceId, edit_count: count, last_seen: new Date().toISOString() }, { onConflict: "device_id" }).then(({ error }) => {
+      if (error) log("edit count push failed", error);
+    });
+  }
+  function recordEdit() {
+    if (!configured) return;
+    try {
+      const count = Number(localStorage.getItem(EDIT_COUNT_KEY) || 0) + 1;
+      localStorage.setItem(EDIT_COUNT_KEY, String(count));
+      if (!editPushTimer) editPushTimer = setTimeout(pushEditCount, EDIT_PUSH_THROTTLE_MS);
+    } catch (err) {
+      log("edit count record failed", err);
+    }
+  }
+
   async function init() {
     if (!configured) return;
     client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    logVisitOnce();
+    logVisitIfNewDay();
+    setInterval(logVisitIfNewDay, VISIT_RECHECK_MS);
     const { data } = await client.auth.getSession();
     session = data.session;
     if (session) await initialSync();
@@ -260,6 +325,9 @@
       pending[syncKey] = value;
       schedulePush(syncKey);
     },
+    // 「編集した数」カウンター用 — captureUndoSnapshot()から呼ばれる。
+    // サインインの有無を問わず有効(configuredであれば動く)。
+    recordEdit,
     async signIn() {
       if (!client) return;
       // without this, Supabase falls back to the bare origin (no path) as

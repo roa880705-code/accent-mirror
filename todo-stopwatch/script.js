@@ -7184,6 +7184,10 @@
     // 新しい操作が入った時点で、この先の「進む」は無意味になる
     redoStacks[activePage].length = 0;
     updateUndoBadges();
+    // 実質的なユーザー編集操作のたびにここが呼ばれる(1秒おきのタイマー
+    // 自動保存では呼ばれない)ため、「編集した数」の匿名カウンターとして
+    // 使う。
+    if (window.AppSync) window.AppSync.recordEdit();
   }
 
   function restoreUndoData(snap) {
