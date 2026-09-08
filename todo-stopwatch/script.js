@@ -911,8 +911,10 @@
   // (swap不要 — レンダリング側でどちらにも同じ内容を書き込む)。
   const weeklyThisWeekList = document.getElementById("weeklyThisWeekList");
   const weeklyThisWeekAddBtn = document.getElementById("weeklyThisWeekAddBtn");
+  const weeklyThisWeekExpandAllBtn = document.getElementById("weeklyThisWeekExpandAllBtn");
   const dailyThisWeekList = document.getElementById("calendarThisWeekList");
   const dailyThisWeekAddBtn = document.getElementById("calendarThisWeekAddBtn");
+  const dailyThisWeekExpandAllBtn = document.getElementById("calendarThisWeekExpandAllBtn");
   // 予定をドラッグして今週中欄へ落とせるようにするための当たり判定
   // (onPlanDragMove等)は、いつか同様「現在アクティブな方の箱」だけが
   // 画面上に存在する側なので、こちらはcalendarUnplannedBoxと同じくswapする。
@@ -1797,6 +1799,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-08", text: "「今週中」欄にも、いつかと同じ「全展開」ボタンを追加しました。子タスクをその場で並べて確認でき、展開中はいつか欄を自動的に隠してスペースを譲ります。また、子タスクを抱えた今週中タスクは、いつかの親タスクと同じ色付き・四角寄りのチップで表示されるようにしました。" },
     { date: "2026-09-08", text: "「今週中」のタスクを、ウィークリーの「当日中」欄(曜日ごとの列)やデイリーの「今日中」欄へドラッグして、その日のタスクへ直接移せるようにしました(子タスクを抱えたタスクは対象外です)。" },
     { date: "2026-09-08", text: "デイリーページの「今日中」「今週中」「いつか」欄の見出し右側にも、ウィークリーと同じ縦線を追加しました。また、ウィークリーの「当日中」欄がタスクの無い日ばかりだと極端に狭くなり、そのせいでタスクをドロップできなくなっていた不具合を修正しました。" },
     { date: "2026-09-08", text: "ウィークリーページの「今週中」「いつか」欄の見出し右側に、上の今日中欄と同じ縦線を追加しました。また、今日中欄の1番左に「当日中」の見出しを表示し、タスクが無い日の「今日中のタスクなし」という表示は消して空欄にしました。" },
@@ -3794,6 +3797,14 @@
   // 独立させる理由が無い)。
   let somedayExpandAll = false;
 
+  // 「今週中」の全展開: いつかと同じ考え方で、オフの間は各アイテムを
+  // チップ1つ(子数バッジのみ)で表示し、オンの間は子タスクもその場で
+  // 並べて見せる。今週中はいつかと違い1階層(親→子)しか持たないので、
+  // いつかのような列構成(子/孫/ひ孫)は不要 — ウィークリー/デイリー
+  // 両方のトレイが同じ今週中データを見ているだけなので、いつか同様
+  // ページ間で共有する1つのグローバルな状態にする。
+  let thisWeekExpandAll = false;
+
   // Every tray level, across all four pages it's duplicated onto — used to
   // drive rendering/visibility generically instead of hand-listing every
   // list/box combination at each call site. Index 0 is いつか itself
@@ -4435,7 +4446,9 @@
     // 編集中は問答無用で隠すが、編集中でなくても設定で非表示にした欄は
     // 引き続き隠したまま(移動などの機能自体はhidden中でも裏で動くので、
     // ここではDOM上の表示/非表示だけを決める)。
-    calendarUnplannedBox.hidden = editing || !displaySettings.showSomedayBox;
+    // 今週中の全展開中は、いつか欄をユーザー設定に関係なく自動的に隠し、
+    // 今週中の展開表示にスペースを譲る。
+    calendarUnplannedBox.hidden = editing || !displaySettings.showSomedayBox || thisWeekExpandAll;
     const prefix = calendarUnplannedBox.id === "weeklyUnplannedBox" ? "weekly" : "calendar";
     const thisWeekBox = document.getElementById(`${prefix}ThisWeekBox`);
     if (thisWeekBox) thisWeekBox.hidden = editing || !displaySettings.showThisWeekBox;
@@ -4913,6 +4926,47 @@
     return mondayOfWeek(weekAnchor);
   }
 
+  // 今週中の1アイテム分のチップ本体(通常表示/全展開どちらでも使う)。
+  // 子タスクを抱えている場合は、いつかの親チップと同じ「色付き・四角
+  // 寄りの枠」にして、コンテナであることが一目で分かるようにする
+  // (今週中はいつかと違い家系が複数無いので、家系ごとの色分けは不要 —
+  // 常に共通のaccent色で塗る)。
+  function createThisWeekChip(item, weekStart) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "cal-unplanned-chip";
+    chip.trayItem = item;
+    const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
+    if (directChildCount > 0) chip.classList.add("parent");
+    const label = document.createElement("span");
+    label.className = "cal-unplanned-chip-label";
+    label.textContent = labelOf(item, "今週中タスク");
+    chip.appendChild(label);
+    if (directChildCount > 0) {
+      const badge = document.createElement("span");
+      badge.className = "cal-child-count-badge";
+      badge.dataset.count = String(directChildCount);
+      chip.appendChild(badge);
+    }
+    chip.addEventListener("pointerdown", (e) => startTrayItemDrag(e, chip, item, weekStart, "cal-unplanned-chip", "今週中タスク", "week"));
+    return chip;
+  }
+
+  // 全展開中、親チップの直後に並べる子チップ。今週中の子タスクには
+  // まだ個別の編集/ドラッグUIが無いため、表示専用(タップ・ドラッグ
+  // どちらも無し)。
+  function createThisWeekChildChip(child) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "cal-unplanned-chip";
+    chip.style.cursor = "default";
+    const label = document.createElement("span");
+    label.className = "cal-unplanned-chip-label";
+    label.textContent = child.label || "子タスク";
+    chip.appendChild(label);
+    return chip;
+  }
+
   function renderThisWeekTray() {
     const weekStart = currentWeekStartKey();
     const items = itemsArrayForWeek(weekStart);
@@ -4926,27 +4980,12 @@
         return;
       }
       items.forEach((item) => {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "cal-unplanned-chip";
-        chip.trayItem = item;
-        const label = document.createElement("span");
-        label.className = "cal-unplanned-chip-label";
-        label.textContent = labelOf(item, "今週中タスク");
-        chip.appendChild(label);
-        // 予定からドロップした際に子タスクを抱えていた場合、それらは
-        // このチップのitem.children配下にまとめて収まっている(今週中に
-        // 個別の子タスク編集UIはまだ無いため) — 子を持つことだけが分かる
-        // よう、いつか/予定の子タスクと同じ子数バッジを添える。
-        const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
-        if (directChildCount > 0) {
-          const badge = document.createElement("span");
-          badge.className = "cal-child-count-badge";
-          badge.dataset.count = String(directChildCount);
-          chip.appendChild(badge);
+        list.appendChild(createThisWeekChip(item, weekStart));
+        // 全展開中は、子タスクを親チップの直後にそのまま並べて見せる
+        // (いつかの全展開ツリーと同じ「親のすぐ後ろに子」という考え方)。
+        if (thisWeekExpandAll && item.children && item.children.length) {
+          item.children.filter((c) => !c.parentId).forEach((child) => list.appendChild(createThisWeekChildChip(child)));
         }
-        chip.addEventListener("pointerdown", (e) => startTrayItemDrag(e, chip, item, weekStart, "cal-unplanned-chip", "今週中タスク", "week"));
-        list.appendChild(chip);
       });
     });
   }
@@ -4969,11 +5008,15 @@
         const chip = document.createElement("button");
         chip.type = "button";
         chip.className = "cal-unplanned-chip";
+        const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
+        // 今週中(唯一、子タスクを持ち得るこの一覧)は、いつかの親チップと
+        // 同じ色付き・四角寄りの枠にする(最優先/今日中は子を持たないので
+        // 常にdirectChildCount===0、実質ここは無効)。
+        if (directChildCount > 0) chip.classList.add("parent");
         const label = document.createElement("span");
         label.className = "cal-unplanned-chip-label";
         label.textContent = labelOf(item, fallbackLabel);
         chip.appendChild(label);
-        const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
         if (directChildCount > 0) {
           const badge = document.createElement("span");
           badge.className = "cal-child-count-badge";
@@ -7140,6 +7183,25 @@
       somedayExpandAll = !somedayExpandAll;
       updateSomedayExpandAllBtns();
       renderSomedayList();
+    })
+  );
+
+  const thisWeekExpandAllBtns = [dailyThisWeekExpandAllBtn, weeklyThisWeekExpandAllBtn];
+  function updateThisWeekExpandAllBtns() {
+    thisWeekExpandAllBtns.forEach((btn) => {
+      btn.textContent = thisWeekExpandAll ? "たたむ" : "全展開";
+      btn.classList.toggle("active", thisWeekExpandAll);
+    });
+  }
+  thisWeekExpandAllBtns.forEach((btn) =>
+    btn.addEventListener("click", () => {
+      thisWeekExpandAll = !thisWeekExpandAll;
+      updateThisWeekExpandAllBtns();
+      renderThisWeekTray();
+      // 全展開中はいつか欄を自動的に隠す(全展開でスペースを広く使うため) —
+      // applyCalendarPlanEditingVisibilityが毎renderCalendar後に呼ばれて
+      // 表示/非表示を決め直すが、ここではボタン操作直後に即反映させる。
+      applyCalendarPlanEditingVisibility();
     })
   );
 
