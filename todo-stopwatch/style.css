@@ -2340,6 +2340,14 @@ body {
    これがJSでの位置計算を一切書かずに実現できる。線(.someday-branch-line、
    drawSomedayTreeConnectors参照)を重ねて描けるようposition:relative。 */
 .someday-tree {
+  /* ウィークリー/デイリーではこの要素自体が.calendar-unplanned(欄本体)
+     の中、いつかの平らな一覧(.calendar-unplanned-list)があった位置に
+     直接入っている(全展開/たたむ・追加ボタンが今週中の全展開時と同じ
+     並びになるよう、別行に切り出さずボックス内に置いている)。それ以外
+     のページ(マンスリー/ログ/タスク一覧)ではflexコンテナの外の単独の
+     兄弟要素のままなので、flex/min-widthはそちらでは単に無視される。 */
+  flex: 1;
+  min-width: 0;
   position: relative;
   display: grid;
   grid-auto-flow: column;
