@@ -1501,10 +1501,22 @@ body {
 
 /* 各週の.monthly-week-rowの下に挟む、その週専用の今週中欄。.calendar-
    unplannedをベースに再利用しつつ、flex:none(既にベース側で指定済み)の
-   おかげで.monthly-weeksのflex:1な週行たちの高さ配分を圧迫しない。 */
+   おかげで.monthly-weeksのflex:1な週行たちの高さ配分を圧迫しない。
+   グリッドの罫線に沿った素の帯ではなく、薄緑の角丸カードとして週と週の
+   間に浮くように見せることで、マンスリー本来の日付グリッドの読みやすさ
+   から視覚的に切り離す(ドラッグ中のdrop-target表示は.calendar-
+   unplanned.drop-targetの既存ルールをそのまま流用)。 */
 .monthly-thisweek-row {
-  border-left: 1px solid var(--line);
-  padding: 4px 6px;
+  margin: 3px 5px;
+  padding: 5px 10px 4px;
+  border-top: none;
+  border-radius: 10px;
+  background: var(--live-soft);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.monthly-thisweek-row .calendar-unplanned-title {
+  color: var(--live);
 }
 
 /* --- calendar page (weekly, vertical) --- */
