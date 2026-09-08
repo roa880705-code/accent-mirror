@@ -2121,6 +2121,22 @@ body {
   user-select: none;
 }
 
+/* 最優先/今日中/今週中/いつかの各欄の背景を薄緑に。子タスク/孫タスク/
+   ひ孫タスク(.calendar-subtask-row)は対象外(予定の子タスクツリー・
+   いつかの階層下の掘り下げ表示なので、この4つとは別扱いのまま)。
+   ドラッグ中のdrop-target表示(.calendar-unplanned.drop-target、下の方で
+   accent-softへ上書き)はこれより後ろで定義されるのでそのまま優先される。 */
+.calendar-unplanned:not(.calendar-subtask-row) {
+  background: var(--live-soft);
+}
+
+/* ウィークリーの「今日中」(日ごとの列に分かれた.cal-unscheduled-day一式)
+   は.calendar-unplannedを使わない別構成なので、行全体の背景をここで
+   別途揃える。 */
+.unscheduled-week-row {
+  background: var(--live-soft);
+}
+
 /* 最優先/今日中は、いつか系のような子タスク数バッジを持たないので、
    バッジのクリアランス用に確保していた上側の余白は不要 — 他の行より
    詰めて、デイリーページ全体の縦の余白を減らす。 */
