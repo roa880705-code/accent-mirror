@@ -875,6 +875,11 @@
   const weeklyThisWeekAddBtn = document.getElementById("weeklyThisWeekAddBtn");
   const dailyThisWeekList = document.getElementById("calendarThisWeekList");
   const dailyThisWeekAddBtn = document.getElementById("calendarThisWeekAddBtn");
+  // 予定をドラッグして今週中欄へ落とせるようにするための当たり判定
+  // (onPlanDragMove等)は、いつか同様「現在アクティブな方の箱」だけが
+  // 画面上に存在する側なので、こちらはcalendarUnplannedBoxと同じくswapする。
+  const weeklyThisWeekBoxEl = document.getElementById("weeklyThisWeekBox");
+  const dailyThisWeekBoxEl = document.getElementById("calendarThisWeekBox");
   const briefingMemoInput = document.getElementById("briefingMemoInput");
   const dailyNotesInput = document.getElementById("dailyNotesInput");
   const weeklyWeekLabelEl = document.getElementById("weeklyWeekLabel");
@@ -896,6 +901,7 @@
   // 位置を調べるのに使う、"現在アクティブな方のいつかトレイ" へのポインタ。
   // ウィークリー表示中はweeklyUnplannedBoxElへ差し替わる。
   let calendarUnplannedBox = dailyUnplannedBoxEl;
+  let calendarThisWeekBox = dailyThisWeekBoxEl;
   const calendarUnplannedList = document.getElementById("calendarUnplannedList");
   const calendarSomedayAddBtn = document.getElementById("calendarSomedayAddBtn");
   const calendarSomedayExpandAllBtn = document.getElementById("calendarSomedayExpandAllBtn");
@@ -1699,6 +1705,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-08", text: "「今週中」欄へ、スケジュール済みの予定をドラッグして直接落とせるようにしました。子タスクを抱えた予定もそのまま(子数バッジ付きの1チップとして)まとめて運べます。" },
     { date: "2026-09-07", text: "ウィークリーページを月曜始まり(月〜日)の表示に変更しました。" },
     { date: "2026-09-07", text: "ウィークリーページとデイリーページに、今日中といつかの間に「今週中」欄を追加しました。今週やりたいタスクを横スクロールの一覧で管理できます(スケジュールへのドラッグ登録はまだ未対応です)。" },
     { date: "2026-09-07", text: "マンスリー/ウィークリー/デイリー/ログのページ下部にある欄の表記を「タスク」から「いつか」に戻しました(タスク一覧ページ自体の表記は変更していません)。" },
@@ -2326,6 +2333,38 @@
     const rootId = `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     someday.push({ id: rootId, label: plan.label, parentId: targetParentId });
     if (plan.children && plan.children.length) restorePlanChildrenToSomeday(plan, rootId);
+  }
+
+  // 予定を今週中トレイへ戻す際の子タスクツリー複製。いつか(family全体で
+  // idの名前空間を共有)と違い、今週中の1タスクが持つchildren配列はその
+  // タスク専用でほかと混ざらないので、idの振り直しは不要 — 元のplan側の
+  // id/parentIdをそのまま引き継げる。スケジュール中に完了扱いにした子
+  // タスク(葉のみ完了可)は戻さず除外する(restorePlanChildrenToSomedayと
+  // 同じ方針)。
+  function planChildrenSubtreeForThisWeek(plan) {
+    const result = [];
+    function walk(planParentId) {
+      planChildrenOf(plan, planParentId).forEach((child) => {
+        if (child.done) return;
+        result.push({ id: child.id, label: child.label, parentId: child.parentId || null, done: false });
+        walk(child.id);
+      });
+    }
+    walk(null);
+    return result;
+  }
+
+  // 予定を今週中トレイへドロップした時の入口。最優先/今日中と違い今週中
+  // はいつかと同じく階層を許容するので、子タスクを抱えた予定もそのまま
+  // 1チップ(子数バッジ付き)としてまとめて運べる。
+  function restorePlanToThisWeek(weekStart, plan) {
+    const item = { label: plan.label };
+    if (plan.children && plan.children.length) {
+      const children = planChildrenSubtreeForThisWeek(plan);
+      if (children.length) item.children = children;
+    }
+    ensureItemsArrayForWeek(weekStart).push(item);
+    persistItemsForWeek(weekStart);
   }
 
   // depth番目の階層に属する全ノードを集める(1=子, 2=孫, 3=ひ孫) — 「今
@@ -3120,6 +3159,23 @@
     if (overBox) {
       planDragCtx.overDayUnscheduled = false;
       planDragCtx.overPriorityBox = false;
+      planDragCtx.overThisWeekBox = false;
+      Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+      Array.from(calendarUnscheduledRow.children).forEach((c) => c.classList.remove("drop-target"));
+      calendarUnscheduledRow.classList.remove("drop-target");
+      calendarPriorityBox.classList.remove("drop-target");
+      calendarThisWeekBox.classList.remove("drop-target");
+      return;
+    }
+
+    // 今週中トレイへドロップした場合: いつか同様、子タスクを抱えた予定も
+    // そのまま対象にする(最優先/今日中と違い、ここは階層を許容するため)。
+    const overThisWeekBox = rectContains(calendarThisWeekBox.getBoundingClientRect(), e.clientX, e.clientY);
+    calendarThisWeekBox.classList.toggle("drop-target", overThisWeekBox);
+    planDragCtx.overThisWeekBox = overThisWeekBox;
+    if (overThisWeekBox) {
+      planDragCtx.overDayUnscheduled = false;
+      planDragCtx.overPriorityBox = false;
       Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
       Array.from(calendarUnscheduledRow.children).forEach((c) => c.classList.remove("drop-target"));
       calendarUnscheduledRow.classList.remove("drop-target");
@@ -3233,7 +3289,7 @@
 
   function onPlanDragEnd(e) {
     if (!planDragCtx) return;
-    const { block, dateStr, plan, duration, moved, scrolling, timer, hoverDate, previewStartMin, overUnplannedBox, overDayUnscheduled, overPriorityBox } = planDragCtx;
+    const { block, dateStr, plan, duration, moved, scrolling, timer, hoverDate, previewStartMin, overUnplannedBox, overDayUnscheduled, overPriorityBox, overThisWeekBox } = planDragCtx;
     if (timer) clearTimeout(timer);
     document.removeEventListener("pointermove", onPlanDragMove);
     document.removeEventListener("pointerup", onPlanDragEnd);
@@ -3241,6 +3297,7 @@
     block.classList.remove("dragging", "armed");
     calendarUnplannedBox.classList.remove("drop-target");
     calendarPriorityBox.classList.remove("drop-target");
+    calendarThisWeekBox.classList.remove("drop-target");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
     Array.from(calendarUnscheduledRow.children).forEach((c) => c.classList.remove("drop-target"));
     calendarUnscheduledRow.classList.remove("drop-target");
@@ -3320,6 +3377,33 @@
         // a plan with no linked item goes straight to いつか
         restorePlanToSomeday(plan, somedayRestoreParentId(plan.somedayParentId));
         saveSomeday();
+      }
+      vibrate(20);
+      renderCalendar();
+      return;
+    }
+
+    if (overThisWeekBox) {
+      // いつかへ戻す時と同じ方針(子タスクがあればそのまま一緒に運ぶ)だが、
+      // 行き先は今週中トレイ(その週の1タスクとして、子は1チップの中に
+      // まとめて収まる)。
+      removePlan(dateStr, plan.id);
+      const items = itemsArrayForDate(dateStr);
+      const idx = items.findIndex((it) => it.planId === plan.id);
+      if (idx >= 0) {
+        if (items[idx].elapsedMs > 0 || items[idx].running) {
+          // real recorded time exists: keep the item, just unlink it from the removed plan
+          items[idx].planId = null;
+          sortItemsByPlan(dateStr);
+        } else {
+          items.splice(idx, 1);
+          restorePlanToThisWeek(currentWeekStartKey(), plan);
+        }
+        persistItemsForDate(dateStr);
+        refreshTimerIfShowing(dateStr);
+      } else {
+        // a plan with no linked item goes straight to 今週中
+        restorePlanToThisWeek(currentWeekStartKey(), plan);
       }
       vibrate(20);
       renderCalendar();
@@ -4707,6 +4791,17 @@
         label.className = "cal-unplanned-chip-label";
         label.textContent = labelOf(item, "今週中タスク");
         chip.appendChild(label);
+        // 予定からドロップした際に子タスクを抱えていた場合、それらは
+        // このチップのitem.children配下にまとめて収まっている(今週中に
+        // 個別の子タスク編集UIはまだ無いため) — 子を持つことだけが分かる
+        // よう、いつか/予定の子タスクと同じ子数バッジを添える。
+        const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
+        if (directChildCount > 0) {
+          const badge = document.createElement("span");
+          badge.className = "cal-child-count-badge";
+          badge.dataset.count = String(directChildCount);
+          chip.appendChild(badge);
+        }
         chip.addEventListener("pointerdown", (e) => startTrayItemDrag(e, chip, item, weekStart, "cal-unplanned-chip", "今週中タスク", "week"));
         list.appendChild(chip);
       });
@@ -6761,6 +6856,7 @@
       calendarDetail = weeklyDetailEl;
       calendarUnscheduledRow = weeklyUnscheduledRowEl;
       calendarUnplannedBox = weeklyUnplannedBoxEl;
+      calendarThisWeekBox = weeklyThisWeekBoxEl;
       weekAnchor = weeklyWeekAnchor;
     } else {
       CAL_DAYS = 1;
@@ -6772,6 +6868,7 @@
       calendarDetail = dailyDetailEl;
       calendarUnscheduledRow = dailyUnscheduledRowEl;
       calendarUnplannedBox = dailyUnplannedBoxEl;
+      calendarThisWeekBox = dailyThisWeekBoxEl;
       weekAnchor = dailyWeekAnchor;
     }
   }
