@@ -205,9 +205,28 @@
     }
   }
 
+  // アクセス数の把握用に、サインインの有無を問わず、このブラウザ
+  // タブでのセッション中1回だけ空の行をpage_visitsへ記録する(誰が
+  // 開いたかは分からない匿名カウント)。sessionStorageで同一タブ内の
+  // 再読み込みによる重複だけを防ぐ — タブを閉じて開き直す/別端末なら
+  // 新規に1件記録される。失敗しても画面には一切影響させない。
+  const VISIT_LOGGED_KEY = "todoStopwatch:visitLogged:v1";
+  function logVisitOnce() {
+    try {
+      if (sessionStorage.getItem(VISIT_LOGGED_KEY)) return;
+      sessionStorage.setItem(VISIT_LOGGED_KEY, "1");
+      client.from("page_visits").insert({}).then(({ error }) => {
+        if (error) log("visit log failed", error);
+      });
+    } catch (err) {
+      log("visit log failed", err);
+    }
+  }
+
   async function init() {
     if (!configured) return;
     client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    logVisitOnce();
     const { data } = await client.auth.getSession();
     session = data.session;
     if (session) await initialSync();

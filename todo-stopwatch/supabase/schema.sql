@@ -32,3 +32,20 @@ create policy "app_data_update_own" on public.app_data
 
 create policy "app_data_delete_own" on public.app_data
   for delete using (auth.uid() = user_id);
+
+-- Anonymous page-visit counter: sync.js silently inserts one empty row per
+-- browser session (no sign-in required), purely so the project owner can
+-- see how much the deployed URL is actually being opened. No select policy
+-- is defined, so the public anon key embedded in the front-end can insert
+-- rows but never read them back — only the project owner, via the Supabase
+-- dashboard/SQL editor (which uses the service role and bypasses RLS), can
+-- see the log.
+create table if not exists public.page_visits (
+  id bigint generated always as identity primary key,
+  visited_at timestamptz not null default now()
+);
+
+alter table public.page_visits enable row level security;
+
+create policy "page_visits_insert_anyone" on public.page_visits
+  for insert with check (true);
