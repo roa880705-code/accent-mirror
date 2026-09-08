@@ -2128,6 +2128,17 @@ body {
    accent-softへ上書き)はこれより後ろで定義されるのでそのまま優先される。 */
 .calendar-unplanned:not(.calendar-subtask-row) {
   background: var(--live-soft);
+  /* 最優先/今日中で既に使っていた、バッジのクリアランス分を持たない
+     詰めた上余白(元は子タスク数バッジ用に10pxだった)を、今週中/いつか
+     を含むこの4つの欄すべてに揃える。 */
+  padding-top: 6px;
+}
+
+/* 今週中/いつかのチップも、最優先/今日中(#calendarPriorityList/
+   #calendarUnscheduledRow内)で既に使っていた、縦の余白を持たない
+   コンパクトな大きさに揃える。 */
+.calendar-unplanned:not(.calendar-subtask-row) .cal-unplanned-chip {
+  padding: 0 8px;
 }
 
 /* ウィークリーの「今日中」(日ごとの列に分かれた.cal-unscheduled-day一式)
@@ -2137,21 +2148,6 @@ body {
   background: var(--live-soft);
 }
 
-/* 最優先/今日中は、いつか系のような子タスク数バッジを持たないので、
-   バッジのクリアランス用に確保していた上側の余白は不要 — 他の行より
-   詰めて、デイリーページ全体の縦の余白を減らす。 */
-#calendarPriorityBox,
-#calendarUnscheduledRow {
-  padding-top: 6px;
-}
-
-/* 最優先のチップは、今日中(#calendarUnscheduledRow内の.cal-unscheduled-row)
-   と同じ、縦の余白を持たないコンパクトな大きさに揃える。並べ替え/
-   スケジュールへのドラッグを持つのでcursorは基底の.cal-unplanned-chip
-   のgrabのまま(上書きしない)。 */
-#calendarPriorityList .cal-unplanned-chip {
-  padding: 0 8px;
-}
 
 .calendar-unplanned.drop-target {
   background: var(--accent-soft);
