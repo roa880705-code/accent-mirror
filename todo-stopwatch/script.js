@@ -24,6 +24,10 @@
   // 「今週中」欄: 週(月曜日の日付文字列)ごとに持つ、階層を持たないフラット
   // なタスク一覧。いつか(無期限)と今日中(その日限定)の中間の置き場。
   const THIS_WEEK_TASKS_KEY = "todoStopwatch:thisWeekTasks:v1";
+  // カレンダー系ページの「今週中」「いつか」欄そのものの表示/非表示設定
+  // (中身の移動機能自体は非表示時も裏で維持される — タスクページなど別の
+  // 場所から引き続き操作できる)。
+  const DISPLAY_SETTINGS_KEY = "todoStopwatch:displaySettings:v1";
   const MAX_HISTORY = 60;
   const MAX_COUNT = 40;
   const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
@@ -166,6 +170,29 @@
       // corrupt storage, fall through to empty
     }
     return {};
+  }
+
+  function loadDisplaySettings() {
+    try {
+      const raw = localStorage.getItem(DISPLAY_SETTINGS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          return {
+            showThisWeekBox: parsed.showThisWeekBox !== false,
+            showSomedayBox: parsed.showSomedayBox !== false,
+          };
+        }
+      }
+    } catch (e) {
+      // corrupt storage, fall through to defaults
+    }
+    return { showThisWeekBox: true, showSomedayBox: true };
+  }
+
+  function saveDisplaySettings() {
+    localStorage.setItem(DISPLAY_SETTINGS_KEY, JSON.stringify(displaySettings));
+    window.AppSync?.markDirty("displaySettings:v1", displaySettings);
   }
 
   function loadSomeday() {
@@ -426,6 +453,7 @@
   let periodSettings = loadPeriodSettings();
   let timetable = loadTimetable();
   let timetableVisibleDates = loadTimetableVisibleDates();
+  let displaySettings = loadDisplaySettings();
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -845,6 +873,9 @@
   const settingsAnnouncementsList = document.getElementById("settingsAnnouncementsList");
   const settingsFaqList = document.getElementById("settingsFaqList");
   const periodEnabledToggle = document.getElementById("periodEnabledToggle");
+  const showThisWeekBoxToggle = document.getElementById("showThisWeekBoxToggle");
+  const showSomedayBoxToggle = document.getElementById("showSomedayBoxToggle");
+  const monthlyUnplannedBoxEl = document.getElementById("monthlyUnplannedBox");
   const periodSettingsList = document.getElementById("periodSettingsList");
   const periodAddBtn = document.getElementById("periodAddBtn");
   const timetableDayTabs = document.getElementById("timetableDayTabs");
@@ -958,6 +989,13 @@
   const taskGreatGrandchildBox = document.getElementById("taskGreatGrandchildBox");
   const taskGreatGrandchildList = document.getElementById("taskGreatGrandchildList");
   const tasklistUnplannedList = document.getElementById("tasklistUnplannedList");
+  // タスクページ上部: スケジュールにはめ込んでいない全て(最優先/今日中/
+  // 今週中、今日分)を一望できる縦積みの3欄。いつか(上のtasklist系一式)と
+  // 違い、このページ専用の簡易表示(タップで既存の選択肢モーダルを開く
+  // だけ、ドラッグでの並べ替え/スケジュール化はここでは持たない)。
+  const tasklistPriorityList = document.getElementById("tasklistPriorityList");
+  const tasklistTodayList = document.getElementById("tasklistTodayList");
+  const tasklistThisWeekList = document.getElementById("tasklistThisWeekList");
   const tasklistSomedayAddBtn = document.getElementById("tasklistSomedayAddBtn");
   const tasklistSomedayExpandAllBtn = document.getElementById("tasklistSomedayExpandAllBtn");
   const tasklistSomedayTree = document.getElementById("tasklistSomedayTree");
@@ -1672,6 +1710,18 @@
     refreshCalendarHours();
   });
 
+  showThisWeekBoxToggle.addEventListener("change", () => {
+    displaySettings.showThisWeekBox = showThisWeekBoxToggle.checked;
+    saveDisplaySettings();
+    renderCalendar();
+  });
+
+  showSomedayBoxToggle.addEventListener("change", () => {
+    displaySettings.showSomedayBox = showSomedayBoxToggle.checked;
+    saveDisplaySettings();
+    renderCalendar();
+  });
+
   periodAddBtn.addEventListener("click", () => {
     const last = periodSettings.periods[periodSettings.periods.length - 1];
     // 新しい時限は、直前の時限の「終了」時刻から続けて始まる(以前は
@@ -1700,11 +1750,18 @@
 
   renderPeriodSettingsUI();
 
+  // --- 設定ページ: 表示設定 ---
+  showThisWeekBoxToggle.checked = displaySettings.showThisWeekBox;
+  showSomedayBoxToggle.checked = displaySettings.showSomedayBox;
+
   // --- 設定ページ: お知らせ ---
   // アップデートのたびにここへ1件追記していく、簡易な更新履歴。新しい
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-08", text: "タスクページに「最優先」「今日中」「今週中」欄を追加しました。スケジュールに時間をはめ込んでいない全てのタスクを、いつかと合わせて一箇所で確認できます。" },
+    { date: "2026-09-08", text: "設定ページに「表示設定」を追加し、「今週中」「いつか」欄をカレンダー系ページで非表示にできるようにしました(非表示にしてもタスクページからは引き続き確認・移動できます)。" },
+    { date: "2026-09-08", text: "予定の詳細パネルに「ブロック表示」を追加しました。スケジュール上の予定ブロックに、メモまたは子タスクの一覧を追加表示できます(既定はOFF)。" },
     { date: "2026-09-08", text: "「今週中」からいつかへタスクをドラッグして戻せるようにしました。今日中・最優先から今週中へタスクを移すこともできます。" },
     { date: "2026-09-08", text: "「今週中」のタスクを、今日中・最優先と同じ操作でスケジュール(予定)へドラッグして登録できるようにしました。子タスクを抱えたタスクもそのまま予定の子タスクとして運ばれます。" },
     { date: "2026-09-08", text: "「今週中」欄へ、いつかのタスクやスケジュール済みの予定をドラッグして直接落とせるようにしました。子タスクを抱えたタスク/予定もそのまま(子数バッジ付きの1チップとして)まとめて運べます。" },
@@ -1742,7 +1799,7 @@
 
   // --- 設定ページ: よくある質問 ---
   const FAQ_ITEMS = [
-    { q: "最優先・今日中・いつか・スケジュールは何が違いますか?", a: "「最優先」「今日中」は時間を決めずに今日やることを置いておく場所、「スケジュール」(ウィークリー/デイリー)は時間を決めて配置した予定です。「いつか」はまだ日程が決まっていないタスクの置き場で、いつか欄からスケジュールへドラッグすると時間付きの予定になります。" },
+    { q: "最優先・今日中・今週中・いつか・スケジュールは何が違いますか?", a: "「最優先」「今日中」は時間を決めずに今日やることを置いておく場所、「今週中」は同じく時間を決めずに今週やることを置いておく場所です。「スケジュール」(ウィークリー/デイリー)は時間を決めて配置した予定です。「いつか」はまだ日程が決まっていないタスクの置き場で、これらの欄同士はドラッグで移し替えられ、スケジュールへドラッグすると時間付きの予定になります。" },
     { q: "子タスクはどうやって追加しますか?", a: "いつか欄や予定詳細のタスクを長押しせずに軽くタップすると、変更・削除に加えて「子タスクを追加」の選択肢が出ます。子タスク・孫タスク・ひ孫タスクまで階層を持たせられます。" },
     { q: "タスクの並び順はどうやって変えますか?", a: "チップを長押しして保持してから、横方向にドラッグすると並べ替えられます。保持後は指が多少上下にぶれても並べ替えのまま続けられ、トレイの端まで持っていくと自動でスクロールして見えていなかった項目も並べ替え対象にできます。" },
     { q: "バッファ(移動時間)とは何ですか?どう設定しますか?", a: "予定の前後に確保しておきたい移動時間などの余白です。予定をタップして詳細を開くと「バッファ」欄があり、前後それぞれ何分か入力できます。不要になったら「クリア」で一括で外せます。" },
@@ -2733,6 +2790,38 @@
       bufferRow.appendChild(bufferClearBtn);
     }
 
+    // ブロック表示: カレンダーグリッド上の小さなブロックに、予定名+開始
+    // 時刻の次の行から、メモか子タスクの一覧を追加表示するかどうかの
+    // 選択(既定はOFF)。予定ごとに個別に選べる。
+    const blockDisplayRow = document.createElement("div");
+    blockDisplayRow.className = "cal-plan-buffer-row";
+    const blockDisplayCaption = document.createElement("span");
+    blockDisplayCaption.className = "cal-plan-buffer-caption";
+    blockDisplayCaption.textContent = "ブロック表示";
+    blockDisplayRow.appendChild(blockDisplayCaption);
+    function buildBlockDisplayBtn(value, label) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-modal-cancel cal-plan-blockdisplay-btn";
+      btn.textContent = label;
+      btn.classList.toggle("active", (plan.blockDisplay || "off") === value);
+      btn.addEventListener("click", () => {
+        if ((plan.blockDisplay || "off") === value) return;
+        captureUndoSnapshot();
+        if (value === "off") delete plan.blockDisplay;
+        else plan.blockDisplay = value;
+        savePlans();
+        renderCalendar();
+        showPlanDetail(dateStr, plan);
+      });
+      return btn;
+    }
+    blockDisplayRow.append(
+      buildBlockDisplayBtn("off", "OFF"),
+      buildBlockDisplayBtn("memo", "メモ"),
+      buildBlockDisplayBtn("children", "子タスク")
+    );
+
     // パネル(calendarDetail)自体の高さをドラッグで調整できるつまみ。
     // sticky化したヘッダーの中に置くので、ツリーをスクロールしていても
     // 常に掴める位置に残る。
@@ -2759,7 +2848,7 @@
     // 左側: バッファ入力+操作ボタンをまとめた縦一列。
     const leftCol = document.createElement("div");
     leftCol.className = "cal-plan-detail-left-col";
-    leftCol.append(bufferRow, actions);
+    leftCol.append(bufferRow, blockDisplayRow, actions);
 
     const body = document.createElement("div");
     body.className = "cal-plan-detail-body";
@@ -4298,10 +4387,17 @@
   function applyCalendarPlanEditingVisibility() {
     const editing = !!selectedPlanId;
     calendarUnscheduledRow.hidden = editing;
-    calendarUnplannedBox.hidden = editing;
+    // 編集中は問答無用で隠すが、編集中でなくても設定で非表示にした欄は
+    // 引き続き隠したまま(移動などの機能自体はhidden中でも裏で動くので、
+    // ここではDOM上の表示/非表示だけを決める)。
+    calendarUnplannedBox.hidden = editing || !displaySettings.showSomedayBox;
     const prefix = calendarUnplannedBox.id === "weeklyUnplannedBox" ? "weekly" : "calendar";
     const thisWeekBox = document.getElementById(`${prefix}ThisWeekBox`);
-    if (thisWeekBox) thisWeekBox.hidden = editing;
+    if (thisWeekBox) thisWeekBox.hidden = editing || !displaySettings.showThisWeekBox;
+    // マンスリー/ログのいつか欄はこの編集状態と無関係(予定詳細パネルを
+    // 持たないページなので)、設定だけで決まる。
+    monthlyUnplannedBoxEl.hidden = !displaySettings.showSomedayBox;
+    taskUnplannedBox.hidden = !displaySettings.showSomedayBox;
     if (!editing) return;
     ["SomedayTree", "SubtaskConnector", "SubtaskBox", "GrandchildConnector", "GrandchildBox", "GreatGrandchildConnector", "GreatGrandchildBox"].forEach(
       (suffix) => {
@@ -4808,6 +4904,53 @@
         list.appendChild(chip);
       });
     });
+  }
+
+  // タスクページ専用: 最優先/今日中(今日分)と今週中(今週分)を、いつかの
+  // 上に縦積みで一覧表示する。このページには時間軸グリッドが無いので、
+  // 他のページのようなドラッグでの並べ替え/スケジュール化は持たず、
+  // タップで既存の選択肢モーダルを開くだけのシンプルな表示にする。
+  function renderTasklistFlatSections() {
+    function renderFlat(listEl, items, fallbackLabel, emptyText, onTap) {
+      listEl.innerHTML = "";
+      if (!items.length) {
+        const empty = document.createElement("span");
+        empty.className = "calendar-unplanned-empty";
+        empty.textContent = emptyText;
+        listEl.appendChild(empty);
+        return;
+      }
+      items.forEach((item) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "cal-unplanned-chip";
+        const label = document.createElement("span");
+        label.className = "cal-unplanned-chip-label";
+        label.textContent = labelOf(item, fallbackLabel);
+        chip.appendChild(label);
+        const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
+        if (directChildCount > 0) {
+          const badge = document.createElement("span");
+          badge.className = "cal-child-count-badge";
+          badge.dataset.count = String(directChildCount);
+          chip.appendChild(badge);
+        }
+        chip.addEventListener("click", () => onTap(item));
+        listEl.appendChild(chip);
+      });
+    }
+
+    const dateStr = state.day;
+    const weekStart = mondayOfWeek(state.day);
+
+    const priorityTasks = itemsArrayForDate(dateStr).filter((it) => it.priority && !it.completed);
+    renderFlat(tasklistPriorityList, priorityTasks, "最優先タスク", "最優先のタスクなし", (item) => promptRegularTaskEdit(dateStr, item));
+
+    const todayTasks = itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority && !it.completed);
+    renderFlat(tasklistTodayList, todayTasks, "今日中タスク", "今日中のタスクなし", (item) => promptRegularTaskEdit(dateStr, item));
+
+    const weekTasks = itemsArrayForWeek(weekStart);
+    renderFlat(tasklistThisWeekList, weekTasks, "今週中タスク", "今週中のタスクなし", (item) => promptWeeklyTaskEdit(weekStart, item));
   }
 
   async function addThisWeekTask() {
@@ -6339,11 +6482,31 @@
             block.style.height = `${minToPx(Math.max(1, p.endMin - p.startMin))}px`;
             block.style.left = blockLeftCss;
             block.style.width = blockWidthCss;
-            block.appendChild(document.createTextNode(p.label));
+            // 予定名+開始時刻は1行目(省略記号付き)、メモ/子タスクの
+            // 追加表示(ブロック表示設定、既定OFF)はその下に別行として
+            // 積む — 短いブロックでは自然にoverflow:hiddenで隠れる。
+            const titleRow = document.createElement("div");
+            titleRow.className = "cal-plan-block-title";
+            titleRow.appendChild(document.createTextNode(p.label));
             const timeEl = document.createElement("span");
             timeEl.className = "cal-plan-time";
             timeEl.textContent = formatMinHM(p.startMin);
-            block.appendChild(timeEl);
+            titleRow.appendChild(timeEl);
+            block.appendChild(titleRow);
+            if (p.blockDisplay === "memo" && p.memo) {
+              const extra = document.createElement("div");
+              extra.className = "cal-plan-block-extra";
+              extra.textContent = p.memo;
+              block.appendChild(extra);
+            } else if (p.blockDisplay === "children") {
+              const directChildren = planChildrenOf(p, null);
+              if (directChildren.length) {
+                const extra = document.createElement("div");
+                extra.className = "cal-plan-block-extra";
+                extra.textContent = directChildren.map((c) => c.label).join(" / ");
+                block.appendChild(extra);
+              }
+            }
             const leafCount = planLeafChildCount(p);
             block.classList.toggle("has-children", leafCount > 0);
             if (leafCount > 0) {
@@ -6469,6 +6632,7 @@
     tickCalendarLive();
 
     renderThisWeekTray();
+    renderTasklistFlatSections();
     renderSomedayList();
     applyCalendarPlanEditingVisibility();
     renderCalendarDetail();

@@ -1924,8 +1924,6 @@ body {
   color: var(--accent);
   background: var(--card-bg);
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   cursor: grab;
   touch-action: none;
   -webkit-touch-callout: none;
@@ -1933,10 +1931,28 @@ body {
   user-select: none;
 }
 
+/* 予定名+開始時刻の1行目だけを省略記号付きにする — ブロック全体を
+   nowrapにすると、下のcal-plan-block-extra(メモ/子タスク)も1行に
+   潰れてしまうため、ここだけ個別に指定する。 */
+.cal-plan-block-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .cal-plan-time {
   opacity: 0.6;
   font-weight: 500;
   margin-left: 3px;
+}
+
+/* ブロック表示設定(メモ/子タスク、既定OFF)で追加表示する行。ブロック
+   自体がoverflow:hiddenなので、高さが足りない予定では自然に隠れる。 */
+.cal-plan-block-extra {
+  white-space: normal;
+  opacity: 0.7;
+  font-weight: 500;
+  margin-top: 1px;
 }
 
 .cal-plan-block.dragging {
@@ -2435,10 +2451,48 @@ body {
   flex: 1;
   min-height: 0;
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px 2px 4px;
+  overflow: hidden;
+}
+
+/* 最優先/今日中/今週中: スケジュールにはめ込んでいない全てを一望できる
+   よう、既存のいつか(Miller Columns)の上に縦積みで追加した3つの欄。
+   各欄のリスト自体に高さの上限を持たせて自前でスクロールさせるので、
+   件数が多くても他の欄やいつか欄を圧迫しない。 */
+.tasklist-flat-sections {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tasklist-flat-box {
+  flex: none;
+  height: auto;
+  border-left: none;
+  border-top: 1px solid var(--line);
+  padding: 4px 10px;
+}
+
+.tasklist-flat-box:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.tasklist-flat-box .tasklist-list {
+  max-height: 92px;
+}
+
+.tasklist-someday-row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
   flex-direction: row;
   align-items: stretch;
   gap: 0;
-  padding: 2px 2px 4px;
   overflow: hidden;
 }
 
@@ -2851,6 +2905,17 @@ body {
 .cal-plan-delete {
   padding: 5px 12px;
   font-size: 0.68rem;
+}
+
+.cal-plan-blockdisplay-btn {
+  padding: 3px 10px;
+  font-size: 0.68rem;
+  border-radius: 999px;
+}
+
+.cal-plan-blockdisplay-btn.active {
+  background: var(--accent);
+  color: #fff;
 }
 
 .calendar-legend {

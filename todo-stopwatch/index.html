@@ -63,6 +63,18 @@
             <div id="timetablePeriodList" class="timetable-period-list"></div>
           </details>
           <details class="settings-section" open>
+            <summary class="settings-section-title">表示設定</summary>
+            <label class="settings-toggle-row">
+              <input type="checkbox" id="showThisWeekBoxToggle">
+              <span>ウィークリー/デイリーに「今週中」欄を表示する</span>
+            </label>
+            <label class="settings-toggle-row">
+              <input type="checkbox" id="showSomedayBoxToggle">
+              <span>マンスリー/ウィークリー/デイリー/ログに「いつか」欄を表示する</span>
+            </label>
+            <p class="settings-section-note">非表示にしても、タスクページからはこれまで通り確認・移動できます。</p>
+          </details>
+          <details class="settings-section" open>
             <summary class="settings-section-title">よくある質問</summary>
             <div id="settingsFaqList" class="settings-faq-list"></div>
           </details>
@@ -70,30 +82,52 @@
       </section>
       <section class="page">
         <div class="tasklist-page">
-          <div class="calendar-unplanned tasklist-box" id="tasklistUnplannedBox">
-            <div class="tasklist-box-header">
-              <span class="calendar-unplanned-title">タスク</span>
-              <button type="button" class="someday-expand-all-btn" id="tasklistSomedayExpandAllBtn">全展開</button>
-              <button type="button" class="calendar-someday-add" id="tasklistSomedayAddBtn" aria-label="タスクを追加">＋</button>
+          <div class="tasklist-flat-sections" id="tasklistFlatSections">
+            <div class="calendar-unplanned tasklist-box tasklist-flat-box" id="tasklistPriorityBox">
+              <div class="tasklist-box-header">
+                <span class="calendar-unplanned-title">最優先</span>
+              </div>
+              <div class="calendar-unplanned-list tasklist-list" id="tasklistPriorityList"></div>
             </div>
-            <div class="calendar-unplanned-list tasklist-list" id="tasklistUnplannedList"></div>
+            <div class="calendar-unplanned tasklist-box tasklist-flat-box" id="tasklistTodayBox">
+              <div class="tasklist-box-header">
+                <span class="calendar-unplanned-title">今日中</span>
+              </div>
+              <div class="calendar-unplanned-list tasklist-list" id="tasklistTodayList"></div>
+            </div>
+            <div class="calendar-unplanned tasklist-box tasklist-flat-box" id="tasklistThisWeekBox">
+              <div class="tasklist-box-header">
+                <span class="calendar-unplanned-title">今週中</span>
+              </div>
+              <div class="calendar-unplanned-list tasklist-list" id="tasklistThisWeekList"></div>
+            </div>
           </div>
-          <div class="someday-tree vertical" id="tasklistSomedayTree" hidden></div>
-          <div class="calendar-unplanned calendar-subtask-row tasklist-box" id="tasklistSubtaskBox" hidden>
-            <span class="calendar-unplanned-title">子タスク</span>
-            <div class="calendar-unplanned-list tasklist-list" id="tasklistSubtaskList"></div>
+          <div class="tasklist-someday-row" id="tasklistSomedayRow">
+            <div class="calendar-unplanned tasklist-box" id="tasklistUnplannedBox">
+              <div class="tasklist-box-header">
+                <span class="calendar-unplanned-title">タスク</span>
+                <button type="button" class="someday-expand-all-btn" id="tasklistSomedayExpandAllBtn">全展開</button>
+                <button type="button" class="calendar-someday-add" id="tasklistSomedayAddBtn" aria-label="タスクを追加">＋</button>
+              </div>
+              <div class="calendar-unplanned-list tasklist-list" id="tasklistUnplannedList"></div>
+            </div>
+            <div class="someday-tree vertical" id="tasklistSomedayTree" hidden></div>
+            <div class="calendar-unplanned calendar-subtask-row tasklist-box" id="tasklistSubtaskBox" hidden>
+              <span class="calendar-unplanned-title">子タスク</span>
+              <div class="calendar-unplanned-list tasklist-list" id="tasklistSubtaskList"></div>
+            </div>
+            <div class="calendar-unplanned calendar-subtask-row tasklist-box" id="tasklistGrandchildBox" hidden>
+              <span class="calendar-unplanned-title">孫タスク</span>
+              <div class="calendar-unplanned-list tasklist-list" id="tasklistGrandchildList"></div>
+            </div>
+            <div class="calendar-unplanned calendar-subtask-row tasklist-box" id="tasklistGreatGrandchildBox" hidden>
+              <span class="calendar-unplanned-title">ひ孫タスク</span>
+              <div class="calendar-unplanned-list tasklist-list" id="tasklistGreatGrandchildList"></div>
+            </div>
+            <div class="someday-branch tasklist-connector" id="tasklistSubtaskConnector" hidden></div>
+            <div class="someday-branch tasklist-connector" id="tasklistGrandchildConnector" hidden></div>
+            <div class="someday-branch tasklist-connector" id="tasklistGreatGrandchildConnector" hidden></div>
           </div>
-          <div class="calendar-unplanned calendar-subtask-row tasklist-box" id="tasklistGrandchildBox" hidden>
-            <span class="calendar-unplanned-title">孫タスク</span>
-            <div class="calendar-unplanned-list tasklist-list" id="tasklistGrandchildList"></div>
-          </div>
-          <div class="calendar-unplanned calendar-subtask-row tasklist-box" id="tasklistGreatGrandchildBox" hidden>
-            <span class="calendar-unplanned-title">ひ孫タスク</span>
-            <div class="calendar-unplanned-list tasklist-list" id="tasklistGreatGrandchildList"></div>
-          </div>
-          <div class="someday-branch tasklist-connector" id="tasklistSubtaskConnector" hidden></div>
-          <div class="someday-branch tasklist-connector" id="tasklistGrandchildConnector" hidden></div>
-          <div class="someday-branch tasklist-connector" id="tasklistGreatGrandchildConnector" hidden></div>
         </div>
       </section>
       <section class="page">
