@@ -2269,6 +2269,26 @@ body {
   box-sizing: border-box;
 }
 
+/* 今週中の子タスクを抱えたチップをタップした時の「ドリルダウン」欄。
+   いつかの子タスク欄と同じ考え方: 上の今週中の行はそのまま横並びの
+   チップ一覧に保ち、タップしたタスクの子孫だけをこの専用の行に表示
+   する(親チップ自身はここには複製しない、連結線が上の行の実際の
+   チップ位置から伸びる)。 */
+.cal-thisweek-drilldown {
+  /* position:relativeにしない — 連結線(.someday-branch-line)は
+     drawThisWeekConnectorLinesが.calendar/.pageを基準に座標計算して
+     いるので、この要素自身を新たな位置決めの基準にしてしまうと計算が
+     ずれて線が見当違いの場所(画面外)に描かれてしまう。 */
+  flex: none;
+  background: var(--live-soft);
+  border-top: 1px solid var(--line);
+  padding: 10px 2px 10px 2px;
+}
+
+.cal-thisweek-drilldown[hidden] {
+  display: none;
+}
+
 .cal-thisweek-children-row {
   display: flex;
   flex-wrap: wrap;

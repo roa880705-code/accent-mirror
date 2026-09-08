@@ -920,6 +920,10 @@
   // 画面上に存在する側なので、こちらはcalendarUnplannedBoxと同じくswapする。
   const weeklyThisWeekBoxEl = document.getElementById("weeklyThisWeekBox");
   const dailyThisWeekBoxEl = document.getElementById("calendarThisWeekBox");
+  const weeklyThisWeekDrilldownEl = document.getElementById("weeklyThisWeekDrilldown");
+  const weeklyThisWeekDrilldownListEl = document.getElementById("weeklyThisWeekDrilldownList");
+  const dailyThisWeekDrilldownEl = document.getElementById("calendarThisWeekDrilldown");
+  const dailyThisWeekDrilldownListEl = document.getElementById("calendarThisWeekDrilldownList");
   const briefingMemoInput = document.getElementById("briefingMemoInput");
   const dailyNotesInput = document.getElementById("dailyNotesInput");
   const weeklyWeekLabelEl = document.getElementById("weeklyWeekLabel");
@@ -1799,6 +1803,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-08", text: "今週中の子タスクを抱えたタスクをタップした時の挙動を、いつかと同じ仕様に変更しました。他のタスクは横並びのまま動かず、タップしたタスクの子孫だけが専用の欄に展開されます。" },
     { date: "2026-09-08", text: "今週中で一度展開したタスクが、再タップしても折りたたまれなくなる不具合を修正しました。また、いつかと同じように親子関係を示す連結線を表示するようにしました。" },
     { date: "2026-09-08", text: "今週中の色付きチップ(子タスクを抱えたタスク)をタップすると、子・孫までまとめてその場に展開して確認できるようにしました。また「全展開」ボタンを押した際に展開内容が画面に表示されず見えなくなっていた不具合も修正しました。" },
     { date: "2026-09-08", text: "「今週中」欄にも、いつかと同じ「全展開」ボタンを追加しました。子タスクをその場で並べて確認でき、展開中はいつか欄を自動的に隠してスペースを譲ります。また、子タスクを抱えた今週中タスクは、いつかの親タスクと同じ色付き・四角寄りのチップで表示されるようにしました。" },
@@ -4931,40 +4936,45 @@
     return mondayOfWeek(weekAnchor);
   }
 
-  // 今週中アイテムのうち、個別にタップして展開した(子孫を表示中の)もの
-  // の集合。thisWeekTasks[weekStart]の各アイテムはオブジェクトの参照が
+  // 今週中で個別にタップしてドリルダウン中(子孫を専用行に表示中)の
+  // アイテム。いつかのactiveSomedayIds同様、常に高々1件だけがアクティブ
+  // (別のタスクをタップすると差し替わる、同じタスクを再タップすると
+  // 解除)。thisWeekTasks[weekStart]の各アイテムはオブジェクトの参照が
   // 再レンダーをまたいで保たれる(persistItemsForWeekはJSONへ書き出す
   // だけで、メモリ上のオブジェクト自体は差し替えない)ので、idを新設せず
   // オブジェクト参照そのものをキーにできる。ページ間・週の切り替えを
   // またいでも保持する必要は無いセッション限りの表示状態。
-  const thisWeekExpandedItems = new Set();
-  function thisWeekItemIsExpanded(item) {
-    return thisWeekExpandAll || thisWeekExpandedItems.has(item);
-  }
-  function toggleThisWeekItemExpanded(item) {
-    if (thisWeekExpandedItems.has(item)) thisWeekExpandedItems.delete(item);
-    else thisWeekExpandedItems.add(item);
+  let activeThisWeekItem = null;
+  function toggleThisWeekActiveItem(item) {
+    activeThisWeekItem = activeThisWeekItem === item ? null : item;
     renderThisWeekTray();
   }
 
-  // 今週中の1アイテム分のチップ本体(通常表示/展開どちらでも使う)。
+  // 今週中の1アイテム分のチップ本体(通常表示/全展開どちらでも使う)。
   // 子タスクを抱えている場合は、いつかの親チップと同じ「色付き・四角
   // 寄りの枠」にして、コンテナであることが一目で分かるようにする
   // (今週中はいつかと違い家系が複数無いので、家系ごとの色分けは不要 —
   // 常に共通のaccent色で塗る)。
-  // 展開中の連結線描画(drawThisWeekConnectorLines)がルートチップを
-  // 探すための固定id。今週中アイテム自身はsomeday/plan.childrenのような
-  // idを持たないため、子タスク側のidと衝突しないこの文字列で代用する。
+  // 連結線描画(drawThisWeekConnectorLines)がルートチップを探すための
+  // 固定id。今週中アイテム自身はsomeday/plan.childrenのようなidを
+  // 持たないため、子タスク側のidと衝突しないこの文字列で代用する。
   const THISWEEK_ROOT_NODE_ID = "__thisweek_root__";
 
-  function createThisWeekChip(item, weekStart) {
+  // tagAsRoot: このチップにTHISWEEK_ROOT_NODE_IDを付けて連結線の起点に
+  // するかどうか。全展開中は各アイテムがそれぞれ専用のfamilyラッパー内で
+  // 完結しているので常にtrue(同じidが複数あってもラッパーごとに探すため
+  // 衝突しない)。通常のドリルダウン中は、今週中の行全体を1つの範囲として
+  // 探すため、今アクティブな1件だけに付ける(でないと最初に見つかった
+  // 無関係なチップに繋がってしまう)。
+  function createThisWeekChip(item, weekStart, tagAsRoot) {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "cal-unplanned-chip";
     chip.trayItem = item;
-    chip.dataset.thisweekNodeId = THISWEEK_ROOT_NODE_ID;
+    if (tagAsRoot) chip.dataset.thisweekNodeId = THISWEEK_ROOT_NODE_ID;
     const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
     if (directChildCount > 0) chip.classList.add("parent");
+    if (item === activeThisWeekItem) chip.classList.add("active-parent");
     const label = document.createElement("span");
     label.className = "cal-unplanned-chip-label";
     label.textContent = labelOf(item, "今週中タスク");
@@ -5042,16 +5052,20 @@
   // 今週中の展開表示専用の連結線描画。親が上・子がすぐ下という縦積みの
   // レイアウトなので、幾何はdrawSomedayTreeConnectorLinesのisVertical=
   // false相当(幹を下に伸ばし、横の梁から各子へ短く下ろす)と同じ形。
-  // containerElはfamilyブロック(position:relative)自身で、スクロールは
-  // 持たないためオフセット計算は不要。
-  function drawThisWeekConnectorLines(containerEl, pairs) {
-    containerEl.querySelectorAll(".someday-branch-line").forEach((el) => el.remove());
+  // lineHostElは実際に線(.someday-branch-line)を追加する場所、rootElは
+  // チップ検索とpositionの基準にする共通の祖先(.calendar/.page、
+  // position:relative)— 全展開中はfamilyラッパー自身がその両方を兼ねる
+  // (親も子も同じラッパー内に収まるため)が、通常のドリルダウン中は
+  // 親チップが今週中の行、子孫が別の専用行と別々の場所にあるため、
+  // 両方を含む共通の祖先をrootElとして渡す必要がある。
+  function drawThisWeekConnectorLines(lineHostEl, rootEl, pairs) {
+    lineHostEl.querySelectorAll(".someday-branch-line").forEach((el) => el.remove());
     if (!pairs.length) return;
-    const rootRect = containerEl.getBoundingClientRect();
+    const rootRect = rootEl.getBoundingClientRect();
     const half = SOMEDAY_BRANCH_LINE_W / 2;
     pairs.forEach(({ parentId, children }) => {
-      const parentChip = containerEl.querySelector(`[data-thisweek-node-id="${parentId}"]`);
-      const childChips = children.map((c) => containerEl.querySelector(`[data-thisweek-node-id="${c.id}"]`)).filter(Boolean);
+      const parentChip = rootEl.querySelector(`[data-thisweek-node-id="${parentId}"]`);
+      const childChips = children.map((c) => rootEl.querySelector(`[data-thisweek-node-id="${c.id}"]`)).filter(Boolean);
       if (!parentChip || !childChips.length) return;
       const parentRect = parentChip.getBoundingClientRect();
       const childRects = childChips.map((el) => el.getBoundingClientRect());
@@ -5065,10 +5079,10 @@
       const branchY = Math.max(stemTop + 2, Math.min(...childAnchors.map((a) => a.top)) - SOMEDAY_BRANCH_GAP);
       const allX = [parentX, ...childAnchors.map((a) => a.x)];
 
-      addSomedayBranchLine(containerEl, parentX - half, stemTop, SOMEDAY_BRANCH_LINE_W, branchY - stemTop);
-      addSomedayBranchLine(containerEl, Math.min(...allX), branchY - half, Math.max(...allX) - Math.min(...allX), SOMEDAY_BRANCH_LINE_W);
+      addSomedayBranchLine(lineHostEl, parentX - half, stemTop, SOMEDAY_BRANCH_LINE_W, branchY - stemTop);
+      addSomedayBranchLine(lineHostEl, Math.min(...allX), branchY - half, Math.max(...allX) - Math.min(...allX), SOMEDAY_BRANCH_LINE_W);
       childAnchors.forEach((a) => {
-        addSomedayBranchLine(containerEl, a.x - half, branchY, SOMEDAY_BRANCH_LINE_W, a.top - branchY);
+        addSomedayBranchLine(lineHostEl, a.x - half, branchY, SOMEDAY_BRANCH_LINE_W, a.top - branchY);
       });
     });
   }
@@ -5076,16 +5090,19 @@
   function renderThisWeekTray() {
     const weekStart = currentWeekStartKey();
     const items = itemsArrayForWeek(weekStart);
-    // 1件でも展開中(子孫を表示中)のアイテムがあれば、トレイ自体を
-    // 「1行だけの横スクロール」から「折り返して縦に伸びる」表示へ切り替
-    // える。横一列のままだと展開した子孫がその行の先へ延々と続くだけで、
-    // 画面には映らない(スクロールしないと見えない)ままになってしまう
-    // ため。
-    const anyExpanded = items.some((item) => item.children && item.children.length && thisWeekItemIsExpanded(item));
-    [weeklyThisWeekBoxEl, dailyThisWeekBoxEl].forEach((box) => box.classList.toggle("grouped", anyExpanded));
+    // ドリルダウン中のアイテムが週の切り替え等で今の一覧に無くなったら
+    // 状態を捨てる(いつかのstale activeSomedayId処理と同じ考え方)。
+    if (activeThisWeekItem && !items.includes(activeThisWeekItem)) activeThisWeekItem = null;
+
+    // 全展開中だけ、今週中の行自体を「1行だけの横スクロール」から
+    // 「折り返して縦に伸びる」表示へ切り替える(全アイテムを同時に見せる
+    // ため、多少行の見た目が変わるのは織り込み済み)。通常のドリル
+    // ダウン(1件だけタップして展開)では、いつか同様、上の行は常に
+    // 横並びの一覧のまま変えず、子孫は専用の別行に表示する。
+    [weeklyThisWeekBoxEl, dailyThisWeekBoxEl].forEach((box) => box.classList.toggle("grouped", thisWeekExpandAll));
     [weeklyThisWeekList, dailyThisWeekList].forEach((list) => {
       list.innerHTML = "";
-      list.classList.toggle("grouped", anyExpanded);
+      list.classList.toggle("grouped", thisWeekExpandAll);
       if (!items.length) {
         const empty = document.createElement("span");
         empty.className = "calendar-unplanned-empty";
@@ -5095,18 +5112,34 @@
       }
       items.forEach((item) => {
         const hasChildren = !!(item.children && item.children.length);
-        if (hasChildren && thisWeekItemIsExpanded(item)) {
+        if (thisWeekExpandAll && hasChildren) {
           const family = document.createElement("div");
           family.className = "cal-thisweek-family";
-          family.appendChild(createThisWeekChip(item, weekStart));
+          family.appendChild(createThisWeekChip(item, weekStart, true));
           family.appendChild(buildThisWeekChildrenTree(item));
           list.appendChild(family);
           // レイアウト確定後(チップの実際の位置が定まった1フレーム後)に
           // 連結線を引く — buildPlanChildrenSectionと同じ考え方。
-          requestAnimationFrame(() => drawThisWeekConnectorLines(family, thisWeekConnectorPairs(item)));
+          requestAnimationFrame(() => drawThisWeekConnectorLines(family, family, thisWeekConnectorPairs(item)));
         } else {
-          list.appendChild(createThisWeekChip(item, weekStart));
+          list.appendChild(createThisWeekChip(item, weekStart, item === activeThisWeekItem));
         }
+      });
+    });
+
+    // ドリルダウン欄(いつかの子タスク欄と同じ位置づけ): 全展開中でなく、
+    // かつ1件アクティブな時だけ表示する。
+    const showDrilldown = !thisWeekExpandAll && !!activeThisWeekItem;
+    [weeklyThisWeekDrilldownEl, dailyThisWeekDrilldownEl].forEach((box) => (box.hidden = !showDrilldown));
+    if (!showDrilldown) return;
+    [weeklyThisWeekDrilldownListEl, dailyThisWeekDrilldownListEl].forEach((listEl) => {
+      listEl.innerHTML = "";
+      listEl.appendChild(buildThisWeekChildrenTree(activeThisWeekItem));
+    });
+    requestAnimationFrame(() => {
+      [weeklyThisWeekDrilldownEl, dailyThisWeekDrilldownEl].forEach((drilldownEl) => {
+        const rootEl = drilldownEl.closest(".calendar, .page");
+        if (rootEl) drawThisWeekConnectorLines(drilldownEl, rootEl, thisWeekConnectorPairs(activeThisWeekItem));
       });
     });
   }
@@ -5614,7 +5647,7 @@
       ctx.chip.style.transition = "";
       ctx.chip.style.transform = "";
       trayDragCtx = null;
-      toggleThisWeekItemExpanded(ctx.item);
+      toggleThisWeekActiveItem(ctx.item);
       return;
     }
 
@@ -5623,7 +5656,7 @@
       if (ctx.scopeType === "week") {
         // 子タスクを抱えたチップは、いつかの親チップ同様タップで編集
         // モーダルではなく子孫の展開/折りたたみを切り替える。
-        if (ctx.item.children && ctx.item.children.length) toggleThisWeekItemExpanded(ctx.item);
+        if (ctx.item.children && ctx.item.children.length) toggleThisWeekActiveItem(ctx.item);
         else promptWeeklyTaskEdit(ctx.dateStr, ctx.item);
       } else {
         promptRegularTaskEdit(ctx.dateStr, ctx.item);
