@@ -2195,10 +2195,14 @@ body {
 
 /* ウィークリーページの今週中/いつか欄の見出しの右に、その上の今日中
    (.cal-unscheduled-day)と同じ縦線を設け、gutter〜月曜列の境界線が
-   そのまま下へ続いているように見せる。デイリー側は今日中が列分けの
-   無い1行だけなので対象外。 */
+   そのまま下へ続いているように見せる。デイリーページの最優先・今日中・
+   今週中・いつかも、見出しと内容の区切りとして同じ縦線を揃える
+   (最優先だけは対象外という要望のため除く)。 */
 #weeklyThisWeekBox > .calendar-unplanned-title,
-#weeklyUnplannedBox > .calendar-unplanned-title {
+#weeklyUnplannedBox > .calendar-unplanned-title,
+#calendarUnscheduledRow > .calendar-unplanned-title,
+#calendarThisWeekBox > .calendar-unplanned-title,
+#calendarUnplannedBox > .calendar-unplanned-title {
   align-self: stretch;
   display: flex;
   align-items: center;
@@ -2631,6 +2635,11 @@ body {
   display: flex;
   border-top: 1px solid var(--line);
   padding: 4px 0;
+  /* タスクが無い日ばかりだと中身が空になって行の高さが潰れ、今週中/
+     いつか欄(39px)よりずっと狭く見える上、各日付列(.cal-unscheduled-day)
+     のドロップ判定領域まで小さくなりすぎて反応しなくなっていたため、
+     他の欄と同じ高さを常に確保する。 */
+  min-height: 39px;
 }
 
 .unscheduled-week-row[hidden] {
