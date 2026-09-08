@@ -1797,6 +1797,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-08", text: "「今週中」のタスクを、ウィークリーの「当日中」欄(曜日ごとの列)やデイリーの「今日中」欄へドラッグして、その日のタスクへ直接移せるようにしました(子タスクを抱えたタスクは対象外です)。" },
     { date: "2026-09-08", text: "デイリーページの「今日中」「今週中」「いつか」欄の見出し右側にも、ウィークリーと同じ縦線を追加しました。また、ウィークリーの「当日中」欄がタスクの無い日ばかりだと極端に狭くなり、そのせいでタスクをドロップできなくなっていた不具合を修正しました。" },
     { date: "2026-09-08", text: "ウィークリーページの「今週中」「いつか」欄の見出し右側に、上の今日中欄と同じ縦線を追加しました。また、今日中欄の1番左に「当日中」の見出しを表示し、タスクが無い日の「今日中のタスクなし」という表示は消して空欄にしました。" },
     { date: "2026-09-08", text: "ウィークリー/デイリーの「今週中」「いつか」表示切替ボタンを、ページ右上(デイリーは「時間割」ボタンの隣)へ移動し、スケジュール欄を広く使えるようにしました。ボタンの色も少し薄めの緑に変更しています。ウィークリーの各曜日の「時間割」ボタンも高さを詰めました。" },
@@ -5266,11 +5267,55 @@
         calendarUnplannedBox.classList.toggle("drop-target", overBox);
         ctx.overUnplannedBox = overBox;
         if (overBox) {
+          ctx.overZone = false;
           Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+          unscheduledZoneCols().forEach((c) => c.classList.remove("drop-target"));
+          calendarUnscheduledRow.classList.remove("drop-target");
           ctx.targetCol = null;
           clearDragPreview();
           return;
         }
+
+        // 今日中/当日中への「時間未定」割り当て: いつか同様、子タスクを
+        // 抱えたタスクは階層を持てないこのフラットな置き場には落とせない。
+        // 列を持たないデイリーの「今日中」トレイでは、列の代わりにトレイ
+        // 自身(dataset.dateが表示中の唯一の日付)を対象にする。
+        const unschedCols = unscheduledZoneCols();
+        const hasChildren = !!(ctx.item.children && ctx.item.children.length);
+        let zoneTargetCol = null;
+        let overZone = false;
+        if (!hasChildren) {
+          if (unschedCols.length) {
+            for (const col of unschedCols) {
+              if (col.dataset.date < state.day) continue;
+              if (rectContains(col.getBoundingClientRect(), e.clientX, e.clientY)) {
+                zoneTargetCol = col;
+                overZone = true;
+                break;
+              }
+            }
+          } else if (
+            calendarUnscheduledRow.dataset.date >= state.day &&
+            rectContains(calendarUnscheduledRow.getBoundingClientRect(), e.clientX, e.clientY)
+          ) {
+            zoneTargetCol = calendarUnscheduledRow;
+            overZone = true;
+          }
+        }
+        if (unschedCols.length) {
+          unschedCols.forEach((c) => c.classList.toggle("drop-target", c === zoneTargetCol));
+        } else {
+          calendarUnscheduledRow.classList.toggle("drop-target", overZone);
+        }
+        ctx.overZone = overZone;
+        if (overZone) {
+          Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+          ctx.targetCol = zoneTargetCol;
+          clearDragPreview();
+          return;
+        }
+        if (unschedCols.length) unschedCols.forEach((c) => c.classList.remove("drop-target"));
+        else calendarUnscheduledRow.classList.remove("drop-target");
 
         // 特定の曜日に紐付いていないタスクなので、今日中/最優先の「自分の
         // 日付の列だけ」より対象を広げ、表示中の週の列すべて(過去日は
@@ -5382,6 +5427,8 @@
     if (ctx.longPressTimer) clearTimeout(ctx.longPressTimer);
     ctx.chip.classList.remove("armed");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+    unscheduledZoneCols().forEach((c) => c.classList.remove("drop-target"));
+    calendarUnscheduledRow.classList.remove("drop-target");
     calendarUnplannedBox.classList.remove("drop-target");
     calendarThisWeekBox.classList.remove("drop-target");
     clearDragPreview();
@@ -5440,7 +5487,7 @@
 
     if (ctx.phase === "schedule") {
       ctx.chip.classList.remove("dragging");
-      const { item, dateStr, targetCol, clientY, overUnplannedBox, overThisWeekBox, fallbackLabel, scopeType } = ctx;
+      const { item, dateStr, targetCol, clientY, overUnplannedBox, overThisWeekBox, overZone, fallbackLabel, scopeType } = ctx;
       trayDragCtx = null;
 
       if (scopeType === "week") {
@@ -5458,6 +5505,28 @@
           someday.push({ id: rootId, label: labelOf(item, fallbackLabel), parentId: null });
           if (item.children && item.children.length) restorePlanChildrenToSomeday({ children: item.children }, rootId);
           saveSomeday();
+          vibrate(20);
+          renderCalendar();
+          return;
+        }
+
+        if (overZone && targetCol) {
+          // 今日中/当日中への「時間未定」割り当て。時間は決めず、その日の
+          // フラットなタスクとして追加する(子タスクを抱えたタスクは
+          // move側で対象から除外済み)。
+          captureUndoSnapshot();
+          const weekStartForZone = dateStr;
+          const weekItemsForZone = itemsArrayForWeek(weekStartForZone);
+          const idxForZone = weekItemsForZone.indexOf(item);
+          if (idxForZone >= 0) weekItemsForZone.splice(idxForZone, 1);
+          persistItemsForWeek(weekStartForZone);
+          const zoneDate = targetCol.dataset.date;
+          const zoneItem = freshItem(labelOf(item, fallbackLabel));
+          if (item.memo) zoneItem.memo = item.memo;
+          ensureItemsArrayForDate(zoneDate).push(zoneItem);
+          sortItemsByPlan(zoneDate);
+          persistItemsForDate(zoneDate);
+          refreshTimerIfShowing(zoneDate);
           vibrate(20);
           renderCalendar();
           return;
