@@ -1705,7 +1705,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
-    { date: "2026-09-08", text: "「今週中」欄へ、スケジュール済みの予定をドラッグして直接落とせるようにしました。子タスクを抱えた予定もそのまま(子数バッジ付きの1チップとして)まとめて運べます。" },
+    { date: "2026-09-08", text: "「今週中」欄へ、いつかのタスクやスケジュール済みの予定をドラッグして直接落とせるようにしました。子タスクを抱えたタスク/予定もそのまま(子数バッジ付きの1チップとして)まとめて運べます。" },
     { date: "2026-09-07", text: "ウィークリーページを月曜始まり(月〜日)の表示に変更しました。" },
     { date: "2026-09-07", text: "ウィークリーページとデイリーページに、今日中といつかの間に「今週中」欄を追加しました。今週やりたいタスクを横スクロールの一覧で管理できます(スケジュールへのドラッグ登録はまだ未対応です)。" },
     { date: "2026-09-07", text: "マンスリー/ウィークリー/デイリー/ログのページ下部にある欄の表記を「タスク」から「いつか」に戻しました(タスク一覧ページ自体の表記は変更していません)。" },
@@ -5450,6 +5450,16 @@
       ctx.targetPriorityList = targetPriorityList;
       if (targetPriorityList) return;
 
+      // Still nothing — 今週中トレイの上かもしれない。最優先と違い、ここは
+      // いつか同様に階層を許容するので、子タスクを抱えたタスク(親)も
+      // そのまま対象にする。ウィークリー/デイリーどちらのページにも常に
+      // 存在するので、最優先のような「表示中の日付」による有効/無効の
+      // 区別は不要。
+      const targetThisWeekBox = rectContains(calendarThisWeekBox.getBoundingClientRect(), e.clientX, e.clientY);
+      calendarThisWeekBox.classList.toggle("drop-target", targetThisWeekBox);
+      ctx.targetThisWeekBox = targetThisWeekBox;
+      if (targetThisWeekBox) return;
+
       // Still nothing — we may be on the ログ page instead, where dropping
       // onto the task list adds it as a plain task with no time set, same
       // as a day's own "time undetermined" zone. Same past-day protection
@@ -5589,6 +5599,7 @@
     calendarUnscheduledRow.classList.remove("drop-target");
     Array.from(document.querySelectorAll(".monthly-cell.drop-target")).forEach((c) => c.classList.remove("drop-target"));
     calendarPriorityBox.classList.remove("drop-target");
+    calendarThisWeekBox.classList.remove("drop-target");
     listWrap.classList.remove("drop-target");
     if (ctx.reparentTargetEl) ctx.reparentTargetEl.classList.remove("reparent-target");
     if (ctx.promoteZoneEl) ctx.promoteZoneEl.classList.remove("drop-target");
@@ -5612,10 +5623,34 @@
     if (ctx.phase === "schedule") {
       ctx.chip.classList.remove("dragging");
       somedayDragCtx = null;
-      const { task, targetCol, targetMonthlyCell, targetTaskList, targetPriorityList, clientY, overZone } = ctx;
+      const { task, targetCol, targetMonthlyCell, targetTaskList, targetPriorityList, targetThisWeekBox, clientY, overZone } = ctx;
 
-      if (targetCol || targetMonthlyCell || targetTaskList || targetPriorityList) {
+      if (targetCol || targetMonthlyCell || targetTaskList || targetPriorityList || targetThisWeekBox) {
         captureUndoSnapshot();
+      }
+
+      if (targetThisWeekBox) {
+        // いつか同様、子タスクを抱えたタスク(親)もそのまま家系ごと運ぶ
+        // (最優先/今日中と違い、ここは階層を許容するため) — スケジュール
+        // へ落とす時と同じ方針(buildPlanChildrenFromSomedayTask)。
+        const weekStart = currentWeekStartKey();
+        const taskIsParentForThisWeek = isParentTask(task.id);
+        const item = { label: task.label };
+        if (taskIsParentForThisWeek) {
+          const children = buildPlanChildrenFromSomedayTask(task);
+          if (children.length) item.children = children;
+        }
+        ensureItemsArrayForWeek(weekStart).push(item);
+        persistItemsForWeek(weekStart);
+        if (taskIsParentForThisWeek) {
+          removeSomedayTaskAndDescendants(task.id);
+        } else {
+          removeSomedayTaskPromotingChildren(task.id);
+        }
+        saveSomeday();
+        vibrate(20);
+        renderCalendar();
+        return;
       }
 
       if (targetMonthlyCell) {
