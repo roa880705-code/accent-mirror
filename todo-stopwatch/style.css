@@ -1502,7 +1502,7 @@ body {
 /* --- calendar page (weekly, vertical) --- */
 
 .calendar {
-  --cal-gutter: 30px;
+  --cal-gutter: 36px;
   --hour-h: 40px;
   position: relative;
   flex: 1;
@@ -1683,6 +1683,22 @@ body {
 .cal-gutter-spacer {
   flex: none;
   width: var(--cal-gutter);
+}
+
+/* ウィークリーの今日中(週次の.cal-unscheduled-day一式)自身の見出し。
+   今週中/いつか欄のcalendar-unplanned-titleと縦に揃う、この行の1番左の
+   位置に表示する。元は無地のgutterなので、幅var(--cal-gutter)に収まる
+   ようフォントを小さくし、はみ出す場合は折り返す。 */
+.cal-unsched-gutter-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.1;
+  font-size: 0.5rem;
+  font-weight: 700;
+  color: var(--muted);
 }
 
 .calendar-day-header {
@@ -2175,6 +2191,19 @@ body {
   font-weight: 700;
   color: var(--muted);
   white-space: nowrap;
+}
+
+/* ウィークリーページの今週中/いつか欄の見出しの右に、その上の今日中
+   (.cal-unscheduled-day)と同じ縦線を設け、gutter〜月曜列の境界線が
+   そのまま下へ続いているように見せる。デイリー側は今日中が列分けの
+   無い1行だけなので対象外。 */
+#weeklyThisWeekBox > .calendar-unplanned-title,
+#weeklyUnplannedBox > .calendar-unplanned-title {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+  border-right: 1px solid var(--line);
 }
 
 .calendar-unplanned-list {

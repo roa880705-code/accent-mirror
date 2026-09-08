@@ -1797,6 +1797,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-08", text: "ウィークリーページの「今週中」「いつか」欄の見出し右側に、上の今日中欄と同じ縦線を追加しました。また、今日中欄の1番左に「当日中」の見出しを表示し、タスクが無い日の「今日中のタスクなし」という表示は消して空欄にしました。" },
     { date: "2026-09-08", text: "ウィークリー/デイリーの「今週中」「いつか」表示切替ボタンを、ページ右上(デイリーは「時間割」ボタンの隣)へ移動し、スケジュール欄を広く使えるようにしました。ボタンの色も少し薄めの緑に変更しています。ウィークリーの各曜日の「時間割」ボタンも高さを詰めました。" },
     { date: "2026-09-08", text: "今週中・いつか欄の上下の余白とタスクチップの大きさを、最優先・今日中と同じ詰めたコンパクトなサイズに揃えました。" },
     { date: "2026-09-08", text: "最優先・今日中・今週中・いつか、それぞれの欄の背景を薄緑にしました(子タスク/孫タスク/ひ孫タスクの欄は対象外です)。" },
@@ -6669,8 +6670,13 @@
         calendarUnscheduledRow.appendChild(addBtn);
       }
     } else {
+      // 今週中/いつか欄の1番左の見出し(calendar-unplanned-title)と縦に
+      // 揃う位置に、この行自身の見出しとして「当日中」を表示する(この
+      // 行だけ元々は無地のgutterだったので、他の2行と違い専用のクラスで
+      // 文字を収める)。
       const unschedGutter = document.createElement("div");
-      unschedGutter.className = "cal-gutter-spacer";
+      unschedGutter.className = "cal-gutter-spacer cal-unsched-gutter-label";
+      unschedGutter.textContent = "当日中";
       calendarUnscheduledRow.appendChild(unschedGutter);
       dayDates.forEach((dateStr) => {
         const col = document.createElement("div");
@@ -6678,21 +6684,16 @@
         col.dataset.date = dateStr;
         if (dateStr >= state.day) {
           const unscheduledForDay = dayUnscheduled[dateStr];
-          if (unscheduledForDay.length) {
-            unscheduledForDay.forEach((item, idx) => {
-              const row = document.createElement("div");
-              row.className = "cal-unscheduled-row";
-              row.trayItem = item;
-              row.textContent = labelOf(item, `タスク${idx + 1}`);
-              row.addEventListener("pointerdown", (e) => startTrayItemDrag(e, row, item, dateStr, "cal-unscheduled-row", "予定"));
-              col.appendChild(row);
-            });
-          } else {
-            const empty = document.createElement("span");
-            empty.className = "cal-unscheduled-empty";
-            empty.textContent = "今日中のタスクなし";
-            col.appendChild(empty);
-          }
+          unscheduledForDay.forEach((item, idx) => {
+            const row = document.createElement("div");
+            row.className = "cal-unscheduled-row";
+            row.trayItem = item;
+            row.textContent = labelOf(item, `タスク${idx + 1}`);
+            row.addEventListener("pointerdown", (e) => startTrayItemDrag(e, row, item, dateStr, "cal-unscheduled-row", "予定"));
+            col.appendChild(row);
+          });
+          // タスクが無い日は、何列も並ぶと「タスクなし」の連呼が目障りに
+          // なるため、プレースホルダー文言を出さず空欄のままにする。
         }
         calendarUnscheduledRow.appendChild(col);
       });
