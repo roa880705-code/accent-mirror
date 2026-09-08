@@ -1705,6 +1705,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-08", text: "「今週中」からいつかへタスクをドラッグして戻せるようにしました。今日中・最優先から今週中へタスクを移すこともできます。" },
     { date: "2026-09-08", text: "「今週中」のタスクを、今日中・最優先と同じ操作でスケジュール(予定)へドラッグして登録できるようにしました。子タスクを抱えたタスクもそのまま予定の子タスクとして運ばれます。" },
     { date: "2026-09-08", text: "「今週中」欄へ、いつかのタスクやスケジュール済みの予定をドラッグして直接落とせるようにしました。子タスクを抱えたタスク/予定もそのまま(子数バッジ付きの1チップとして)まとめて運べます。" },
     { date: "2026-09-07", text: "ウィークリーページを月曜始まり(月〜日)の表示に変更しました。" },
@@ -5047,11 +5048,21 @@
       showDragGhost(e.clientX, e.clientY, labelOf(ctx.item, ctx.fallbackLabel));
 
       if (ctx.scopeType === "week") {
-        // 今週中はいつかへの差し戻しにまだ対応していない(将来の課題)ので
-        // 今日中/最優先と違いいつかトレイの判定は行わない。特定の曜日に
-        // 紐付いていないタスクなので、今日中/最優先の「自分の日付の列
-        // だけ」より対象を広げ、表示中の週の列すべて(過去日は除く)を
-        // 対象にする。
+        // 今週中はいつか同様、いつかトレイへドロップすると差し戻せる。
+        const boxRect = calendarUnplannedBox.getBoundingClientRect();
+        const overBox = rectContains(boxRect, e.clientX, e.clientY);
+        calendarUnplannedBox.classList.toggle("drop-target", overBox);
+        ctx.overUnplannedBox = overBox;
+        if (overBox) {
+          Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+          ctx.targetCol = null;
+          clearDragPreview();
+          return;
+        }
+
+        // 特定の曜日に紐付いていないタスクなので、今日中/最優先の「自分の
+        // 日付の列だけ」より対象を広げ、表示中の週の列すべて(過去日は
+        // 除く)を対象にする。
         const bodyRect = calendarWeekBody.getBoundingClientRect();
         const weekCols = Array.from(calendarWeekGrid.children);
         let weekTargetCol = null;
@@ -5089,6 +5100,21 @@
       calendarUnplannedBox.classList.toggle("drop-target", overBox);
       ctx.overUnplannedBox = overBox;
       if (overBox) {
+        ctx.overThisWeekBox = false;
+        calendarThisWeekBox.classList.remove("drop-target");
+        Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+        ctx.targetCol = null;
+        clearDragPreview();
+        return;
+      }
+
+      // 今日中/最優先からも今週中へ移せる — いつか同様、まだ「時間未定」の
+      // タスクなのでそのまま横滑りできる置き場という位置づけ。
+      const thisWeekBoxRect = calendarThisWeekBox.getBoundingClientRect();
+      const overThisWeekBox = rectContains(thisWeekBoxRect, e.clientX, e.clientY);
+      calendarThisWeekBox.classList.toggle("drop-target", overThisWeekBox);
+      ctx.overThisWeekBox = overThisWeekBox;
+      if (overThisWeekBox) {
         Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
         ctx.targetCol = null;
         clearDragPreview();
@@ -5145,6 +5171,7 @@
     ctx.chip.classList.remove("armed");
     Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
     calendarUnplannedBox.classList.remove("drop-target");
+    calendarThisWeekBox.classList.remove("drop-target");
     clearDragPreview();
     clearDragGhost();
 
@@ -5201,10 +5228,29 @@
 
     if (ctx.phase === "schedule") {
       ctx.chip.classList.remove("dragging");
-      const { item, dateStr, targetCol, clientY, overUnplannedBox, fallbackLabel, scopeType } = ctx;
+      const { item, dateStr, targetCol, clientY, overUnplannedBox, overThisWeekBox, fallbackLabel, scopeType } = ctx;
       trayDragCtx = null;
 
       if (scopeType === "week") {
+        if (overUnplannedBox) {
+          // いつかへの差し戻し。子タスクがあれば新しいいつかタスクの下へ
+          // そのまま複製する(restorePlanChildrenToSomedayはplan.children
+          // という形さえ持っていれば動くので、そのまま流用できる)。
+          captureUndoSnapshot();
+          const weekStartForRestore = dateStr;
+          const weekItemsForRestore = itemsArrayForWeek(weekStartForRestore);
+          const idxForRestore = weekItemsForRestore.indexOf(item);
+          if (idxForRestore >= 0) weekItemsForRestore.splice(idxForRestore, 1);
+          persistItemsForWeek(weekStartForRestore);
+          const rootId = `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+          someday.push({ id: rootId, label: labelOf(item, fallbackLabel), parentId: null });
+          if (item.children && item.children.length) restorePlanChildrenToSomeday({ children: item.children }, rootId);
+          saveSomeday();
+          vibrate(20);
+          renderCalendar();
+          return;
+        }
+
         if (!targetCol) return;
         const weekStart = dateStr; // trayDragCtxの4番目の引数はweek scopeでは週の月曜日キー
         const targetDate = targetCol.dataset.date;
@@ -5254,6 +5300,30 @@
         if (idx >= 0) items.splice(idx, 1);
         someday.push({ id: `someday_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, label: labelOf(item, fallbackLabel), parentId: somedayRestoreParentId(item.somedayParentId) });
         saveSomeday();
+        persistItemsForDate(dateStr);
+        refreshTimerIfShowing(dateStr);
+        vibrate(20);
+        renderCalendar();
+        return;
+      }
+
+      if (overThisWeekBox) {
+        if (item.elapsedMs > 0 || item.running) {
+          // real recorded time exists: refuse the move so it isn't lost,
+          // 今週中 entries carry no time fields to hold it (same guard as
+          // the いつか restore above)
+          vibrate([10, 30, 10]);
+          return;
+        }
+        captureUndoSnapshot();
+        const items = itemsArrayForDate(dateStr);
+        const idx = items.indexOf(item);
+        if (idx >= 0) items.splice(idx, 1);
+        const weekStart = currentWeekStartKey();
+        const weekItem = { label: labelOf(item, fallbackLabel) };
+        if (item.memo) weekItem.memo = item.memo;
+        ensureItemsArrayForWeek(weekStart).push(weekItem);
+        persistItemsForWeek(weekStart);
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
         vibrate(20);
