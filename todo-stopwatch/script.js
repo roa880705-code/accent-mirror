@@ -3019,6 +3019,14 @@
   // 今週中の子タスクを抱えたチップの、実質タップ判定用の緩めの許容値
   // (PLAN_MOVE_TOLERANCEの3倍) — 詳細はonTrayItemDragEndのコメント参照。
   const TAP_LIKE_RELEASE_TOLERANCE = 24;
+  // 今週中のタスクを持ち上げて(scheduleフェーズへ入って)から、どこにも
+  // 落とさず指を離した場合の許容値。実機の相当ぞんざいなタップは60px
+  // 程度まで一時的にぶれることがある(thisweek-big-jitter-switch-test.js
+  // 参照)ため、TAP_LIKE_RELEASE_TOLERANCEより大きく取る。一方、実際に
+  // いつか欄やスケジュールへ届くほど大きく動かしてから今週中欄へ戻した
+  // 場合(=意図的な持ち上げの取りやめ)は、これより明確に大きい移動量に
+  // なるため、タップ扱いにしない。
+  const THISWEEK_SCHEDULE_ABANDON_TOLERANCE = 100;
   // an already-placed plan's vertical position while being moved lags the
   // finger by this fraction, so small grip shifts don't visibly relocate it
   const PLAN_DRAG_DAMPING = 0.45;
@@ -5843,6 +5851,13 @@
       scrollRafId: null,
       autoScrollActive: false,
       autoScrollRafId: null,
+      // ドラッグ中に一度でも指がstartClientX/Yからどれだけ離れたか(離れた
+      // 最大距離)。指を離した瞬間の位置がstartに近くても、途中で大きく
+      // 動かしていれば意図的なドラッグなので、タップ扱いにするかどうかの
+      // 判定は「離した位置」ではなく「一番離れた距離」で見る必要がある
+      // (今週中のタスクを持ち上げてからどこにも落とさず今週中欄自体へ
+      // 戻した場合、離した位置はstartのすぐ近くに戻ってしまうため)。
+      maxDistFromStart: 0,
     };
     trayDragCtx.longPressTimer = setTimeout(() => {
       if (!trayDragCtx || trayDragCtx.phase !== "pending") return;
@@ -5885,6 +5900,8 @@
     const ctx = trayDragCtx;
     ctx.lastClientX = e.clientX;
     ctx.lastClientY = e.clientY;
+    const distFromStart = Math.hypot(e.clientX - ctx.startClientX, e.clientY - ctx.startClientY);
+    if (distFromStart > ctx.maxDistFromStart) ctx.maxDistFromStart = distFromStart;
 
     if (ctx.phase === "pending") {
       const dx = e.clientX - ctx.startClientX;
@@ -6156,14 +6173,13 @@
       // がごくわずかなまま)は、トレイをスクロールする代わりにタップとして
       // 扱う — 本当に指でトレイをスワイプした場合はTAP_LIKE_RELEASE_
       // TOLERANCEよりずっと大きく動くので、通常のスクロール操作を巻き込む
-      // 心配は無い。
-      if (isThisWeekTap) {
-        const dx = (ctx.lastClientX ?? ctx.startClientX) - ctx.startClientX;
-        const dy = (ctx.lastClientY ?? ctx.startClientY) - ctx.startClientY;
-        if (Math.hypot(dx, dy) < TAP_LIKE_RELEASE_TOLERANCE) {
-          handleThisWeekTapLikeRelease(ctx.dateStr, ctx.item);
-          return;
-        }
+      // 心配は無い。指を離した位置(start基準の差分)ではなく、ドラッグ中に
+      // 一番離れた距離(maxDistFromStart)で判定する — 大きくスワイプした
+      // 後に指がstart付近まで戻ってきて離された場合でも、実際には大きく
+      // 動かした意図的な操作なのでタップ扱いにしないため。
+      if (isThisWeekTap && ctx.maxDistFromStart < TAP_LIKE_RELEASE_TOLERANCE) {
+        handleThisWeekTapLikeRelease(ctx.dateStr, ctx.item);
+        return;
       }
       suppressNextOutsideTapCollapse = true;
       // ブラウザがスワイプ終端にclickを出さない(=既にトレイの内側で
@@ -6267,10 +6283,14 @@
           // する。トレイの外まで大きく動かしてから(いつか/当日中/
           // グリッドいずれにも)落とさず今週中へ戻した場合は、意図的な
           // ドラッグの取りやめなので、いつか側のonSomedayChipDragEnd
-          // (targetCol無し分岐)と同じくタップ扱いにせず何もしない。
-          const dx = (ctx.lastClientX ?? ctx.startClientX) - ctx.startClientX;
-          const dy = (ctx.lastClientY ?? ctx.startClientY) - ctx.startClientY;
-          if (Math.hypot(dx, dy) < TAP_LIKE_RELEASE_TOLERANCE) {
+          // (targetCol無し分岐)と同じくタップ扱いにせず何もしない —
+          // 判定は指を離した位置(start基準の差分)ではなくmaxDistFromStart
+          // (ドラッグ中に一番離れた距離)で行う。持ち上げて今週中欄自体
+          // まで戻す動作は、離した位置こそstartの近くに戻るが、途中では
+          // 大きく動いているため。しきい値はTHISWEEK_SCHEDULE_ABANDON_
+          // TOLERANCE(実機の相当ぞんざいなタップも許容できるよう、通常の
+          // TAP_LIKE_RELEASE_TOLERANCEより緩め)。
+          if (ctx.maxDistFromStart < THISWEEK_SCHEDULE_ABANDON_TOLERANCE) {
             handleThisWeekTapLikeRelease(dateStr, item);
           }
           return;
