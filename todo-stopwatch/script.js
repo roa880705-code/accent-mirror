@@ -1812,6 +1812,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-09", text: "タスクページの子タスクを持つ予定/今週中/いつかを、親が1番左・子・孫・ひ孫と進むごとに1列ずつ右へ進む樹形図(連結線つき)で表示するようにしました(以前は親の直後に字下げして縦に並べる表示でした)。" },
     { date: "2026-09-09", text: "タスクページで、チップの上から指を素早く動かしてもページ自体をスクロールできない不具合を修正しました(チップは長押しでの並べ替えに対応させるため、ブラウザ標準のスクロール動作を切っているのが原因でした)。長押しせずに動かした場合は、これまで通りページがスクロールします。" },
     { date: "2026-09-09", text: "タスクページを全面的に作り直しました。「最優先」「スケジュール内」「今日中」「今週中」「いつか」というカテゴリの見出しをやめ、1本の縦並びリストに統合。今日の最優先→スケジュール内(子タスクを持つ予定)→今日中→明日の最優先→…と、その週の残り曜日を同じ順で並べたあと今週分の今週中タスク、続けて来週も同じ形で(内容がある週だけ)繰り返し、最後にいつかタスクを配置します。どのタスクもカテゴリ名は表示されず、並んでいる順番そのものが時系列を表します。子/孫/ひ孫タスクは親の直後にインデントして表示し、長押しドラッグでの並べ替えは子孫ごとまとめて動きます。" },
     { date: "2026-09-09", text: "タスクページで、なるべく多くのタスクが一覧できるようにしました。「最優先」「今日中」は今日分だけでなく、明日以降にタスクがある日も日付ごとに並べて表示されるようになりました。また、スケジュールに組み込み済みの予定が子タスクを持っている場合も、日付ごとに子/孫/ひ孫タスクまで一覧でき、タップするとデイリーページのその予定の詳細を開けます。" },
@@ -4441,7 +4442,10 @@
   // スクロールでチップと線が一緒に動く(戻す/進む時に再計算し直す必要が
   // ない)。幾何自体は既存のpositionSomedayConnector系と同じ(横向き=幹
   // →横の梁→縦の枝、縦向き=幹→縦の梁→横の枝)。
-  function drawSomedayTreeConnectorLines(containerEl, connectorPairs, isVertical) {
+  // getId: チップのdata-someday-id探索に使うid解決関数(既定はtask.id)。
+  // タスクページの今週中/予定ルート(安定したidを持たない)向けに、
+  // 呼び出し側が合成idを返すカスタム版を渡せるようにしてある。
+  function drawSomedayTreeConnectorLines(containerEl, connectorPairs, isVertical, getId = (t) => t.id) {
     containerEl.querySelectorAll(".someday-branch-line").forEach((el) => el.remove());
     const rootRect = containerEl.getBoundingClientRect();
     const scrollLeft = containerEl.scrollLeft;
@@ -4449,8 +4453,8 @@
     const half = SOMEDAY_BRANCH_LINE_W / 2;
 
     connectorPairs.forEach(({ parentTask, childTasks }) => {
-      const parentChip = containerEl.querySelector(`[data-someday-id="${parentTask.id}"]`);
-      const childChips = childTasks.map((c) => containerEl.querySelector(`[data-someday-id="${c.id}"]`)).filter(Boolean);
+      const parentChip = containerEl.querySelector(`[data-someday-id="${getId(parentTask)}"]`);
+      const childChips = childTasks.map((c) => containerEl.querySelector(`[data-someday-id="${getId(c)}"]`)).filter(Boolean);
       if (!parentChip || !childChips.length) return;
       const parentRect = parentChip.getBoundingClientRect();
       const childRects = childChips.map((el) => el.getBoundingClientRect());
@@ -5690,27 +5694,85 @@
   // 行わない(スケジュール側で操作するもの)ので、並べ替え用wrapperは
   // 使わず直接containerへ積む。ルートをタップするとjumpDailyToPlanで
   // デイリーページのその予定の詳細を開く。
-  function appendTasklistPlanFamily(container, plan, dateStr) {
-    const directChildCount = planChildrenOf(plan, null).length;
-    const rootChip = createTasklistRowChip(labelOf(plan, "予定"), 0, { hasChildren: directChildCount > 0 });
-    if (directChildCount > 0) appendTasklistChildCountBadge(rootChip, directChildCount);
-    rootChip.addEventListener("click", (e) => {
-      e.stopPropagation();
-      vibrate(10);
-      jumpDailyToPlan(dateStr, plan);
-    });
-    container.appendChild(rootChip);
-
-    function appendChildren(parentId, depth) {
-      if (depth > PLAN_CHILD_MAX_DEPTH) return;
-      planChildrenOf(plan, parentId).forEach((child) => {
-        const chip = createThisWeekChildChip(child, plan);
-        chip.dataset.depth = String(depth);
-        container.appendChild(chip);
-        appendChildren(child.id, depth + 1);
+  // 子孫を持ち得るタスク1件ぶんの「樹形図」(親が1番左、子・孫・ひ孫と
+  // 進むごとに1列ずつ右へ)を組み立てる汎用ヘルパー。既存の全展開ツリー
+  // (renderSomedayTreeInto)のisVertical=true相当のgrid配置(列=深さ)と、
+  // 同じ連結線描画(drawSomedayTreeConnectorLines)を、1家族だけ(行は
+  // 常に1行)に限定して再利用する。
+  //   rootTask: この家族の親タスク(予定/今週中アイテム/いつかタスク)
+  //   getChildren(task): taskの直接の子タスク配列を返す
+  //   maxDepth: 何段まで辿るか(PLAN_CHILD_MAX_DEPTH/SOMEDAY_MAX_DEPTH)
+  //   createChipFn(task, depth): そのタスクのチップ要素を作る(ルート/
+  //     子孫で見た目や挙動を分けたい場合はdepth===0で判定する)
+  //   getId(task): 連結線描画用にチップを探すdata-someday-idの値を返す
+  //     (既定はtask.id — 今週中/予定のルートのように安定したidを持たない
+  //     場合だけ呼び出し側が合成idを返すカスタム版を渡す)
+  function buildTasklistTreeGrid(rootTask, getChildren, maxDepth, createChipFn, getId = (t) => t.id) {
+    const levels = [[rootTask], [], [], []];
+    function walk(task, depth) {
+      if (depth >= maxDepth) return;
+      getChildren(task).forEach((child) => {
+        levels[depth + 1].push(child);
+        walk(child, depth + 1);
       });
     }
-    appendChildren(null, 1);
+    walk(rootTask, 0);
+
+    const grid = document.createElement("div");
+    grid.className = "tasklist-family-tree";
+    levels.forEach((tasksAtDepth, depth) => {
+      if (!tasksAtDepth.length) return;
+      const cell = document.createElement("div");
+      cell.className = "someday-tree-cell tasklist-family-tree-cell";
+      cell.style.gridColumn = String(depth + 1);
+      cell.style.gridRow = "1";
+      tasksAtDepth.forEach((task) => {
+        const chip = createChipFn(task, depth);
+        chip.dataset.somedayId = getId(task);
+        cell.appendChild(chip);
+      });
+      grid.appendChild(cell);
+    });
+
+    const connectorPairs = [];
+    levels.slice(0, maxDepth).forEach((tasksAtDepth) => {
+      tasksAtDepth.forEach((parentTask) => {
+        const childTasks = getChildren(parentTask);
+        if (childTasks.length) connectorPairs.push({ parentTask, childTasks });
+      });
+    });
+    requestAnimationFrame(() => drawSomedayTreeConnectorLines(grid, connectorPairs, true, getId));
+    return grid;
+  }
+
+  // 今週中タスク・予定はどちらもトップレベル自身に安定したidを持たない
+  // ため、樹形図内だけで通用する合成idで代用する(drawSomedayTreeConnector
+  // Linesはこの1つの樹形図(grid)の中だけをquerySelectorするので、他の
+  // 家族の合成idと衝突する心配は無い)。
+  const TASKLIST_TREE_ROOT_ID = "__tasklist_tree_root__";
+
+  // 子タスクを持つ予定(スケジュール内)1件ぶんの樹形図。予定はタスク
+  // ページ上で並べ替え/追加を行わない(スケジュール側で操作するもの)ので
+  // wrapperは使わず、樹形図をそのままcontainerへ積む。ルートをタップ
+  // するとjumpDailyToPlanでデイリーページのその予定の詳細を開く。
+  function buildTasklistPlanFamilyTree(plan, dateStr) {
+    const directChildCount = planChildrenOf(plan, null).length;
+    const getChildren = (task) => planChildrenOf(plan, task === plan ? null : task.id);
+    const getId = (task) => (task === plan ? TASKLIST_TREE_ROOT_ID : task.id);
+
+    return buildTasklistTreeGrid(plan, getChildren, PLAN_CHILD_MAX_DEPTH, (task, depth) => {
+      if (depth === 0) {
+        const rootChip = createTasklistRowChip(labelOf(plan, "予定"), 0, { hasChildren: directChildCount > 0 });
+        if (directChildCount > 0) appendTasklistChildCountBadge(rootChip, directChildCount);
+        rootChip.addEventListener("click", (e) => {
+          e.stopPropagation();
+          vibrate(10);
+          jumpDailyToPlan(dateStr, plan);
+        });
+        return rootChip;
+      }
+      return createThisWeekChildChip(task, plan);
+    }, getId);
   }
 
   // その日1日ぶんの行(最優先→スケジュール内(子タスクを持つ予定、時刻順)
@@ -5729,7 +5791,7 @@
     plansForDate(dateStr)
       .filter((p) => p.children && p.children.length)
       .sort((a, b) => a.startMin - b.startMin)
-      .forEach((plan) => appendTasklistPlanFamily(container, plan, dateStr));
+      .forEach((plan) => container.appendChild(buildTasklistPlanFamilyTree(plan, dateStr)));
 
     const todayTasks = itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority && !it.completed);
     appendTasklistFlatCluster(container, dateStr, todayTasks, {
@@ -5740,40 +5802,37 @@
     });
   }
 
-  // 今週中(その週限定・子を持ち得るタスク)1件ぶんの塊(ルート+子孫を
-  // インデントして直後に並べる)を、長押しドラッグでルートごと並べ替え
-  // 可能な1つの単位として作る。
+  // 今週中(その週限定・子を持ち得るタスク)1件ぶんの樹形図を、長押し
+  // ドラッグでルートごと(子孫を引き連れたまま)並べ替え可能な1つの単位
+  // として作る。
   function buildTasklistThisWeekFamilyBlock(item, weekStart, listEl) {
     const wrapper = createTasklistFamilyWrapper();
-    const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
-    const rootChip = createTasklistRowChip(labelOf(item, "今週中タスク"), 0, { hasChildren: directChildCount > 0 });
-    if (directChildCount > 0) appendTasklistChildCountBadge(rootChip, directChildCount);
-    wrapper.appendChild(rootChip);
     wrapper.trayItem = item;
+    const directChildCount = planChildrenOf(item, null).length;
+    const getChildren = (task) => planChildrenOf(item, task === item ? null : task.id);
+    const getId = (task) => (task === item ? TASKLIST_TREE_ROOT_ID : task.id);
 
-    function appendChildren(parentId, depth) {
-      if (depth > PLAN_CHILD_MAX_DEPTH) return;
-      planChildrenOf(item, parentId).forEach((child) => {
-        const chip = createThisWeekChildChip(child, item);
-        chip.dataset.depth = String(depth);
-        wrapper.appendChild(chip);
-        appendChildren(child.id, depth + 1);
-      });
-    }
-    appendChildren(null, 1);
+    const grid = buildTasklistTreeGrid(item, getChildren, PLAN_CHILD_MAX_DEPTH, (task, depth) => {
+      if (depth === 0) {
+        const rootChip = createTasklistRowChip(labelOf(item, "今週中タスク"), 0, { hasChildren: directChildCount > 0 });
+        if (directChildCount > 0) appendTasklistChildCountBadge(rootChip, directChildCount);
+        rootChip.addEventListener("pointerdown", (e) =>
+          startTasklistChipDrag(e, wrapper, listEl, () => promptWeeklyTaskEdit(weekStart, item), () => {
+            captureUndoSnapshot();
+            const newOrder = Array.from(listEl.children)
+              .filter((c) => c.classList.contains("cal-unplanned-chip"))
+              .map((c) => c.trayItem);
+            applyReorderedSubset(itemsArrayForWeek(weekStart), newOrder);
+            persistItemsForWeek(weekStart);
+            renderCalendar();
+          })
+        );
+        return rootChip;
+      }
+      return createThisWeekChildChip(task, item);
+    }, getId);
 
-    rootChip.addEventListener("pointerdown", (e) =>
-      startTasklistChipDrag(e, wrapper, listEl, () => promptWeeklyTaskEdit(weekStart, item), () => {
-        captureUndoSnapshot();
-        const newOrder = Array.from(listEl.children)
-          .filter((c) => c.classList.contains("cal-unplanned-chip"))
-          .map((c) => c.trayItem);
-        applyReorderedSubset(itemsArrayForWeek(weekStart), newOrder);
-        persistItemsForWeek(weekStart);
-        renderCalendar();
-      })
-    );
-
+    wrapper.appendChild(grid);
     return wrapper;
   }
 
@@ -5804,50 +5863,46 @@
     chip.style.cursor = "default";
     const childCount = childrenOf(task.id).length;
     if (depth < SOMEDAY_MAX_DEPTH && childCount > 0) appendTasklistChildCountBadge(chip, childCount);
-    chip.dataset.somedayId = task.id;
     chip.addEventListener("click", () => handleSomedayChipTap(task, true));
     return chip;
   }
 
-  // いつかタスク1件ぶんの塊(ルート+子孫をインデントして直後に並べる)を、
-  // 長押しドラッグでルートごと並べ替え可能な1つの単位として作る。
+  // いつかタスク1件ぶんの樹形図を、長押しドラッグでルートごと(子孫を
+  // 引き連れたまま)並べ替え可能な1つの単位として作る。
   function buildTasklistSomedayFamilyBlock(task, listEl) {
     const wrapper = createTasklistFamilyWrapper();
-    const isParent = isParentTask(task.id);
-    const rootChip = createTasklistRowChip(task.label, 0, { hasChildren: isParent });
-    if (isParent) {
-      const base = ensureParentColor(rootSomedayTask(task));
-      rootChip.style.borderColor = base;
-      rootChip.style.background = lightenHex(base, SOMEDAY_FILL_LIGHTEN[0] || 0);
-      rootChip.style.color = "#fff";
-    }
-    const childCount = childrenOf(task.id).length;
-    if (childCount > 0) appendTasklistChildCountBadge(rootChip, childCount);
-    rootChip.dataset.somedayId = task.id;
-    wrapper.appendChild(rootChip);
     wrapper.trayItem = task;
+    const isParent = isParentTask(task.id);
+    const getChildren = (t) => sortSomedayChildrenForTree(childrenOf(t.id));
 
-    function appendDescendants(parentTask, depth) {
-      if (depth > SOMEDAY_MAX_DEPTH) return;
-      sortSomedayChildrenForTree(childrenOf(parentTask.id)).forEach((child) => {
-        wrapper.appendChild(createTasklistSomedayDescendantChip(child, depth));
-        appendDescendants(child, depth + 1);
-      });
-    }
-    appendDescendants(task, 1);
+    const grid = buildTasklistTreeGrid(task, getChildren, SOMEDAY_MAX_DEPTH, (t, depth) => {
+      if (depth === 0) {
+        const rootChip = createTasklistRowChip(t.label, 0, { hasChildren: isParent });
+        if (isParent) {
+          const base = ensureParentColor(rootSomedayTask(t));
+          rootChip.style.borderColor = base;
+          rootChip.style.background = lightenHex(base, SOMEDAY_FILL_LIGHTEN[0] || 0);
+          rootChip.style.color = "#fff";
+        }
+        const childCount = childrenOf(t.id).length;
+        if (childCount > 0) appendTasklistChildCountBadge(rootChip, childCount);
+        rootChip.addEventListener("pointerdown", (e) =>
+          startTasklistChipDrag(e, wrapper, listEl, () => handleSomedayChipTap(t, true), () => {
+            captureUndoSnapshot();
+            const newOrder = Array.from(listEl.children)
+              .filter((c) => c.classList.contains("cal-unplanned-chip"))
+              .map((c) => c.trayItem);
+            applyReorderedSubset(someday, newOrder);
+            saveSomeday();
+            renderCalendar();
+          })
+        );
+        return rootChip;
+      }
+      return createTasklistSomedayDescendantChip(t, depth);
+    });
 
-    rootChip.addEventListener("pointerdown", (e) =>
-      startTasklistChipDrag(e, wrapper, listEl, () => handleSomedayChipTap(task, true), () => {
-        captureUndoSnapshot();
-        const newOrder = Array.from(listEl.children)
-          .filter((c) => c.classList.contains("cal-unplanned-chip"))
-          .map((c) => c.trayItem);
-        applyReorderedSubset(someday, newOrder);
-        saveSomeday();
-        renderCalendar();
-      })
-    );
-
+    wrapper.appendChild(grid);
     return wrapper;
   }
 

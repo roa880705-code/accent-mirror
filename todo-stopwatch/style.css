@@ -2634,37 +2634,44 @@ body {
   overflow-wrap: break-word;
 }
 
-/* 子/孫/ひ孫タスク(予定・今週中・いつかいずれも共通)は、その深さぶん
-   だけ左に余白を足してインデントし、親の直後に連なっていることを示す。
-   カテゴリ見出しの代わりに、この字下げだけが階層関係を伝える。 */
-.tasklist-list .cal-unplanned-chip[data-depth="1"] {
-  padding-left: 32px;
-}
-
-.tasklist-list .cal-unplanned-chip[data-depth="2"] {
-  padding-left: 50px;
-}
-
-.tasklist-list .cal-unplanned-chip[data-depth="3"] {
-  padding-left: 68px;
-}
-
 /* 今週中/いつかのルートタスクは、子孫を長押しドラッグで一緒に運べる
-   よう、ルート行+インデントした子孫行を1つのdivにまとめている
-   (createTasklistFamilyWrapper参照)。このwrapper自身はcal-unplanned-chip
-   クラスを持つ(listEl内の並べ替え対象として認識させるため)が、見た目上は
-   ただの透明な入れ物であって欲しいので、チップ本体の見た目(枠線/背景/
-   パディング)はここで打ち消し、中の実際の行(ルート/子孫チップ)だけが
+   よう、ルート+子孫の樹形図(下記.tasklist-family-tree)全体を1つのdivに
+   まとめている(createTasklistFamilyWrapper参照)。このwrapper自身は
+   cal-unplanned-chipクラスを持つ(listEl内の並べ替え対象として認識させる
+   ため)が、見た目上はただの透明な入れ物であって欲しいので、チップ本体の
+   見た目(枠線/背景/パディング)はここで打ち消し、中の樹形図だけが
    見えるようにする。 */
 .tasklist-list .cal-unplanned-chip.tasklist-family-block {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
   width: 100%;
   border: none;
   background: none;
   padding: 0;
   cursor: default;
+}
+
+/* 子タスクを持つ予定・今週中・いつかいずれも共通の樹形図: 親が1番左
+   (列1)、子・孫・ひ孫と進むごとに1列ずつ右へ(親子関係は連結線
+   someday-branch-lineで示す — drawSomedayTreeConnectorLines参照)。
+   1つの家族だけなので行は常に1行(既存の全展開ツリーは複数家族を
+   列として横に並べるためgrid-auto-flow:columnだったが、ここは深さの
+   列だけでよい)。 */
+.tasklist-family-tree {
+  position: relative;
+  display: grid;
+  grid-auto-columns: max-content;
+  column-gap: 20px;
+  align-items: start;
+}
+
+.someday-tree-cell.tasklist-family-tree-cell {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.tasklist-family-tree .cal-unplanned-chip {
+  width: auto;
+  max-width: 40vw;
 }
 
 /* 「時間未定」タスクの常時表示行: 時間軸グリッドとは別の、スクロールし
