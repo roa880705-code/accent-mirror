@@ -2603,13 +2603,15 @@ body {
   align-items: stretch;
   gap: 2px;
   padding: 2px 2px 4px;
-  overflow: hidden;
+  /* 各欄の高さを切り詰めて内側で個別にスクロールさせていたのをやめ、
+     このページ自体を1本の縦スクロールにした(件数が多くても表示範囲を
+     一定に留めず、常に全部を映す)。 */
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* 最優先/今日中/今週中: スケジュールにはめ込んでいない全てを一望できる
-   よう、既存のいつか(Miller Columns)の上に縦積みで追加した3つの欄。
-   各欄のリスト自体に高さの上限を持たせて自前でスクロールさせるので、
-   件数が多くても他の欄やいつか欄を圧迫しない。 */
+   よう、既存のいつか(Miller Columns)の上に縦積みで追加した欄。 */
 .tasklist-flat-sections {
   flex: none;
   display: flex;
@@ -2630,24 +2632,28 @@ body {
   padding-top: 0;
 }
 
-.tasklist-flat-box .tasklist-list {
-  max-height: 92px;
+/* 今週中: 週(タスクがある週すべて)ごとに1つずつ積み重なるセクション。
+   最初のセクションだけ最優先/今日中と同じく上の区切り線を持たない。 */
+.tasklist-week-section {
+  border-top: 1px solid var(--line);
+}
+
+.tasklist-week-section:first-child {
+  border-top: none;
 }
 
 .tasklist-someday-row {
-  flex: 1;
-  min-height: 0;
+  flex: none;
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: stretch;
   gap: 0;
-  overflow: hidden;
 }
 
 .tasklist-box {
   flex: 1 1 0;
   min-width: 0;
-  height: 100%;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -2662,16 +2668,6 @@ body {
   border-left: none;
 }
 
-/* 実際の連結線(.someday-branch-line)は.pageを基準にposition:absoluteで
-   置かれるので、この要素自体はposition:staticのまま — flexの並び幅計算に
-   加わらないよう幅だけ0にする(position:absoluteにすると、この要素自身が
-   子のabsolute配置の基準になってしまい、線の座標計算が狂うため避ける)。 */
-.tasklist-connector {
-  flex: 0 0 0;
-  min-width: 0;
-  overflow: visible;
-}
-
 .tasklist-box-header {
   flex: none;
   display: flex;
@@ -2683,13 +2679,10 @@ body {
 .tasklist-list {
   flex-direction: column;
   align-items: stretch;
-  overflow-x: visible;
-  overflow-y: auto;
-  /* overflow-x:visible above computes to auto anyway once overflow-y isn't
-     visible (spec behavior, not a bug) — so it clips on that axis too, same
-     as the y one. The child-count badge pokes past its own chip's top-right
-     corner (top:-3px, right:-6px), which without this clearance gets cut off
-     by this very edge on every row, not just the first. */
+  /* 各欄の内側での上限付きスクロールはやめ、このページ全体の縦スクロール
+     に任せる。overflow-x:visibleだけ残し、子タスクの人数バッジ
+     (chip右上角からはみ出す)が切れないための余白(padding)は維持する。 */
+  overflow: visible;
   padding: 4px 8px 0 0;
 }
 

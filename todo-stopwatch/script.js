@@ -1008,23 +1008,20 @@
   // だけ、ドラッグでの並べ替え/スケジュール化はここでは持たない)。
   const tasklistPriorityList = document.getElementById("tasklistPriorityList");
   const tasklistTodayList = document.getElementById("tasklistTodayList");
-  const tasklistThisWeekList = document.getElementById("tasklistThisWeekList");
+  const tasklistThisWeekSections = document.getElementById("tasklistThisWeekSections");
+  const tasklistSomedayRow = document.getElementById("tasklistSomedayRow");
   const tasklistSomedayAddBtn = document.getElementById("tasklistSomedayAddBtn");
-  const tasklistSomedayExpandAllBtn = document.getElementById("tasklistSomedayExpandAllBtn");
-  const tasklistSomedayTree = document.getElementById("tasklistSomedayTree");
-  // ページ順(calendar/weekly/monthly/task/tasklist)はsomedayLevelEls等の
-  // 既存の並びに合わせる — tasklistだけ縦積み(Miller Columnsと同じ深いほど
-  // 右)、他4つは横積み(家族ごとに列、深さごとに行)。
-  const somedayTreeEls = [calendarSomedayTree, weeklySomedayTree, monthlySomedayTree, taskSomedayTree, tasklistSomedayTree];
+  // ページ順(calendar/weekly/monthly/task)はsomedayLevelEls等の既存の
+  // 並びに合わせる — 全展開ツリー(家族ごとに列、深さごとに行)は横積みの
+  // この4ページだけの機能。タスクページは常時全展開(子/孫/ひ孫タスクの
+  // 見出し付き3列に、全ての親についてまとめて表示)なので対象外。
+  const somedayTreeEls = [calendarSomedayTree, weeklySomedayTree, monthlySomedayTree, taskSomedayTree];
   const tasklistSubtaskBox = document.getElementById("tasklistSubtaskBox");
   const tasklistSubtaskList = document.getElementById("tasklistSubtaskList");
   const tasklistGrandchildBox = document.getElementById("tasklistGrandchildBox");
   const tasklistGrandchildList = document.getElementById("tasklistGrandchildList");
   const tasklistGreatGrandchildBox = document.getElementById("tasklistGreatGrandchildBox");
   const tasklistGreatGrandchildList = document.getElementById("tasklistGreatGrandchildList");
-  const tasklistSubtaskConnector = document.getElementById("tasklistSubtaskConnector");
-  const tasklistGrandchildConnector = document.getElementById("tasklistGrandchildConnector");
-  const tasklistGreatGrandchildConnector = document.getElementById("tasklistGreatGrandchildConnector");
   const calendarSubtaskConnector = document.getElementById("calendarSubtaskConnector");
   const calendarGrandchildConnector = document.getElementById("calendarGrandchildConnector");
   const calendarGreatGrandchildConnector = document.getElementById("calendarGreatGrandchildConnector");
@@ -1803,6 +1800,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-09", text: "タスクページを全面的に見直しました。子孫を抱えるタスクは常に全展開になり、たたむ操作は不要になりました。「いつか」欄は子/孫/ひ孫タスクの見出し付き3列で、どの親についてもまとめて子孫が見えます(ひ孫欄は誰にも無くても常に表示)。「今週中」も同じ形式で、タスクがある週ごとに「今週中(M/D〜)」として並びます。最優先/今日中/今週中/いつか、どの欄も件数が多い時に高さを切り詰めなくなり、ページ全体が縦にスクロールします。また「タスク」の表記を「いつか」に変更しました。" },
     { date: "2026-09-09", text: "ウィークリー/デイリーで「いつか」を全展開した際、ツリーが縦に伸びるほど「たたむ」「＋」ボタンが中央寄りにズレていく不具合を修正し、今週中と同じく常に欄の上端付近に固定されるようにしました。" },
     { date: "2026-09-09", text: "スケジュール内の予定ブロックで子タスクを表示している場合、メモ表示と見分けやすいよう、各項目名の頭に「◻︎」を付けるようにしました。" },
     { date: "2026-09-09", text: "予定詳細パネルの左側を並べ直しました。バッファ設定→マンスリーに表示/完了/削除(予定そのものに関わる項目)を上に、ブロック表示(OFF/メモ/子タスク)をその下にまとめました。バッファの前後は1行に収め、数字は自由入力ではなく10分刻みのプルダウン選択に変更しています。右側のメモ欄・子タスク欄は、左側と同じ高さまで目一杯広げました。" },
@@ -3884,20 +3882,17 @@
 
   // connectorEls[d][pageIdx] draws the line from the active parent at depth
   // d down to the tray holding its children (somedayLevelEls[d + 1]) — same
-  // page order as somedayLevelEls (calendar/weekly/monthly/task), but WITHOUT
-  // タスク(縦一覧): its columns sit left-to-right instead of stacking
-  // downward, so its branch line needs different geometry — see
-  // tasklistConnectorEls/positionSomedayConnectorHorizontal below.
+  // page order as somedayLevelEls (calendar/weekly/monthly/task). タスク
+  // (縦一覧)はここに含まない — 常時全展開(全ての親をまとめて表示)なので
+  // 「1つのアクティブな親」を前提にしたこの連結線の仕組みとは別に、
+  // drawSomedayTreeConnectorLinesを使い回した専用の描画(renderTasklist
+  // SomedayColumns参照)を持つ。
   const somedayConnectorEls = [
     [calendarSubtaskConnector, weeklySubtaskConnector, monthlySubtaskConnector, taskSubtaskConnector],
     [calendarGrandchildConnector, weeklyGrandchildConnector, monthlyGrandchildConnector, taskGrandchildConnector],
     [calendarGreatGrandchildConnector, weeklyGreatGrandchildConnector, monthlyGreatGrandchildConnector, taskGreatGrandchildConnector],
   ];
 
-  // タスク(縦一覧)ページの列は右へ右へ並ぶので、他ページと同じ「下に伸びる
-  // 幹→横の梁→各子へ垂らす」形ではなく、90度回した「右に伸びる幹→縦の
-  // 梁→各子へ横に伸ばす」形で親子の連結線を描く(positionSomedayConnectorHorizontal)。
-  const tasklistConnectorEls = [tasklistSubtaskConnector, tasklistGrandchildConnector, tasklistGreatGrandchildConnector];
   // somedayLevelEls[*].lists / somedayConnectorRoots 内でのタスクページの位置
   const TASKLIST_PAGE_IDX = 4;
 
@@ -3962,65 +3957,6 @@
     containerEl.hidden = false;
   }
 
-  // タスク(縦一覧)ページ用: 親チップの右端から伸びる幹→縦の梁→各子チップ
-  // への横方向の枝、という90度回した形で連結線を描く(他ページの
-  // positionSomedayConnector をx/y入れ替えただけの鏡写し)。
-  function positionSomedayConnectorHorizontal(containerEl, rootEl, chipEl, sourceListEl, destListEl) {
-    containerEl.innerHTML = "";
-    const childChips = destListEl ? Array.from(destListEl.querySelectorAll(".cal-unplanned-chip")) : [];
-    if (!chipEl || !childChips.length) {
-      containerEl.hidden = true;
-      return;
-    }
-
-    const rootRect = rootEl.getBoundingClientRect();
-    const chipRect = chipEl.getBoundingClientRect();
-    const listRect = sourceListEl.getBoundingClientRect();
-    const destListRect = destListEl.getBoundingClientRect();
-
-    // clamp each anchor to its own list's visible height so a chip scrolled
-    // out of view doesn't drag its line off to some point outside the tray
-    const parentY = Math.max(listRect.top, Math.min(listRect.bottom, chipRect.top + chipRect.height / 2)) - rootRect.top;
-    const stemLeft = chipRect.right - rootRect.left;
-
-    const childAnchors = childChips.map((c) => {
-      const r = c.getBoundingClientRect();
-      const y = Math.max(destListRect.top, Math.min(destListRect.bottom, r.top + r.height / 2)) - rootRect.top;
-      return { y, left: r.left - rootRect.left };
-    });
-
-    const branchX = Math.max(stemLeft + 2, Math.min(...childAnchors.map((a) => a.left)) - SOMEDAY_BRANCH_GAP);
-    const allY = [parentY, ...childAnchors.map((a) => a.y)];
-    const minY = Math.min(...allY);
-    const maxY = Math.max(...allY);
-    const half = SOMEDAY_BRANCH_LINE_W / 2;
-
-    addSomedayBranchLine(containerEl, stemLeft, parentY - half, branchX - stemLeft, SOMEDAY_BRANCH_LINE_W);
-    addSomedayBranchLine(containerEl, branchX - half, minY, SOMEDAY_BRANCH_LINE_W, maxY - minY);
-    childAnchors.forEach((a) => {
-      addSomedayBranchLine(containerEl, branchX, a.y - half, a.left - branchX, SOMEDAY_BRANCH_LINE_W);
-    });
-
-    containerEl.hidden = false;
-  }
-
-  function repositionTasklistConnectors() {
-    for (let depth = 0; depth < tasklistConnectorEls.length; depth++) {
-      const parentId = activeSomedayIds[depth];
-      const parentTask = parentId ? someday.find((t) => t.id === parentId) : null;
-      const connectorEl = tasklistConnectorEls[depth];
-      if (!parentTask) {
-        connectorEl.innerHTML = "";
-        connectorEl.hidden = true;
-        continue;
-      }
-      const sourceListEl = somedayLevelEls[depth].lists[TASKLIST_PAGE_IDX];
-      const chipEl = sourceListEl.querySelector(`[data-someday-id="${parentTask.id}"]`);
-      const destListEl = somedayLevelEls[depth + 1].lists[TASKLIST_PAGE_IDX];
-      positionSomedayConnectorHorizontal(connectorEl, somedayConnectorRoots[TASKLIST_PAGE_IDX], chipEl, sourceListEl, destListEl);
-    }
-  }
-
   // Redraws every currently-visible parent-to-children branch. Cheap enough
   // (a handful of getBoundingClientRect calls) to run on every someday
   // render, plus on scroll/resize since a chip's on-screen position shifts
@@ -4035,10 +3971,6 @@
         el.innerHTML = "";
         el.hidden = true;
       }));
-      tasklistConnectorEls.forEach((el) => {
-        el.innerHTML = "";
-        el.hidden = true;
-      });
       return;
     }
     for (let depth = 0; depth < somedayConnectorEls.length; depth++) {
@@ -4056,7 +3988,6 @@
         positionSomedayConnector(connectorEl, somedayConnectorRoots[pageIdx], chipEl, sourceListEl, destListEl);
       });
     }
-    repositionTasklistConnectors();
   }
 
   // A task's nesting depth: 0=top-level, 1=子タスク, 2=孫タスク, 3=ひ孫タスク.
@@ -4257,7 +4188,9 @@
 
     chip.dataset.somedayId = task.id;
     if (isVerticalSomedayContext(listEl)) {
-      chip.addEventListener("click", () => handleSomedayChipTap(task));
+      // 縦一覧のタスクページは常時全展開なので、タップは常に選択肢パネルへ
+      // 直接進む(掘り下げの途中状態が無い)。
+      chip.addEventListener("click", () => handleSomedayChipTap(task, true));
     } else {
       chip.addEventListener("pointerdown", (e) => startSomedayChipDrag(e, chip, task));
     }
@@ -4466,9 +4399,9 @@
       // 引き続きできる。
       somedayLevelEls[0].lists.forEach((listEl) => (listEl.hidden = true));
       somedayLevelEls.slice(1).forEach((cfg) => cfg.boxes.forEach((b) => (b.hidden = true)));
-      somedayTreeEls.forEach((treeEl, pageIdx) => {
+      somedayTreeEls.forEach((treeEl) => {
         treeEl.hidden = false;
-        renderSomedayTreeInto(treeEl, pageIdx === TASKLIST_PAGE_IDX);
+        renderSomedayTreeInto(treeEl, false);
       });
     } else {
       somedayTreeEls.forEach((treeEl) => (treeEl.hidden = true));
@@ -5354,9 +5287,221 @@
 
     const todayTasks = itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority && !it.completed);
     renderFlat(tasklistTodayList, todayTasks, "今日中タスク", "今日中のタスクなし", (item) => promptRegularTaskEdit(dateStr, item));
+  }
 
-    const weekTasks = itemsArrayForWeek(weekStart);
-    renderFlat(tasklistThisWeekList, weekTasks, "今週中タスク", "今週中のタスクなし", (item) => promptWeeklyTaskEdit(weekStart, item));
+  // 今週中(M/D〜)の日付ラベル: formatDateLabelの曜日無し版。
+  function formatWeekStartLabel(weekStart) {
+    const [, m, d] = weekStart.split("-").map(Number);
+    return `${m}/${d}〜`;
+  }
+
+  // rootItem(今週中の1件の親タスク)の子孫を、いつかのcollectSomedayFamilyLevels
+  // と同じ深さ別配列(0=自分..3=ひ孫)で集める。今週中の子孫はplan.children
+  // と全く同じ形(id/parentId)なので、そのままplanChildrenOfを使い回せる。
+  // 親タスク自身にはidが無い(トップレベルの今週中タスクは今のところ安定
+  // したidを持たない)ため、この描画1回限りの合成id(syntheticRootId)を
+  // 割り当てて連結線の目印に使う。
+  function collectThisWeekFamilyLevels(rootItem, syntheticRootId) {
+    const levels = [[{ id: syntheticRootId, label: rootItem.label }], [], [], []];
+    function walk(nodeId, depth) {
+      if (depth >= PLAN_CHILD_MAX_DEPTH) return;
+      planChildrenOf(rootItem, nodeId).forEach((child) => {
+        levels[depth + 1].push(child);
+        walk(child.id, depth + 1);
+      });
+    }
+    walk(null, 0);
+    return levels;
+  }
+
+  // タスクページの「子/孫/ひ孫タスク」見出し付き3列を1つ分(いつか、または
+  // 今週中の1週)組み立てる。families内の全ての親についてまとめて表示する
+  // (1つだけ選んで掘り下げる、という状態を持たない常時全展開)。
+  //   rowEl: 3列を横に並べる行(position:relativeで連結線の基準にもなる)
+  //   depthListEls: [子タスクの一覧, 孫タスクの一覧, ひ孫タスクの一覧]
+  //   collectLevels(family): familyの深さ別配列(0..3)を返す
+  //   collectPairs(family): familyの{parentTask, childTasks}ペア配列を返す
+  //   createChip(task, listEl, depth): そのタスクのチップ要素を作る
+  function renderTasklistFamilyColumns(rowEl, depthListEls, families, { collectLevels, collectPairs, createChip }) {
+    // {task, family}の組で持ち回る — 今週中側のcreateChip
+    // (createThisWeekChildChip)は「どの週タスクの子孫か」も必要とする
+    // ため、毎回family総当たりで探し直さずに済むようにする。
+    const perDepthEntries = [[], [], []];
+    const connectorPairs = [];
+    families.forEach((family) => {
+      const levels = collectLevels(family);
+      for (let d = 1; d <= SOMEDAY_MAX_DEPTH; d++) {
+        levels[d].forEach((task) => perDepthEntries[d - 1].push({ task, family }));
+      }
+      connectorPairs.push(...collectPairs(family));
+    });
+    depthListEls.forEach((listEl, i) => {
+      listEl.innerHTML = "";
+      const entries = perDepthEntries[i];
+      if (!entries.length) {
+        const empty = document.createElement("span");
+        empty.className = "calendar-unplanned-empty";
+        empty.textContent = "なし";
+        listEl.appendChild(empty);
+        return;
+      }
+      entries.forEach(({ task, family }) => listEl.appendChild(createChip(task, listEl, i + 1, family)));
+    });
+    requestAnimationFrame(() => drawSomedayTreeConnectorLines(rowEl, connectorPairs, true));
+  }
+
+  // いつか: 常時全展開(全ての親についてまとめて子/孫/ひ孫タスクを表示)。
+  // 通常モードの単一経路の掘り下げ("いつか"欄そのものと"タスク"欄=子/孫/
+  // ひ孫の表示切替)、および他ページの全展開トグルの状態には一切関知しない
+  // — renderSomedayList側で一時的に隠される/差し替えられることがあっても
+  // (他ページで全展開をONにした場合など)、ここで必ず正しい状態に戻す。
+  function renderTasklistSomedayColumns() {
+    tasklistUnplannedList.hidden = false;
+    renderSomedayListInto(tasklistUnplannedList, topLevelSomeday());
+    tasklistSubtaskBox.hidden = false;
+    tasklistGrandchildBox.hidden = false;
+    tasklistGreatGrandchildBox.hidden = false;
+
+    renderTasklistFamilyColumns(
+      tasklistSomedayRow,
+      [tasklistSubtaskList, tasklistGrandchildList, tasklistGreatGrandchildList],
+      topLevelSomeday(),
+      {
+        collectLevels: (family) => collectSomedayFamilyLevels(family),
+        collectPairs: (family) => {
+          const levels = collectSomedayFamilyLevels(family);
+          const pairs = [];
+          levels.slice(0, SOMEDAY_MAX_DEPTH).forEach((tasksAtDepth) => {
+            tasksAtDepth.forEach((parentTask) => {
+              const childTasks = childrenOf(parentTask.id);
+              if (childTasks.length) pairs.push({ parentTask, childTasks });
+            });
+          });
+          return pairs;
+        },
+        createChip: (task, listEl) => createSomedayChip(task, listEl),
+      }
+    );
+  }
+
+  // 今週中: 週(weekStart)ごとに、いつかと同じ「子/孫/ひ孫タスクの見出し
+  // 付き3列」を持つセクションを1つずつ作る。タスクが1件でもある週を
+  // 全て(今週から先、日付の早い順に)並べる。
+  function buildTasklistThisWeekSection(weekStart, items) {
+    const section = document.createElement("div");
+    section.className = "tasklist-week-section";
+
+    const rootBox = document.createElement("div");
+    rootBox.className = "calendar-unplanned tasklist-box";
+    const rootHeader = document.createElement("div");
+    rootHeader.className = "tasklist-box-header";
+    const rootTitle = document.createElement("span");
+    rootTitle.className = "calendar-unplanned-title";
+    rootTitle.textContent = `今週中(${formatWeekStartLabel(weekStart)})`;
+    rootHeader.appendChild(rootTitle);
+    rootBox.appendChild(rootHeader);
+    const rootList = document.createElement("div");
+    rootList.className = "calendar-unplanned-list tasklist-list";
+    rootBox.appendChild(rootList);
+
+    const subtaskBox = document.createElement("div");
+    subtaskBox.className = "calendar-unplanned calendar-subtask-row tasklist-box";
+    const subtaskTitle = document.createElement("span");
+    subtaskTitle.className = "calendar-unplanned-title";
+    subtaskTitle.textContent = "子タスク";
+    subtaskBox.appendChild(subtaskTitle);
+    const subtaskList = document.createElement("div");
+    subtaskList.className = "calendar-unplanned-list tasklist-list";
+    subtaskBox.appendChild(subtaskList);
+
+    const grandchildBox = document.createElement("div");
+    grandchildBox.className = "calendar-unplanned calendar-subtask-row tasklist-box";
+    const grandchildTitle = document.createElement("span");
+    grandchildTitle.className = "calendar-unplanned-title";
+    grandchildTitle.textContent = "孫タスク";
+    grandchildBox.appendChild(grandchildTitle);
+    const grandchildList = document.createElement("div");
+    grandchildList.className = "calendar-unplanned-list tasklist-list";
+    grandchildBox.appendChild(grandchildList);
+
+    const greatGrandchildBox = document.createElement("div");
+    greatGrandchildBox.className = "calendar-unplanned calendar-subtask-row tasklist-box";
+    const greatGrandchildTitle = document.createElement("span");
+    greatGrandchildTitle.className = "calendar-unplanned-title";
+    greatGrandchildTitle.textContent = "ひ孫タスク";
+    greatGrandchildBox.appendChild(greatGrandchildTitle);
+    const greatGrandchildList = document.createElement("div");
+    greatGrandchildList.className = "calendar-unplanned-list tasklist-list";
+    greatGrandchildBox.appendChild(greatGrandchildList);
+
+    const row = document.createElement("div");
+    row.className = "tasklist-someday-row";
+    row.append(rootBox, subtaskBox, grandchildBox, greatGrandchildBox);
+    section.appendChild(row);
+
+    if (!items.length) {
+      const empty = document.createElement("span");
+      empty.className = "calendar-unplanned-empty";
+      empty.textContent = "今週中のタスクなし";
+      rootList.appendChild(empty);
+    } else {
+      items.forEach((item, idx) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "cal-unplanned-chip";
+        const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
+        if (directChildCount > 0) chip.classList.add("parent");
+        chip.dataset.somedayId = `tw-root-${weekStart}-${idx}`;
+        const label = document.createElement("span");
+        label.className = "cal-unplanned-chip-label";
+        label.textContent = labelOf(item, "今週中タスク");
+        chip.appendChild(label);
+        if (directChildCount > 0) {
+          const badge = document.createElement("span");
+          badge.className = "cal-child-count-badge";
+          badge.dataset.count = String(directChildCount);
+          chip.appendChild(badge);
+        }
+        chip.addEventListener("click", () => promptWeeklyTaskEdit(weekStart, item));
+        rootList.appendChild(chip);
+      });
+
+      renderTasklistFamilyColumns(row, [subtaskList, grandchildList, greatGrandchildList], items, {
+        collectLevels: (item) => collectThisWeekFamilyLevels(item, `tw-root-${weekStart}-${items.indexOf(item)}`),
+        collectPairs: (item) => {
+          const syntheticRootId = `tw-root-${weekStart}-${items.indexOf(item)}`;
+          const pairs = [];
+          const directChildren = planChildrenOf(item, null);
+          if (directChildren.length) pairs.push({ parentTask: { id: syntheticRootId }, childTasks: directChildren });
+          (item.children || []).forEach((node) => {
+            const kids = planChildrenOf(item, node.id);
+            if (kids.length) pairs.push({ parentTask: node, childTasks: kids });
+          });
+          return pairs;
+        },
+        createChip: (task, listEl, depth, family) => {
+          const chip = createThisWeekChildChip(task, family);
+          chip.dataset.somedayId = task.id;
+          return chip;
+        },
+      });
+    }
+
+    return section;
+  }
+
+  function renderTasklistThisWeekSections() {
+    tasklistThisWeekSections.innerHTML = "";
+    const weekStarts = Object.keys(thisWeekTasks)
+      .filter((ws) => thisWeekTasks[ws] && thisWeekTasks[ws].length)
+      .sort();
+    if (!weekStarts.length) {
+      tasklistThisWeekSections.appendChild(buildTasklistThisWeekSection(currentWeekStartKey(), []));
+      return;
+    }
+    weekStarts.forEach((weekStart) => {
+      tasklistThisWeekSections.appendChild(buildTasklistThisWeekSection(weekStart, itemsArrayForWeek(weekStart)));
+    });
   }
 
   // いつかタスクを今週中(weekStart週)へ移す共通処理。子タスクを抱えた
@@ -6657,9 +6802,14 @@
   // タップした際の挙動(変更修正/子タスク追加/削除の選択、または子タスク層
   // への掘り下げ)。横スクロールのトレイでは長押しドラッグが絡まない
   // プレーンなタップからも、縦一覧のタスクページのクリックからも、ここに
-  // たどり着く。
-  function handleSomedayChipTap(task) {
+  // たどり着く。forceExpandedは、共有のsomedayExpandAllトグルとは別に
+  // 「このタップは常時全展開のタスクページ由来なので、いつも全展開扱いで
+  // 良い」ことを示す(タスクページは他ページの全展開トグルの状態に関係なく
+  // 常に全ての親子が見えているので、まだ掘り下げていない親を選ぶ段階が
+  // そもそも無く、常に選択肢パネルへ直接進む)。
+  function handleSomedayChipTap(task, forceExpanded) {
     const depth = somedayTaskDepth(task);
+    const expandAll = somedayExpandAll || forceExpanded;
 
     if (depth >= SOMEDAY_MAX_DEPTH) {
       // the deepest level (ひ孫タスク): always a leaf, so no 子タスク追加
@@ -6677,7 +6827,7 @@
       // and re-tapping it。全展開中は全ての親の子が最初から見えているので
       // 「まだ掘り下げていない親を選ぶ」段階がそもそも無く、常にこちら
       // (選択肢パネル)へ直接進む。
-      if (somedayExpandAll || activeSomedayIds[depth] === task.id) {
+      if (expandAll || activeSomedayIds[depth] === task.id) {
         promptSomedayEditOrAddChild(task, depth);
       } else {
         activateSomedayChain(depth, task.id);
@@ -6686,7 +6836,7 @@
       return;
     }
 
-    if (!somedayExpandAll && depth === 0 && activeSomedayIds.some((id) => id)) {
+    if (!expandAll && depth === 0 && activeSomedayIds.some((id) => id)) {
       // an unrelated childless いつか task, tapped while some other
       // family's 子/孫/ひ孫 trays are expanded below — just close that
       // expansion (like tapping outside does) instead of also popping
@@ -7177,7 +7327,12 @@
 
     renderThisWeekTray();
     renderTasklistFlatSections();
+    renderTasklistThisWeekSections();
     renderSomedayList();
+    // タスクページのいつか欄は常時全展開(他ページの全展開トグルの状態に
+    // 関係なく)なので、renderSomedayListが(他ページで全展開がONの場合に)
+    // 一時的に隠す/差し替えることがあっても、必ずここで正しい表示に戻す。
+    renderTasklistSomedayColumns();
     applyCalendarPlanEditingVisibility();
     renderCalendarDetail();
 
@@ -7526,13 +7681,7 @@
   taskSomedayAddBtn.addEventListener("click", addSomedayTask);
   tasklistSomedayAddBtn.addEventListener("click", addSomedayTask);
 
-  const somedayExpandAllBtns = [
-    calendarSomedayExpandAllBtn,
-    weeklySomedayExpandAllBtn,
-    monthlySomedayExpandAllBtn,
-    taskSomedayExpandAllBtn,
-    tasklistSomedayExpandAllBtn,
-  ];
+  const somedayExpandAllBtns = [calendarSomedayExpandAllBtn, weeklySomedayExpandAllBtn, monthlySomedayExpandAllBtn, taskSomedayExpandAllBtn];
   function updateSomedayExpandAllBtns() {
     somedayExpandAllBtns.forEach((btn) => {
       btn.textContent = somedayExpandAll ? "たたむ" : "全展開";
