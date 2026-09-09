@@ -1803,6 +1803,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-09", text: "予定詳細のブロック表示(OFF/メモ/子タスク)の切り替えを整理しました。OFFの時は右側に何も表示せず、メモを選ぶとメモ欄、子タスクを選ぶとその場所に子タスクの追加欄が表示されます(バーを引き上げて高さを広げなくても、子タスクの追加ボタンが最初から見えます)。" },
     { date: "2026-09-09", text: "予定をタップした際のメモ欄を、右揃えのまま幅・高さを縮めました(以前は欄いっぱいに広く、予定を開くたびに画面のほとんどを占めていました)。" },
     { date: "2026-09-09", text: "今週中でタスクを展開したまま、他の予定を開くなど今週中とは無関係な場所をタップしても展開が閉じないままだった不具合を修正しました。他のタスクをタップした場合に限らず、他をタップすれば自動的に展開がたたまれるようになりました。" },
     { date: "2026-09-09", text: "今週中で、既に展開中のタスクをもう一度タップした時の動きを、いつかと同じ仕様に変更しました。展開をたたむのではなく、名前などの編集モーダルが開きます(展開は維持されたままです)。" },
@@ -2716,8 +2717,6 @@
     timeLabel.textContent = `${formatMinHM(plan.startMin)}〜${formatMinHM(plan.endMin)}`;
     nameRow.append(nameInput, timeLabel);
 
-    const childrenSection = buildPlanChildrenSection(dateStr, plan);
-
     const actions = document.createElement("div");
     actions.className = "cal-plan-actions";
 
@@ -2891,21 +2890,34 @@
     resizeHandle.className = "cal-plan-detail-resize-handle";
     resizeHandle.addEventListener("pointerdown", startCalendarDetailResize);
 
-    // メモ欄: モーダルを介さず常時表示し、フォーカスを外すとそのまま
-    // 保存する。バッファ+操作ボタンの右側から、パネルの下端まで広く
-    // 使えるようにする(cal-plan-detail-body参照)。
-    const memoTextarea = document.createElement("textarea");
-    memoTextarea.className = "cal-plan-memo-textarea";
-    memoTextarea.placeholder = "メモ";
-    memoTextarea.value = plan.memo || "";
-    memoTextarea.addEventListener("change", () => {
-      captureUndoSnapshot();
-      const trimmed = memoTextarea.value.trim();
-      if (trimmed) plan.memo = trimmed;
-      else delete plan.memo;
-      savePlans();
-      showPlanDetail(dateStr, plan);
-    });
+    // 右側の内容欄: ブロック表示(OFF/メモ/子タスク)の選択に応じて、
+    // 同じ場所にメモ欄か子タスク編集欄のどちらかだけを出す(常に両方
+    // 出していた以前と違い、OFFなら何も出さずパネルを詰める)。バーを
+    // 引き上げて高さを広げなくても、子タスクを押せばその場で子タスクの
+    // 追加欄が見えるようにするのが狙い。
+    const blockDisplay = plan.blockDisplay || "off";
+    let contentBox = null;
+    if (blockDisplay === "memo") {
+      // メモ欄: モーダルを介さず常時表示し、フォーカスを外すとそのまま
+      // 保存する。バッファ+操作ボタンの右側から、パネルの下端まで広く
+      // 使えるようにする(cal-plan-detail-body参照)。
+      const memoTextarea = document.createElement("textarea");
+      memoTextarea.className = "cal-plan-memo-textarea";
+      memoTextarea.placeholder = "メモ";
+      memoTextarea.value = plan.memo || "";
+      memoTextarea.addEventListener("change", () => {
+        captureUndoSnapshot();
+        const trimmed = memoTextarea.value.trim();
+        if (trimmed) plan.memo = trimmed;
+        else delete plan.memo;
+        savePlans();
+        renderCalendar();
+        showPlanDetail(dateStr, plan);
+      });
+      contentBox = memoTextarea;
+    } else if (blockDisplay === "children") {
+      contentBox = buildPlanChildrenSection(dateStr, plan);
+    }
 
     // 左側: バッファ入力+操作ボタンをまとめた縦一列。
     const leftCol = document.createElement("div");
@@ -2914,7 +2926,8 @@
 
     const body = document.createElement("div");
     body.className = "cal-plan-detail-body";
-    body.append(leftCol, memoTextarea);
+    body.append(leftCol);
+    if (contentBox) body.append(contentBox);
 
     // 情報行+操作ボタンを、子タスクツリーの真上に貼り付けたまま常時表示
     // する — ツリーが縦に伸びてcalendarDetail自体がスクロールしても、
@@ -2922,7 +2935,7 @@
     const header = document.createElement("div");
     header.className = "cal-plan-detail-header";
     header.append(resizeHandle, nameRow, body);
-    calendarDetail.append(header, childrenSection);
+    calendarDetail.append(header);
   }
 
   // calendarDetailの上端のつまみをドラッグして、パネルの高さ(CSSの

@@ -2993,15 +2993,23 @@ body {
 }
 
 /* タスクページ(いつか一覧)のMiller Columnsと同じ向き: 子/孫/ひ孫を
-   横に並んだ列として常に全展開表示する。縦幅の超過はこの親要素
-   (予定詳細パネル=calendarDetail)自身のスクロールに任せるので、ここでは
-   高さを固定しない。 */
+   横に並んだ列として表示する。予定詳細のメモ欄と同じ場所(右揃え・
+   50vw・パネルの半分の高さ)に収め、バーを引き上げなくても子タスクの
+   追加欄が最初から見えるようにする。列自体が縦横にはみ出す分は、この
+   箱自身のスクロールに任せる。 */
 .cal-plan-children {
   position: relative;
   display: flex;
   flex-direction: row;
   align-items: flex-start;
   gap: 0;
+  flex: none;
+  align-self: flex-start;
+  width: 50vw;
+  height: 50%;
+  margin-left: auto;
+  box-sizing: border-box;
+  overflow: auto;
 }
 
 .cal-plan-child-col {
