@@ -2651,6 +2651,15 @@ body {
   gap: 0;
 }
 
+/* いつか欄(常にこのIDを持つ唯一の行)と、その上の今週中の最後のセクション
+   との間は、.tasklist-page自体のflexギャップ(2px)だけで区切られており、
+   他の区切り(各欄・各週セクション自身が持つborder-top)と違って何も
+   縁取りが無いため、背景の無いその2pxがそのまま白く抜けて見えていた。
+   他の区切りと同じ1pxの線で埋める。 */
+#tasklistSomedayRow {
+  border-top: 1px solid var(--line);
+}
+
 .tasklist-box {
   flex: 1 1 0;
   min-width: 0;
