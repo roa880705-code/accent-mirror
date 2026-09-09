@@ -91,45 +91,10 @@
       </section>
       <section class="page">
         <div class="tasklist-page">
-          <div class="tasklist-flat-sections" id="tasklistFlatSections">
-            <div class="calendar-unplanned tasklist-box tasklist-flat-box" id="tasklistPriorityBox">
-              <div class="tasklist-box-header">
-                <span class="calendar-unplanned-title">最優先</span>
-                <button type="button" class="calendar-someday-add" id="tasklistPriorityAddBtn" aria-label="最優先タスクを追加">＋</button>
-              </div>
-              <div class="calendar-unplanned-list tasklist-list" id="tasklistPriorityList"></div>
-            </div>
-            <div class="calendar-unplanned tasklist-box tasklist-flat-box" id="tasklistTodayBox">
-              <div class="tasklist-box-header">
-                <span class="calendar-unplanned-title">今日中</span>
-                <button type="button" class="calendar-someday-add" id="tasklistTodayAddBtn" aria-label="今日中タスクを追加">＋</button>
-              </div>
-              <div class="calendar-unplanned-list tasklist-list" id="tasklistTodayList"></div>
-            </div>
-            <div id="tasklistFutureDateSections"></div>
-            <div id="tasklistThisWeekSections"></div>
-          </div>
-          <div class="tasklist-someday-row" id="tasklistSomedayRow">
-            <div class="calendar-unplanned tasklist-box" id="tasklistUnplannedBox">
-              <div class="tasklist-box-header">
-                <span class="calendar-unplanned-title">いつか</span>
-                <button type="button" class="calendar-someday-add" id="tasklistSomedayAddBtn" aria-label="いつかを追加">＋</button>
-              </div>
-              <div class="calendar-unplanned-list tasklist-list" id="tasklistUnplannedList"></div>
-            </div>
-            <div class="calendar-unplanned calendar-subtask-row tasklist-box" id="tasklistSubtaskBox">
-              <span class="calendar-unplanned-title">子タスク</span>
-              <div class="calendar-unplanned-list tasklist-list" id="tasklistSubtaskList"></div>
-            </div>
-            <div class="calendar-unplanned calendar-subtask-row tasklist-box" id="tasklistGrandchildBox">
-              <span class="calendar-unplanned-title">孫タスク</span>
-              <div class="calendar-unplanned-list tasklist-list" id="tasklistGrandchildList"></div>
-            </div>
-            <div class="calendar-unplanned calendar-subtask-row tasklist-box" id="tasklistGreatGrandchildBox">
-              <span class="calendar-unplanned-title">ひ孫タスク</span>
-              <div class="calendar-unplanned-list tasklist-list" id="tasklistGreatGrandchildList"></div>
-            </div>
-          </div>
+          <!-- タスクページ: カテゴリ(最優先/スケジュール内/今日中/今週中/いつか)の
+               くくりを見出しとしては出さず、日時が決まっているものから時系列順に
+               1列の縦並びで並べる。中身はJS(renderTasklistUnifiedList)が組み立てる。 -->
+          <div class="tasklist-unified-list" id="tasklistUnifiedList"></div>
         </div>
       </section>
       <section class="page">

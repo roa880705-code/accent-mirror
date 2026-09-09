@@ -1014,35 +1014,15 @@
   const taskGrandchildList = document.getElementById("taskGrandchildList");
   const taskGreatGrandchildBox = document.getElementById("taskGreatGrandchildBox");
   const taskGreatGrandchildList = document.getElementById("taskGreatGrandchildList");
-  const tasklistUnplannedList = document.getElementById("tasklistUnplannedList");
-  // タスクページ上部: スケジュールにはめ込んでいない全て(最優先/今日中/
-  // 今週中、今日分)を一望できる縦積みの3+欄。タップで既存の選択肢
-  // モーダルを開くほか、長押し→上下ドラッグでの並べ替え(startTasklist
-  // ChipDrag参照、スケジュールへの持ち上げ/配置転換は無い)にも対応する。
-  const tasklistPriorityList = document.getElementById("tasklistPriorityList");
-  const tasklistPriorityAddBtn = document.getElementById("tasklistPriorityAddBtn");
-  const tasklistTodayList = document.getElementById("tasklistTodayList");
-  const tasklistTodayAddBtn = document.getElementById("tasklistTodayAddBtn");
-  const tasklistThisWeekSections = document.getElementById("tasklistThisWeekSections");
-  // タスクページ: 今日(state.day)は上の静的な最優先/今日中欄のまま、
-  // 明日以降に何かある日だけをここへ日付ごとに動的追加する(今週中の
-  // tasklistThisWeekSectionsと同じ考え方)。今日自身の「予定(子タスク
-  // あり)」行もここへ含める(最優先/今日中は既存の静的欄が担うが、この
-  // 行だけは今日分の静的欄が元々無いため)。
-  const tasklistFutureDateSections = document.getElementById("tasklistFutureDateSections");
-  const tasklistSomedayRow = document.getElementById("tasklistSomedayRow");
-  const tasklistSomedayAddBtn = document.getElementById("tasklistSomedayAddBtn");
+  // タスクページ: 最優先/スケジュール内(子タスクを持つ予定)/今日中/
+  // 今週中/いつかのカテゴリ見出しを一切出さず、時系列順に1本の縦並びで
+  // 並べる唯一の入れ物(renderTasklistUnifiedList参照)。
+  const tasklistUnifiedList = document.getElementById("tasklistUnifiedList");
   // ページ順(calendar/weekly/monthly/task)はsomedayLevelEls等の既存の
   // 並びに合わせる — 全展開ツリー(家族ごとに列、深さごとに行)は横積みの
-  // この4ページだけの機能。タスクページは常時全展開(子/孫/ひ孫タスクの
-  // 見出し付き3列に、全ての親についてまとめて表示)なので対象外。
+  // この4ページだけの機能。タスクページは別の縦一列レンダラを持つので
+  // 対象外。
   const somedayTreeEls = [calendarSomedayTree, weeklySomedayTree, monthlySomedayTree, taskSomedayTree];
-  const tasklistSubtaskBox = document.getElementById("tasklistSubtaskBox");
-  const tasklistSubtaskList = document.getElementById("tasklistSubtaskList");
-  const tasklistGrandchildBox = document.getElementById("tasklistGrandchildBox");
-  const tasklistGrandchildList = document.getElementById("tasklistGrandchildList");
-  const tasklistGreatGrandchildBox = document.getElementById("tasklistGreatGrandchildBox");
-  const tasklistGreatGrandchildList = document.getElementById("tasklistGreatGrandchildList");
   const calendarSubtaskConnector = document.getElementById("calendarSubtaskConnector");
   const calendarGrandchildConnector = document.getElementById("calendarGrandchildConnector");
   const calendarGreatGrandchildConnector = document.getElementById("calendarGreatGrandchildConnector");
@@ -1832,7 +1812,8 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
-    { date: "2026-09-09", text: "タスクページで、なるべく多くのタスクが一覧できるようにしました。「最優先」「今日中」は今日分だけでなく、明日以降にタスクがある日も日付ごとに(例:「最優先(9/10(木))」)並べて表示されるようになりました。また、スケジュールに組み込み済みの予定が子タスクを持っている場合も、日付ごとに「予定」の欄として子/孫/ひ孫タスクまで一覧でき、タップするとデイリーページのその予定の詳細を開けます。" },
+    { date: "2026-09-09", text: "タスクページを全面的に作り直しました。「最優先」「スケジュール内」「今日中」「今週中」「いつか」というカテゴリの見出しをやめ、1本の縦並びリストに統合。今日の最優先→スケジュール内(子タスクを持つ予定)→今日中→明日の最優先→…と、その週の残り曜日を同じ順で並べたあと今週分の今週中タスク、続けて来週も同じ形で(内容がある週だけ)繰り返し、最後にいつかタスクを配置します。どのタスクもカテゴリ名は表示されず、並んでいる順番そのものが時系列を表します。子/孫/ひ孫タスクは親の直後にインデントして表示し、長押しドラッグでの並べ替えは子孫ごとまとめて動きます。" },
+    { date: "2026-09-09", text: "タスクページで、なるべく多くのタスクが一覧できるようにしました。「最優先」「今日中」は今日分だけでなく、明日以降にタスクがある日も日付ごとに並べて表示されるようになりました。また、スケジュールに組み込み済みの予定が子タスクを持っている場合も、日付ごとに子/孫/ひ孫タスクまで一覧でき、タップするとデイリーページのその予定の詳細を開けます。" },
     { date: "2026-09-09", text: "スケジュール内の予定をタップしてメモを登録する際、メモ欄が小さい文字サイズだったためiPhoneで自動的にズームされてしまう不具合を修正しました。" },
     { date: "2026-09-09", text: "ウィークリー/デイリー右上の「今週中」「いつか」の表示/非表示ボタンを、両ページで連動しないよう独立させました。設定ページの「表示設定」もウィークリー用・デイリー用それぞれ個別のチェックボックスに分けています。また、マンスリー/ログの「いつか」欄はこの設定と無関係に常に表示されるようにしました。" },
     { date: "2026-09-09", text: "ウィークリー/デイリーの日付ヘッダーに表示される日付タイトル(「旅行」のようなラベル)を、長押ししてスケジュールの時間軸へドラッグ&ドロップできるようにしました。他のドラッグと違い、日付タイトルからのドラッグは移動ではなくコピーになります(元の日付タイトルはそのまま残ります)。" },
@@ -4046,47 +4027,33 @@
   // drive rendering/visibility generically instead of hand-listing every
   // list/box combination at each call site. Index 0 is いつか itself
   // (always visible, no box to show/hide).
+  // タスクページ(縦一覧)はここに含まない — Miller Columns形式の他の4
+  // ページ(calendar/weekly/monthly/task)とは別の、常に全て縦一列・
+  // インデント表示の専用レンダラ(renderTasklistUnifiedList)を持つため。
   const somedayLevelEls = [
-    { lists: [calendarUnplannedList, weeklyUnplannedList, monthlyUnplannedList, taskUnplannedList, tasklistUnplannedList], boxes: null },
+    { lists: [calendarUnplannedList, weeklyUnplannedList, monthlyUnplannedList, taskUnplannedList], boxes: null },
     {
-      lists: [calendarSubtaskList, weeklySubtaskList, monthlySubtaskList, taskSubtaskList, tasklistSubtaskList],
-      boxes: [calendarSubtaskBox, weeklySubtaskBox, monthlySubtaskBox, taskSubtaskBox, tasklistSubtaskBox],
+      lists: [calendarSubtaskList, weeklySubtaskList, monthlySubtaskList, taskSubtaskList],
+      boxes: [calendarSubtaskBox, weeklySubtaskBox, monthlySubtaskBox, taskSubtaskBox],
     },
     {
-      lists: [calendarGrandchildList, weeklyGrandchildList, monthlyGrandchildList, taskGrandchildList, tasklistGrandchildList],
-      boxes: [calendarGrandchildBox, weeklyGrandchildBox, monthlyGrandchildBox, taskGrandchildBox, tasklistGrandchildBox],
+      lists: [calendarGrandchildList, weeklyGrandchildList, monthlyGrandchildList, taskGrandchildList],
+      boxes: [calendarGrandchildBox, weeklyGrandchildBox, monthlyGrandchildBox, taskGrandchildBox],
     },
     {
-      lists: [calendarGreatGrandchildList, weeklyGreatGrandchildList, monthlyGreatGrandchildList, taskGreatGrandchildList, tasklistGreatGrandchildList],
-      boxes: [calendarGreatGrandchildBox, weeklyGreatGrandchildBox, monthlyGreatGrandchildBox, taskGreatGrandchildBox, tasklistGreatGrandchildBox],
+      lists: [calendarGreatGrandchildList, weeklyGreatGrandchildList, monthlyGreatGrandchildList, taskGreatGrandchildList],
+      boxes: [calendarGreatGrandchildBox, weeklyGreatGrandchildBox, monthlyGreatGrandchildBox, taskGreatGrandchildBox],
     },
   ];
 
-  // 縦一覧のタスクページのリスト要素だけ、横スクロール用のドラッグ操作
-  // (並べ替え/横スクロール/スケジュールへのドラッグ)を持たない — タップだけ
-  // で用が足りるし、フルwidthの行をX座標基準で並べ替え判定すると壊れるため。
-  const VERTICAL_SOMEDAY_LISTS = new Set([
-    tasklistUnplannedList,
-    tasklistSubtaskList,
-    tasklistGrandchildList,
-    tasklistGreatGrandchildList,
-  ]);
-
   // connectorEls[d][pageIdx] draws the line from the active parent at depth
   // d down to the tray holding its children (somedayLevelEls[d + 1]) — same
-  // page order as somedayLevelEls (calendar/weekly/monthly/task). タスク
-  // (縦一覧)はここに含まない — 常時全展開(全ての親をまとめて表示)なので
-  // 「1つのアクティブな親」を前提にしたこの連結線の仕組みとは別に、
-  // drawSomedayTreeConnectorLinesを使い回した専用の描画(renderTasklist
-  // SomedayColumns参照)を持つ。
+  // page order as somedayLevelEls (calendar/weekly/monthly/task)。
   const somedayConnectorEls = [
     [calendarSubtaskConnector, weeklySubtaskConnector, monthlySubtaskConnector, taskSubtaskConnector],
     [calendarGrandchildConnector, weeklyGrandchildConnector, monthlyGrandchildConnector, taskGrandchildConnector],
     [calendarGreatGrandchildConnector, weeklyGreatGrandchildConnector, monthlyGreatGrandchildConnector, taskGreatGrandchildConnector],
   ];
-
-  // somedayLevelEls[*].lists / somedayConnectorRoots 内でのタスクページの位置
-  const TASKLIST_PAGE_IDX = 4;
 
   // the containing block each page's connectors are positioned absolutely
   // against — .calendar/.monthly-calendar for those pages, or .page itself
@@ -4379,37 +4346,8 @@
     }
 
     chip.dataset.somedayId = task.id;
-    if (listEl === tasklistUnplannedList) {
-      // タスクページのいつか直下(トップレベル)だけは、並べ替えの意味が
-      // 明確な単一配列(someday内のトップレベル項目)なので長押しドラッグ
-      // で並べ替え可能にする。子/孫/ひ孫欄は複数家族を束ねた一覧なので
-      // 対象外(タップのみ、下のelse-if分岐のまま)。
-      chip.trayItem = task;
-      chip.addEventListener("pointerdown", (e) =>
-        startTasklistChipDrag(e, chip, listEl, () => handleSomedayChipTap(task, true), () => {
-          captureUndoSnapshot();
-          const newOrder = Array.from(listEl.children).filter((c) => c.classList.contains("cal-unplanned-chip")).map((c) => c.trayItem);
-          applyReorderedSubset(someday, newOrder);
-          saveSomeday();
-          renderCalendar();
-        })
-      );
-    } else if (isVerticalSomedayContext(listEl)) {
-      // 縦一覧のタスクページは常時全展開なので、タップは常に選択肢パネルへ
-      // 直接進む(掘り下げの途中状態が無い)。
-      chip.addEventListener("click", () => handleSomedayChipTap(task, true));
-    } else {
-      chip.addEventListener("pointerdown", (e) => startSomedayChipDrag(e, chip, task));
-    }
+    chip.addEventListener("pointerdown", (e) => startSomedayChipDrag(e, chip, task));
     return chip;
-  }
-
-  // タスク一覧ページの縦一列(VERTICAL_SOMEDAY_LISTS)に加えて、全展開の
-  // ツリー表示でも縦積み側(.someday-tree.vertical、タスク一覧ページ用)の
-  // セルはタップのみ・ドラッグ操作を持たない(通常時のタスク一覧と同じ
-  // 方針)。セル自体(listEl)がその中にあるかをclosestで判定する。
-  function isVerticalSomedayContext(listEl) {
-    return VERTICAL_SOMEDAY_LISTS.has(listEl) || !!listEl.closest(".someday-tree.vertical");
   }
 
   function renderSomedayListInto(listEl, tasks) {
@@ -4482,10 +4420,6 @@
           cell.style.gridColumn = String(familyIndex + 1);
           cell.style.gridRow = String(depth + 1);
         }
-        // 先にDOMへ挿入してから中身を作る — createSomedayChip側の
-        // isVerticalSomedayContext は closest(".someday-tree.vertical") で
-        // 判定するため、cellがまだ宙に浮いた状態(未接続)だと祖先を辿れず
-        // 常にfalseになってしまう。
         containerEl.appendChild(cell);
         tasks.forEach((task) => cell.appendChild(createSomedayChip(task, cell)));
       });
@@ -4626,14 +4560,15 @@
     // one frame later reliably corrects it, which is what actually chases
     // down the "branch line drifts into a chip's own label" reports.
     requestAnimationFrame(repositionSomedayConnectors);
-    // タスクページのいつか欄は常時全展開で、他ページの全展開トグルの状態
-    // にもactiveSomedayIds(1つの経路だけ掘り下げる通常モードの状態)にも
-    // 関知しない。renderSomedayList()はrenderCalendar()を経由せず単独で
-    // 呼ばれる箇所が多い(子タスク追加直後など)ため、renderCalendar()側の
-    // 別呼び出しに頼るとその経路だけタスクページが古いまま(または一部の
-    // 欄がactiveSomedayIdsに引きずられて隠れたまま)になる。ここで毎回
-    // 呼んで確実に同期させる。
-    renderTasklistSomedayColumns();
+    // タスクページ全体(最優先/スケジュール内/今日中/今週中/いつかを
+    // カテゴリ見出し無しで時系列順に1本の縦並びにしたもの)は、他ページの
+    // 全展開トグルの状態にもactiveSomedayIds(1つの経路だけ掘り下げる通常
+    // モードの状態)にも関知しない。renderSomedayList()はrenderCalendar()
+    // を経由せず単独で呼ばれる箇所が多い(子タスク追加直後など)ため、
+    // renderCalendar()側の別呼び出しに頼るとその経路だけタスクページが
+    // 古いまま(または一部の欄がactiveSomedayIdsに引きずられて隠れたまま)
+    // になる。ここで毎回呼んで確実に同期させる。
+    renderTasklistUnifiedList();
   }
 
   // 予定をタップして編集モード(詳細パネル表示中)になっている間は、その
@@ -5608,447 +5543,82 @@
     fullArray.push(...newOrder);
   }
 
-  function renderTasklistFlatSections() {
-    function renderFlat(listEl, items, fallbackLabel, emptyText, onTap, onReorderCommit) {
-      listEl.innerHTML = "";
-      if (!items.length) {
-        const empty = document.createElement("span");
-        empty.className = "calendar-unplanned-empty";
-        empty.textContent = emptyText;
-        listEl.appendChild(empty);
-        return;
-      }
-      items.forEach((item) => {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "cal-unplanned-chip";
-        chip.trayItem = item;
-        const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
-        // 今週中(唯一、子タスクを持ち得るこの一覧)は、いつかの親チップと
-        // 同じ色付き・四角寄りの枠にする(最優先/今日中は子を持たないので
-        // 常にdirectChildCount===0、実質ここは無効)。
-        if (directChildCount > 0) chip.classList.add("parent");
-        const label = document.createElement("span");
-        label.className = "cal-unplanned-chip-label";
-        label.textContent = labelOf(item, fallbackLabel);
-        chip.appendChild(label);
-        if (directChildCount > 0) {
-          const badge = document.createElement("span");
-          badge.className = "cal-child-count-badge";
-          badge.dataset.count = String(directChildCount);
-          chip.appendChild(badge);
-        }
-        chip.addEventListener("pointerdown", (e) =>
-          startTasklistChipDrag(e, chip, listEl, () => onTap(item), onReorderCommit)
-        );
-        listEl.appendChild(chip);
-      });
-    }
+  // ============================================================
+  // タスクページ: カテゴリ(最優先/スケジュール内の予定/今日中/今週中/
+  // いつか)の見出しを一切出さず、日時が決まっているものから時系列順に
+  // 1列の縦並びで並べる。
+  //   順序: 今日の最優先→今日のスケジュール内(子タスクを持つ予定、時刻
+  //   順)→今日の今日中→明日の最優先→…(その週の残りの曜日を同じ順で)
+  //   →その週の今週中タスク→翌週月曜の最優先→…(以下同様、内容がある週
+  //   だけ繰り返す)→最後にいつかタスク。
+  //   個々のタスクがどのカテゴリ由来かを示すラベルは出さない — 並び順
+  //   だけで「上から時系列順に並んでいる」という共通認識を作る。
+  // ============================================================
 
-    const dateStr = state.day;
-
-    const priorityTasks = itemsArrayForDate(dateStr).filter((it) => it.priority && !it.completed);
-    renderFlat(tasklistPriorityList, priorityTasks, "最優先タスク", "最優先のタスクなし", (item) => promptRegularTaskEdit(dateStr, item), () => {
-      captureUndoSnapshot();
-      const newOrder = Array.from(tasklistPriorityList.children)
-        .filter((c) => c.classList.contains("cal-unplanned-chip"))
-        .map((c) => c.trayItem);
-      applyReorderedSubset(itemsArrayForDate(dateStr), newOrder);
-      persistItemsForDate(dateStr);
-      renderCalendar();
-    });
-
-    const todayTasks = itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority && !it.completed);
-    renderFlat(tasklistTodayList, todayTasks, "今日中タスク", "今日中のタスクなし", (item) => promptRegularTaskEdit(dateStr, item), () => {
-      captureUndoSnapshot();
-      const newOrder = Array.from(tasklistTodayList.children)
-        .filter((c) => c.classList.contains("cal-unplanned-chip"))
-        .map((c) => c.trayItem);
-      applyReorderedSubset(itemsArrayForDate(dateStr), newOrder);
-      persistItemsForDate(dateStr);
-      renderCalendar();
-    });
+  // 今週中/いつかのように子孫を持ち得るタスクを、長押しドラッグでルートごと
+  // (子孫を引き連れたまま)並べ替えられるようにするための入れ物。
+  // startTasklistChipDrag自体は「1つの要素を動かす」ことしか知らないので、
+  // ルート行+インデントした子孫行をまとめてこのwrapper(cal-unplanned-chip
+  // クラスを持ち、listEl直下の並べ替え対象として認識される)に入れ、wrapper
+  // ごと動かすことで子孫が置き去りにならないようにする。子孫行自身も
+  // cal-unplanned-chipクラスを持つが、listElの直接の子ではなくwrapperの
+  // 子なので、並べ替えの対象(listEl.children)には数えられない。
+  function createTasklistFamilyWrapper() {
+    const wrapper = document.createElement("div");
+    wrapper.className = "cal-unplanned-chip tasklist-family-block";
+    return wrapper;
   }
 
-  // 今週中(M/D〜)の日付ラベル: formatDateLabelの曜日無し版。
-  function formatWeekStartLabel(weekStart) {
-    const [, m, d] = weekStart.split("-").map(Number);
-    return `${m}/${d}〜`;
+  function createTasklistRowChip(labelText, depth, { hasChildren } = {}) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "cal-unplanned-chip";
+    chip.dataset.depth = String(depth);
+    if (hasChildren) chip.classList.add("parent");
+    const label = document.createElement("span");
+    label.className = "cal-unplanned-chip-label";
+    label.textContent = labelText;
+    chip.appendChild(label);
+    return chip;
   }
 
-  // rootItem(今週中の1件の親タスク)の子孫を、いつかのcollectSomedayFamilyLevels
-  // と同じ深さ別配列(0=自分..3=ひ孫)で集める。今週中の子孫はplan.children
-  // と全く同じ形(id/parentId)なので、そのままplanChildrenOfを使い回せる。
-  // 親タスク自身にはidが無い(トップレベルの今週中タスクは今のところ安定
-  // したidを持たない)ため、この描画1回限りの合成id(syntheticRootId)を
-  // 割り当てて連結線の目印に使う。
-  function collectThisWeekFamilyLevels(rootItem, syntheticRootId) {
-    const levels = [[{ id: syntheticRootId, label: rootItem.label }], [], [], []];
-    function walk(nodeId, depth) {
-      if (depth >= PLAN_CHILD_MAX_DEPTH) return;
-      planChildrenOf(rootItem, nodeId).forEach((child) => {
-        levels[depth + 1].push(child);
-        walk(child.id, depth + 1);
-      });
-    }
-    walk(null, 0);
-    return levels;
+  function appendTasklistChildCountBadge(chip, count) {
+    const badge = document.createElement("span");
+    badge.className = "cal-child-count-badge";
+    badge.dataset.count = String(count);
+    chip.appendChild(badge);
   }
 
-  // タスクページの「子/孫/ひ孫タスク」見出し付き3列を1つ分(いつか、または
-  // 今週中の1週)組み立てる。families内の全ての親についてまとめて表示する
-  // (1つだけ選んで掘り下げる、という状態を持たない常時全展開)。
-  //   rowEl: 3列を横に並べる行(position:relativeで連結線の基準にもなる)
-  //   depthListEls: [子タスクの一覧, 孫タスクの一覧, ひ孫タスクの一覧]
-  //   collectLevels(family): familyの深さ別配列(0..3)を返す
-  //   collectPairs(family): familyの{parentTask, childTasks}ペア配列を返す
-  //   createChip(task, listEl, depth): そのタスクのチップ要素を作る
-  function renderTasklistFamilyColumns(rowEl, depthListEls, families, { collectLevels, collectPairs, createChip }) {
-    // {task, family}の組で持ち回る — 今週中側のcreateChip
-    // (createThisWeekChildChip)は「どの週タスクの子孫か」も必要とする
-    // ため、毎回family総当たりで探し直さずに済むようにする。
-    const perDepthEntries = [[], [], []];
-    const connectorPairs = [];
-    families.forEach((family) => {
-      const levels = collectLevels(family);
-      for (let d = 1; d <= SOMEDAY_MAX_DEPTH; d++) {
-        levels[d].forEach((task) => perDepthEntries[d - 1].push({ task, family }));
-      }
-      connectorPairs.push(...collectPairs(family));
-    });
-    depthListEls.forEach((listEl, i) => {
-      listEl.innerHTML = "";
-      const entries = perDepthEntries[i];
-      if (!entries.length) {
-        const empty = document.createElement("span");
-        empty.className = "calendar-unplanned-empty";
-        empty.textContent = "なし";
-        listEl.appendChild(empty);
-        return;
-      }
-      entries.forEach(({ task, family }) => listEl.appendChild(createChip(task, listEl, i + 1, family)));
-    });
-    requestAnimationFrame(() => drawSomedayTreeConnectorLines(rowEl, connectorPairs, true));
-  }
-
-  // いつか: 常時全展開(全ての親についてまとめて子/孫/ひ孫タスクを表示)。
-  // 通常モードの単一経路の掘り下げ("いつか"欄そのものと"タスク"欄=子/孫/
-  // ひ孫の表示切替)、および他ページの全展開トグルの状態には一切関知しない
-  // — renderSomedayList側で一時的に隠される/差し替えられることがあっても
-  // (他ページで全展開をONにした場合など)、ここで必ず正しい状態に戻す。
-  function renderTasklistSomedayColumns() {
-    tasklistUnplannedList.hidden = false;
-    renderSomedayListInto(tasklistUnplannedList, topLevelSomeday());
-    tasklistSubtaskBox.hidden = false;
-    tasklistGrandchildBox.hidden = false;
-    tasklistGreatGrandchildBox.hidden = false;
-
-    renderTasklistFamilyColumns(
-      tasklistSomedayRow,
-      [tasklistSubtaskList, tasklistGrandchildList, tasklistGreatGrandchildList],
-      topLevelSomeday(),
-      {
-        collectLevels: (family) => collectSomedayFamilyLevels(family),
-        collectPairs: (family) => {
-          const levels = collectSomedayFamilyLevels(family);
-          const pairs = [];
-          levels.slice(0, SOMEDAY_MAX_DEPTH).forEach((tasksAtDepth) => {
-            tasksAtDepth.forEach((parentTask) => {
-              const childTasks = childrenOf(parentTask.id);
-              if (childTasks.length) pairs.push({ parentTask, childTasks });
-            });
-          });
-          return pairs;
-        },
-        createChip: (task, listEl) => createSomedayChip(task, listEl),
-      }
-    );
-  }
-
-  // 今週中: 週(weekStart)ごとに、いつかと同じ「子/孫/ひ孫タスクの見出し
-  // 付き3列」を持つセクションを1つずつ作る。タスクが1件でもある週を
-  // 全て(今週から先、日付の早い順に)並べる。
-  function buildTasklistThisWeekSection(weekStart, items) {
-    const section = document.createElement("div");
-    section.className = "tasklist-week-section";
-
-    const rootBox = document.createElement("div");
-    rootBox.className = "calendar-unplanned tasklist-box";
-    const rootHeader = document.createElement("div");
-    rootHeader.className = "tasklist-box-header";
-    const rootTitle = document.createElement("span");
-    rootTitle.className = "calendar-unplanned-title";
-    rootTitle.textContent = `今週中(${formatWeekStartLabel(weekStart)})`;
-    rootHeader.appendChild(rootTitle);
-    const rootAddBtn = document.createElement("button");
-    rootAddBtn.type = "button";
-    rootAddBtn.className = "calendar-someday-add";
-    rootAddBtn.setAttribute("aria-label", "今週中のタスクを追加");
-    rootAddBtn.textContent = "＋";
-    rootAddBtn.addEventListener("click", () => addThisWeekTask(weekStart));
-    rootHeader.appendChild(rootAddBtn);
-    rootBox.appendChild(rootHeader);
-    const rootList = document.createElement("div");
-    rootList.className = "calendar-unplanned-list tasklist-list";
-    rootBox.appendChild(rootList);
-
-    const subtaskBox = document.createElement("div");
-    subtaskBox.className = "calendar-unplanned calendar-subtask-row tasklist-box";
-    const subtaskTitle = document.createElement("span");
-    subtaskTitle.className = "calendar-unplanned-title";
-    subtaskTitle.textContent = "子タスク";
-    subtaskBox.appendChild(subtaskTitle);
-    const subtaskList = document.createElement("div");
-    subtaskList.className = "calendar-unplanned-list tasklist-list";
-    subtaskBox.appendChild(subtaskList);
-
-    const grandchildBox = document.createElement("div");
-    grandchildBox.className = "calendar-unplanned calendar-subtask-row tasklist-box";
-    const grandchildTitle = document.createElement("span");
-    grandchildTitle.className = "calendar-unplanned-title";
-    grandchildTitle.textContent = "孫タスク";
-    grandchildBox.appendChild(grandchildTitle);
-    const grandchildList = document.createElement("div");
-    grandchildList.className = "calendar-unplanned-list tasklist-list";
-    grandchildBox.appendChild(grandchildList);
-
-    const greatGrandchildBox = document.createElement("div");
-    greatGrandchildBox.className = "calendar-unplanned calendar-subtask-row tasklist-box";
-    const greatGrandchildTitle = document.createElement("span");
-    greatGrandchildTitle.className = "calendar-unplanned-title";
-    greatGrandchildTitle.textContent = "ひ孫タスク";
-    greatGrandchildBox.appendChild(greatGrandchildTitle);
-    const greatGrandchildList = document.createElement("div");
-    greatGrandchildList.className = "calendar-unplanned-list tasklist-list";
-    greatGrandchildBox.appendChild(greatGrandchildList);
-
-    const row = document.createElement("div");
-    row.className = "tasklist-someday-row";
-    row.append(rootBox, subtaskBox, grandchildBox, greatGrandchildBox);
-    section.appendChild(row);
-
-    if (!items.length) {
-      const empty = document.createElement("span");
-      empty.className = "calendar-unplanned-empty";
-      empty.textContent = "今週中のタスクなし";
-      rootList.appendChild(empty);
-    } else {
-      items.forEach((item, idx) => {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "cal-unplanned-chip";
-        const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
-        if (directChildCount > 0) chip.classList.add("parent");
-        chip.dataset.somedayId = `tw-root-${weekStart}-${idx}`;
-        const label = document.createElement("span");
-        label.className = "cal-unplanned-chip-label";
-        label.textContent = labelOf(item, "今週中タスク");
-        chip.appendChild(label);
-        if (directChildCount > 0) {
-          const badge = document.createElement("span");
-          badge.className = "cal-child-count-badge";
-          badge.dataset.count = String(directChildCount);
-          chip.appendChild(badge);
-        }
-        chip.trayItem = item;
-        chip.addEventListener("pointerdown", (e) =>
-          startTasklistChipDrag(e, chip, rootList, () => promptWeeklyTaskEdit(weekStart, item), () => {
-            captureUndoSnapshot();
-            const newOrder = Array.from(rootList.children).filter((c) => c.classList.contains("cal-unplanned-chip")).map((c) => c.trayItem);
-            applyReorderedSubset(itemsArrayForWeek(weekStart), newOrder);
-            persistItemsForWeek(weekStart);
-            renderCalendar();
-          })
-        );
-        rootList.appendChild(chip);
-      });
-
-      renderTasklistFamilyColumns(row, [subtaskList, grandchildList, greatGrandchildList], items, {
-        collectLevels: (item) => collectThisWeekFamilyLevels(item, `tw-root-${weekStart}-${items.indexOf(item)}`),
-        collectPairs: (item) => {
-          const syntheticRootId = `tw-root-${weekStart}-${items.indexOf(item)}`;
-          const pairs = [];
-          const directChildren = planChildrenOf(item, null);
-          if (directChildren.length) pairs.push({ parentTask: { id: syntheticRootId }, childTasks: directChildren });
-          (item.children || []).forEach((node) => {
-            const kids = planChildrenOf(item, node.id);
-            if (kids.length) pairs.push({ parentTask: node, childTasks: kids });
-          });
-          return pairs;
-        },
-        createChip: (task, listEl, depth, family) => {
-          const chip = createThisWeekChildChip(task, family);
-          chip.dataset.somedayId = task.id;
-          return chip;
-        },
-      });
-    }
-
-    return section;
-  }
-
-  function renderTasklistThisWeekSections() {
-    tasklistThisWeekSections.innerHTML = "";
-    const weekStarts = Object.keys(thisWeekTasks)
-      .filter((ws) => thisWeekTasks[ws] && thisWeekTasks[ws].length)
-      .sort();
-    if (!weekStarts.length) {
-      tasklistThisWeekSections.appendChild(buildTasklistThisWeekSection(currentWeekStartKey(), []));
-      return;
-    }
-    weekStarts.forEach((weekStart) => {
-      tasklistThisWeekSections.appendChild(buildTasklistThisWeekSection(weekStart, itemsArrayForWeek(weekStart)));
-    });
-  }
-
-  // タスクページ: 指定日にスケジュール済みで子タスクを持つ予定(plan.
-  // children)があれば、今週中と同じ「子/孫/ひ孫タスク」見出し付き3列
-  // +ルートの行を1つ作る。1件も無ければnull(呼び出し側で追加しない)。
-  // plan.childrenは今週中アイテムのchildrenと全く同じ形なので、
-  // collectThisWeekFamilyLevels/createThisWeekChildChip/renderTasklist
-  // FamilyColumnsをそのまま使い回せる。ルートのチップは編集/並べ替えを
-  // 持たず(予定はスケジュール上で操作するもの)、タップするとjumpDaily
-  // ToPlanでデイリーページの該当予定の詳細パネルを開く。
-  function buildTasklistPlanFamilyRow(dateStr) {
-    const plansWithChildren = plansForDate(dateStr).filter((p) => p.children && p.children.length);
-    if (!plansWithChildren.length) return null;
-
-    const rootBox = document.createElement("div");
-    rootBox.className = "calendar-unplanned tasklist-box";
-    const rootHeader = document.createElement("div");
-    rootHeader.className = "tasklist-box-header";
-    const rootTitle = document.createElement("span");
-    rootTitle.className = "calendar-unplanned-title";
-    rootTitle.textContent = `予定(${formatDateLabel(dateStr)})`;
-    rootHeader.appendChild(rootTitle);
-    rootBox.appendChild(rootHeader);
-    const rootList = document.createElement("div");
-    rootList.className = "calendar-unplanned-list tasklist-list";
-    rootBox.appendChild(rootList);
-
-    const subtaskBox = document.createElement("div");
-    subtaskBox.className = "calendar-unplanned calendar-subtask-row tasklist-box";
-    const subtaskTitle = document.createElement("span");
-    subtaskTitle.className = "calendar-unplanned-title";
-    subtaskTitle.textContent = "子タスク";
-    subtaskBox.appendChild(subtaskTitle);
-    const subtaskList = document.createElement("div");
-    subtaskList.className = "calendar-unplanned-list tasklist-list";
-    subtaskBox.appendChild(subtaskList);
-
-    const grandchildBox = document.createElement("div");
-    grandchildBox.className = "calendar-unplanned calendar-subtask-row tasklist-box";
-    const grandchildTitle = document.createElement("span");
-    grandchildTitle.className = "calendar-unplanned-title";
-    grandchildTitle.textContent = "孫タスク";
-    grandchildBox.appendChild(grandchildTitle);
-    const grandchildList = document.createElement("div");
-    grandchildList.className = "calendar-unplanned-list tasklist-list";
-    grandchildBox.appendChild(grandchildList);
-
-    const greatGrandchildBox = document.createElement("div");
-    greatGrandchildBox.className = "calendar-unplanned calendar-subtask-row tasklist-box";
-    const greatGrandchildTitle = document.createElement("span");
-    greatGrandchildTitle.className = "calendar-unplanned-title";
-    greatGrandchildTitle.textContent = "ひ孫タスク";
-    greatGrandchildBox.appendChild(greatGrandchildTitle);
-    const greatGrandchildList = document.createElement("div");
-    greatGrandchildList.className = "calendar-unplanned-list tasklist-list";
-    greatGrandchildBox.appendChild(greatGrandchildList);
-
-    const row = document.createElement("div");
-    row.className = "tasklist-someday-row";
-    row.append(rootBox, subtaskBox, grandchildBox, greatGrandchildBox);
-
-    plansWithChildren.forEach((plan, idx) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "cal-unplanned-chip parent";
-      chip.dataset.somedayId = `tw-plan-root-${dateStr}-${idx}`;
-      const label = document.createElement("span");
-      label.className = "cal-unplanned-chip-label";
-      label.textContent = labelOf(plan, "予定");
-      chip.appendChild(label);
-      const directChildCount = planChildrenOf(plan, null).length;
-      if (directChildCount > 0) {
-        const badge = document.createElement("span");
-        badge.className = "cal-child-count-badge";
-        badge.dataset.count = String(directChildCount);
-        chip.appendChild(badge);
-      }
-      chip.addEventListener("click", (e) => {
-        e.stopPropagation();
-        jumpDailyToPlan(dateStr, plan);
-      });
-      rootList.appendChild(chip);
-    });
-
-    renderTasklistFamilyColumns(row, [subtaskList, grandchildList, greatGrandchildList], plansWithChildren, {
-      collectLevels: (plan) => collectThisWeekFamilyLevels(plan, `tw-plan-root-${dateStr}-${plansWithChildren.indexOf(plan)}`),
-      collectPairs: (plan) => {
-        const syntheticRootId = `tw-plan-root-${dateStr}-${plansWithChildren.indexOf(plan)}`;
-        const pairs = [];
-        const directChildren = planChildrenOf(plan, null);
-        if (directChildren.length) pairs.push({ parentTask: { id: syntheticRootId }, childTasks: directChildren });
-        (plan.children || []).forEach((node) => {
-          const kids = planChildrenOf(plan, node.id);
-          if (kids.length) pairs.push({ parentTask: node, childTasks: kids });
-        });
-        return pairs;
-      },
-      createChip: (task, listEl, depth, family) => {
-        const chip = createThisWeekChildChip(task, family);
-        chip.dataset.somedayId = task.id;
-        return chip;
-      },
-    });
-
-    return row;
-  }
-
-  // タスクページの明日以降セクション用、最優先/今日中どちらか1欄を新規に
-  // 組み立てる。今日分(#tasklistPriorityList等)は既存要素をrenderTasklist
-  // FlatSectionsで直接書き換えるのに対し、明日以降は日付ごとに欄自体を
-  // 動的生成するため、こちらはDOM構築から行う別関数として持つ。
-  function buildTasklistFlatBoxForDate(dateStr, title, items, emptyText, addAriaLabel, onAdd, onTap) {
-    const box = document.createElement("div");
-    box.className = "calendar-unplanned tasklist-box tasklist-flat-box";
-    const header = document.createElement("div");
-    header.className = "tasklist-box-header";
-    const titleEl = document.createElement("span");
-    titleEl.className = "calendar-unplanned-title";
-    titleEl.textContent = title;
-    header.appendChild(titleEl);
-    const addBtn = document.createElement("button");
-    addBtn.type = "button";
-    addBtn.className = "calendar-someday-add";
-    addBtn.setAttribute("aria-label", addAriaLabel);
-    addBtn.textContent = "＋";
-    addBtn.addEventListener("click", onAdd);
-    header.appendChild(addBtn);
-    box.appendChild(header);
+  // 「タスクの一覧+末尾の＋ボタン」1本を作る(旧来のカテゴリ見出しは無い)。
+  function createTasklistList() {
     const list = document.createElement("div");
     list.className = "calendar-unplanned-list tasklist-list";
-    box.appendChild(list);
+    return list;
+  }
 
-    if (!items.length) {
-      const empty = document.createElement("span");
-      empty.className = "calendar-unplanned-empty";
-      empty.textContent = emptyText;
-      list.appendChild(empty);
-      return box;
-    }
+  function appendTasklistAddBtn(list, ariaLabel, onAdd) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "calendar-someday-add";
+    btn.setAttribute("aria-label", ariaLabel);
+    btn.textContent = "＋";
+    btn.addEventListener("click", onAdd);
+    list.appendChild(btn);
+  }
+
+  // 最優先/今日中(その日限定・子を持たないフラットなタスク)1欄分。
+  // emptyOkの日(=今日)だけは中身が空でも必ずリスト+＋ボタンを出す —
+  // 見出しを出さないぶん、＋ボタン自体が「ここに追加できる」という唯一の
+  // 手がかりになるため。それ以外の日は、何か表示するものがある時だけ
+  // リストごと(＋ボタンも含めて)現れる。
+  function appendTasklistFlatCluster(container, dateStr, items, { emptyOk, ariaAddLabel, onAdd, fallbackLabel }) {
+    if (!items.length && !emptyOk) return;
+    const list = createTasklistList();
     items.forEach((item) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "cal-unplanned-chip";
+      const chip = createTasklistRowChip(labelOf(item, fallbackLabel), 0);
       chip.trayItem = item;
-      const label = document.createElement("span");
-      label.className = "cal-unplanned-chip-label";
-      label.textContent = labelOf(item, title);
-      chip.appendChild(label);
       chip.addEventListener("pointerdown", (e) =>
-        startTasklistChipDrag(e, chip, list, () => onTap(item), () => {
+        startTasklistChipDrag(e, chip, list, () => promptRegularTaskEdit(dateStr, item), () => {
           captureUndoSnapshot();
           const newOrder = Array.from(list.children)
             .filter((c) => c.classList.contains("cal-unplanned-chip"))
@@ -6060,77 +5630,225 @@
       );
       list.appendChild(chip);
     });
-    return box;
+    appendTasklistAddBtn(list, ariaAddLabel, onAdd);
+    container.appendChild(list);
   }
 
-  // 明日以降の1日分セクション: 最優先/今日中欄(今日と同じ縦積みの見た目)
-  // +(あれば)予定(子タスクあり)の行。3つとも空ならセクション自体を
-  // 作らない(=何かある日だけが並ぶ、今週中のthisWeekTasksと同じ方針)。
-  function buildTasklistDateSection(dateStr) {
-    const priorityTasks = itemsArrayForDate(dateStr).filter((it) => it.priority && !it.completed);
-    const todayTasks = itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority && !it.completed);
-    const familyRow = buildTasklistPlanFamilyRow(dateStr);
-    if (!priorityTasks.length && !todayTasks.length && !familyRow) return null;
+  // 子タスクを持つ予定(スケジュール内)1件ぶんの行(ルート+子/孫/ひ孫を
+  // インデントして直後に並べる)。予定はタスクページ上で並べ替え/追加を
+  // 行わない(スケジュール側で操作するもの)ので、並べ替え用wrapperは
+  // 使わず直接containerへ積む。ルートをタップするとjumpDailyToPlanで
+  // デイリーページのその予定の詳細を開く。
+  function appendTasklistPlanFamily(container, plan, dateStr) {
+    const directChildCount = planChildrenOf(plan, null).length;
+    const rootChip = createTasklistRowChip(labelOf(plan, "予定"), 0, { hasChildren: directChildCount > 0 });
+    if (directChildCount > 0) appendTasklistChildCountBadge(rootChip, directChildCount);
+    rootChip.addEventListener("click", (e) => {
+      e.stopPropagation();
+      vibrate(10);
+      jumpDailyToPlan(dateStr, plan);
+    });
+    container.appendChild(rootChip);
 
-    const section = document.createElement("div");
-    section.className = "tasklist-week-section";
-
-    const dateLabel = formatDateLabel(dateStr);
-    const flatWrap = document.createElement("div");
-    flatWrap.className = "tasklist-flat-sections";
-    flatWrap.appendChild(
-      buildTasklistFlatBoxForDate(
-        dateStr,
-        `最優先(${dateLabel})`,
-        priorityTasks,
-        "最優先のタスクなし",
-        "最優先タスクを追加",
-        () => addPriorityTaskForDate(dateStr),
-        (item) => promptRegularTaskEdit(dateStr, item)
-      )
-    );
-    flatWrap.appendChild(
-      buildTasklistFlatBoxForDate(
-        dateStr,
-        `今日中(${dateLabel})`,
-        todayTasks,
-        "今日中のタスクなし",
-        "今日中タスクを追加",
-        () => addUnscheduledTask(dateStr),
-        (item) => promptRegularTaskEdit(dateStr, item)
-      )
-    );
-    section.appendChild(flatWrap);
-    if (familyRow) section.appendChild(familyRow);
-    return section;
-  }
-
-  // タスクページ「なるべく多くを表示したい」対応: 今日(state.day)は
-  // これまで通り静的な最優先/今日中欄(+今日分の予定行)が担い、明日
-  // 以降で何か表示すべきものがある日だけを、日付の早い順にここへ積む。
-  function renderTasklistFutureDateSections() {
-    tasklistFutureDateSections.innerHTML = "";
-    const todayFamilyRow = buildTasklistPlanFamilyRow(state.day);
-    if (todayFamilyRow) {
-      const wrap = document.createElement("div");
-      wrap.className = "tasklist-week-section";
-      wrap.appendChild(todayFamilyRow);
-      tasklistFutureDateSections.appendChild(wrap);
+    function appendChildren(parentId, depth) {
+      if (depth > PLAN_CHILD_MAX_DEPTH) return;
+      planChildrenOf(plan, parentId).forEach((child) => {
+        const chip = createThisWeekChildChip(child, plan);
+        chip.dataset.depth = String(depth);
+        container.appendChild(chip);
+        appendChildren(child.id, depth + 1);
+      });
     }
-    const futureDates = new Set();
+    appendChildren(null, 1);
+  }
+
+  // その日1日ぶんの行(最優先→スケジュール内(子タスクを持つ予定、時刻順)
+  // →今日中)を、渡されたcontainerへ直接積む。isToday(=state.dayと一致)
+  // の日だけ、最優先/今日中の＋ボタンを(中身が空でも)必ず出す — タスク
+  // ページから今日の分を新規に追加できる唯一の入り口のため。
+  function appendTasklistDayRows(container, dateStr, isToday) {
+    const priorityTasks = itemsArrayForDate(dateStr).filter((it) => it.priority && !it.completed);
+    appendTasklistFlatCluster(container, dateStr, priorityTasks, {
+      emptyOk: isToday,
+      ariaAddLabel: "最優先タスクを追加",
+      onAdd: () => addPriorityTaskForDate(dateStr),
+      fallbackLabel: "最優先タスク",
+    });
+
+    plansForDate(dateStr)
+      .filter((p) => p.children && p.children.length)
+      .sort((a, b) => a.startMin - b.startMin)
+      .forEach((plan) => appendTasklistPlanFamily(container, plan, dateStr));
+
+    const todayTasks = itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority && !it.completed);
+    appendTasklistFlatCluster(container, dateStr, todayTasks, {
+      emptyOk: isToday,
+      ariaAddLabel: "今日中タスクを追加",
+      onAdd: () => addUnscheduledTask(dateStr),
+      fallbackLabel: "今日中タスク",
+    });
+  }
+
+  // 今週中(その週限定・子を持ち得るタスク)1件ぶんの塊(ルート+子孫を
+  // インデントして直後に並べる)を、長押しドラッグでルートごと並べ替え
+  // 可能な1つの単位として作る。
+  function buildTasklistThisWeekFamilyBlock(item, weekStart, listEl) {
+    const wrapper = createTasklistFamilyWrapper();
+    const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
+    const rootChip = createTasklistRowChip(labelOf(item, "今週中タスク"), 0, { hasChildren: directChildCount > 0 });
+    if (directChildCount > 0) appendTasklistChildCountBadge(rootChip, directChildCount);
+    wrapper.appendChild(rootChip);
+    wrapper.trayItem = item;
+
+    function appendChildren(parentId, depth) {
+      if (depth > PLAN_CHILD_MAX_DEPTH) return;
+      planChildrenOf(item, parentId).forEach((child) => {
+        const chip = createThisWeekChildChip(child, item);
+        chip.dataset.depth = String(depth);
+        wrapper.appendChild(chip);
+        appendChildren(child.id, depth + 1);
+      });
+    }
+    appendChildren(null, 1);
+
+    rootChip.addEventListener("pointerdown", (e) =>
+      startTasklistChipDrag(e, wrapper, listEl, () => promptWeeklyTaskEdit(weekStart, item), () => {
+        captureUndoSnapshot();
+        const newOrder = Array.from(listEl.children)
+          .filter((c) => c.classList.contains("cal-unplanned-chip"))
+          .map((c) => c.trayItem);
+        applyReorderedSubset(itemsArrayForWeek(weekStart), newOrder);
+        persistItemsForWeek(weekStart);
+        renderCalendar();
+      })
+    );
+
+    return wrapper;
+  }
+
+  // その週の今週中タスク一式(emptyOkの週(=今週)だけ、中身が空でもリスト
+  // +＋ボタンを必ず出す)。
+  function appendTasklistThisWeekCluster(container, weekStart, emptyOk) {
+    const items = itemsArrayForWeek(weekStart);
+    if (!items.length && !emptyOk) return;
+    const list = createTasklistList();
+    items.forEach((item) => list.appendChild(buildTasklistThisWeekFamilyBlock(item, weekStart, list)));
+    appendTasklistAddBtn(list, "今週中のタスクを追加", () => addThisWeekTask(weekStart));
+    container.appendChild(list);
+  }
+
+  // いつかタスクの子孫チップ(表示専用、タップで編集モーダルのみ)。色付け
+  // は他ページのcreateSomedayChipと揃える(家族ごとにensureParentColorで
+  // 色を割り当て、深さに応じてlightenHexでフェード)。
+  function createTasklistSomedayDescendantChip(task, depth) {
+    const chip = createTasklistRowChip(task.label, depth, { hasChildren: isParentTask(task.id) });
+    if (isParentTask(task.id)) {
+      const base = ensureParentColor(rootSomedayTask(task));
+      chip.style.borderColor = base;
+      chip.style.background = lightenHex(base, SOMEDAY_FILL_LIGHTEN[depth] || 0);
+      chip.style.color = depth >= 2 ? "var(--ink)" : "#fff";
+    } else if (task.parentId) {
+      chip.style.borderColor = ensureParentColor(rootSomedayTask(task));
+    }
+    chip.style.cursor = "default";
+    const childCount = childrenOf(task.id).length;
+    if (depth < SOMEDAY_MAX_DEPTH && childCount > 0) appendTasklistChildCountBadge(chip, childCount);
+    chip.dataset.somedayId = task.id;
+    chip.addEventListener("click", () => handleSomedayChipTap(task, true));
+    return chip;
+  }
+
+  // いつかタスク1件ぶんの塊(ルート+子孫をインデントして直後に並べる)を、
+  // 長押しドラッグでルートごと並べ替え可能な1つの単位として作る。
+  function buildTasklistSomedayFamilyBlock(task, listEl) {
+    const wrapper = createTasklistFamilyWrapper();
+    const isParent = isParentTask(task.id);
+    const rootChip = createTasklistRowChip(task.label, 0, { hasChildren: isParent });
+    if (isParent) {
+      const base = ensureParentColor(rootSomedayTask(task));
+      rootChip.style.borderColor = base;
+      rootChip.style.background = lightenHex(base, SOMEDAY_FILL_LIGHTEN[0] || 0);
+      rootChip.style.color = "#fff";
+    }
+    const childCount = childrenOf(task.id).length;
+    if (childCount > 0) appendTasklistChildCountBadge(rootChip, childCount);
+    rootChip.dataset.somedayId = task.id;
+    wrapper.appendChild(rootChip);
+    wrapper.trayItem = task;
+
+    function appendDescendants(parentTask, depth) {
+      if (depth > SOMEDAY_MAX_DEPTH) return;
+      sortSomedayChildrenForTree(childrenOf(parentTask.id)).forEach((child) => {
+        wrapper.appendChild(createTasklistSomedayDescendantChip(child, depth));
+        appendDescendants(child, depth + 1);
+      });
+    }
+    appendDescendants(task, 1);
+
+    rootChip.addEventListener("pointerdown", (e) =>
+      startTasklistChipDrag(e, wrapper, listEl, () => handleSomedayChipTap(task, true), () => {
+        captureUndoSnapshot();
+        const newOrder = Array.from(listEl.children)
+          .filter((c) => c.classList.contains("cal-unplanned-chip"))
+          .map((c) => c.trayItem);
+        applyReorderedSubset(someday, newOrder);
+        saveSomeday();
+        renderCalendar();
+      })
+    );
+
+    return wrapper;
+  }
+
+  // いつかタスク一式。並び順全体の一番最後、常に(空でも)リスト+＋を出す
+  // (他ページ同様、いつかへ新規追加する入り口は常にあるべきため)。
+  function appendTasklistSomedayCluster(container) {
+    const tasks = topLevelSomeday();
+    const list = createTasklistList();
+    tasks.forEach((task) => list.appendChild(buildTasklistSomedayFamilyBlock(task, list)));
+    appendTasklistAddBtn(list, "いつかを追加", addSomedayTask);
+    container.appendChild(list);
+  }
+
+  // 内容がある(今日以降の)週の月曜日を全て集める — 今週(currentWeekStart)
+  // は中身が無くても常に含める(今日の最優先/今日中の＋ボタンを出すため)。
+  function tasklistRelevantWeekStarts() {
+    const currentWeekStart = mondayOfWeek(state.day);
+    const weekStarts = new Set([currentWeekStart]);
     Object.keys(drafts).forEach((d) => {
-      if (d > state.day) futureDates.add(d);
+      if (d >= state.day) weekStarts.add(mondayOfWeek(d));
     });
     Object.keys(plans).forEach((d) => {
-      if (d > state.day) futureDates.add(d);
+      if (d >= state.day) weekStarts.add(mondayOfWeek(d));
     });
-    Array.from(futureDates)
-      .sort()
-      .forEach((dateStr) => {
-        const section = buildTasklistDateSection(dateStr);
-        if (section) tasklistFutureDateSections.appendChild(section);
-      });
+    Object.keys(thisWeekTasks).forEach((ws) => {
+      if (ws >= currentWeekStart && thisWeekTasks[ws] && thisWeekTasks[ws].length) weekStarts.add(ws);
+    });
+    return Array.from(weekStarts).sort();
   }
+
+  // タスクページ全体をこの順で組み立てる:
+  //   [今週、今日から残りの曜日まで、曜日ごとに最優先→スケジュール内→
+  //   今日中]→[今週の今週中]→[来週、月曜から日曜まで同じ順]→[来週の
+  //   今週中]→…(内容がある週だけ繰り返す)→[いつか]
+  // カテゴリの見出しは一切出さない — 並び順そのものが「時系列順」を表す。
+  function renderTasklistUnifiedList() {
+    tasklistUnifiedList.innerHTML = "";
+    const currentWeekStart = mondayOfWeek(state.day);
+
+    tasklistRelevantWeekStarts().forEach((weekStart) => {
+      const isCurrentWeek = weekStart === currentWeekStart;
+      const startDay = isCurrentWeek ? state.day : weekStart;
+      const weekEnd = addDaysStr(weekStart, 6);
+      for (let dateStr = startDay; dateStr <= weekEnd; dateStr = addDaysStr(dateStr, 1)) {
+        appendTasklistDayRows(tasklistUnifiedList, dateStr, dateStr === state.day);
+      }
+      appendTasklistThisWeekCluster(tasklistUnifiedList, weekStart, isCurrentWeek);
+    });
+
+    appendTasklistSomedayCluster(tasklistUnifiedList);
+  }
+
 
   // いつかタスクを今週中(weekStart週)へ移す共通処理。子タスクを抱えた
   // タスク(親)もそのまま家系ごと運ぶ(最優先/今日中と違い、今週中は
@@ -7972,11 +7690,9 @@
     tickCalendarLive();
 
     renderThisWeekTray();
-    renderTasklistFlatSections();
-    renderTasklistFutureDateSections();
-    renderTasklistThisWeekSections();
-    // renderSomedayList()が末尾でrenderTasklistSomedayColumns()も呼ぶので
-    // タスクページのいつか欄はここで自動的に同期される。
+    // renderSomedayList()が末尾でrenderTasklistUnifiedList()も呼ぶので
+    // タスクページ全体(最優先/スケジュール内/今日中/今週中/いつか)は
+    // ここで自動的に同期される。
     renderSomedayList();
     applyCalendarPlanEditingVisibility();
     renderCalendarDetail();
@@ -8337,12 +8053,9 @@
   weeklySomedayAddBtn.addEventListener("click", addSomedayTask);
   monthlySomedayAddBtn.addEventListener("click", addSomedayTask);
   taskSomedayAddBtn.addEventListener("click", addSomedayTask);
-  tasklistSomedayAddBtn.addEventListener("click", addSomedayTask);
-  // タスクページの最優先/今日中は、状態表示もitemsArrayForDate(state.day)
-  // ベース(renderTasklistFlatSections参照)なので、こちらもstate.dayへ
-  // 追加する(weekAnchorに頼るaddPriorityTask/他ページの＋ボタンとは別)。
-  tasklistPriorityAddBtn.addEventListener("click", () => addPriorityTaskForDate(state.day));
-  tasklistTodayAddBtn.addEventListener("click", () => addUnscheduledTask(state.day));
+  // タスクページの最優先/今日中/今週中/いつかの各＋ボタンは、カテゴリ
+  // 見出しごと動的生成(renderTasklistUnifiedList内のappendTasklistAddBtn
+  // 参照)になったため、ここでの静的な要素参照は不要になった。
 
   const somedayExpandAllBtns = [calendarSomedayExpandAllBtn, weeklySomedayExpandAllBtn, monthlySomedayExpandAllBtn, taskSomedayExpandAllBtn];
   function updateSomedayExpandAllBtns() {

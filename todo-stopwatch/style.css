@@ -2380,17 +2380,6 @@ body {
   overscroll-behavior-x: contain;
 }
 
-.someday-tree.vertical {
-  grid-auto-flow: row;
-  grid-template-rows: none;
-  grid-template-columns: repeat(4, auto);
-  grid-auto-rows: max-content;
-  column-gap: 16px;
-  row-gap: 12px;
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
 .someday-tree[hidden] {
   display: none;
 }
@@ -2400,24 +2389,6 @@ body {
   flex-direction: row;
   align-items: center;
   gap: 6px;
-}
-
-.someday-tree.vertical .someday-tree-cell {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.someday-tree.vertical .cal-unplanned-chip {
-  max-width: none;
-  width: 100%;
-  text-align: left;
-  border-radius: 10px;
-  padding: 8px 12px;
-}
-
-.someday-tree.vertical .cal-unplanned-chip-label {
-  white-space: normal;
-  overflow-wrap: break-word;
 }
 
 .cal-unplanned-chip {
@@ -2604,15 +2575,12 @@ body {
   border-radius: 8px;
 }
 
-/* --- タスク一覧ページ(設定とマンスリーの間のタブ): 他のページの
-   横スクロールのチップトレイと同じ「いつか/子/孫/ひ孫」データを、
-   縦一列のリストとして表示する専用ページ。列(いつか/子/孫/ひ孫)は
-   下ではなく右へ右へ展開するMiller Columns式のレイアウト — 親だけの
-   ときは1列が全幅、子タスクを持つ親をタップして掘り下げるたびに列が
-   増え、表示中の列数に応じて flex:1 が自動で幅を均等割りする。
-   ドラッグでの並べ替えやスケジュールへのドラッグは意味がないので持たず、
-   タップで変更/削除/子タスク追加・掘り下げができるだけ(script.js の
-   handleSomedayChipTap と VERTICAL_SOMEDAY_LISTS を参照)。 --- */
+/* --- タスク一覧ページ(設定とマンスリーの間のタブ): 最優先/スケジュール
+   内(子タスクを持つ予定)/今日中/今週中/いつかのカテゴリ見出しを一切
+   出さず、日時が決まっているものから時系列順に1本の縦並びリストとして
+   表示する専用ページ(renderTasklistUnifiedList参照)。並び順そのものが
+   時系列を表すので、個々のタスクがどのカテゴリ由来かを示す見出しテキスト
+   は出さない。 --- */
 
 .tasklist-page {
   flex: 1;
@@ -2629,95 +2597,18 @@ body {
   overflow-x: hidden;
 }
 
-/* 最優先/今日中/今週中: スケジュールにはめ込んでいない全てを一望できる
-   よう、既存のいつか(Miller Columns)の上に縦積みで追加した欄。 */
-.tasklist-flat-sections {
-  flex: none;
+.tasklist-unified-list {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-}
-
-.tasklist-flat-box {
-  flex: none;
-  height: auto;
-  border-left: none;
-  border-top: 1px solid var(--line);
-  padding: 4px 10px;
-}
-
-.tasklist-flat-box:first-child {
-  border-top: none;
-  padding-top: 0;
-}
-
-/* 今週中: 週(タスクがある週すべて)ごとに1つずつ積み重なるセクション。
-   最初のセクションだけ最優先/今日中と同じく上の区切り線を持たない。 */
-.tasklist-week-section {
-  border-top: 1px solid var(--line);
-}
-
-.tasklist-week-section:first-child {
-  border-top: none;
-}
-
-.tasklist-someday-row {
-  flex: none;
-  position: relative;
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
-  gap: 0;
-}
-
-/* いつか欄(常にこのIDを持つ唯一の行)と、その上の今週中の最後のセクション
-   との間は、.tasklist-page自体のflexギャップ(2px)だけで区切られており、
-   他の区切り(各欄・各週セクション自身が持つborder-top)と違って何も
-   縁取りが無いため、背景の無いその2pxがそのまま白く抜けて見えていた。
-   他の区切りと同じ1pxの線で埋める。 */
-#tasklistSomedayRow {
-  border-top: 1px solid var(--line);
-}
-
-.tasklist-box {
-  flex: 1 1 0;
-  min-width: 0;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  padding: 8px 10px 6px;
-  border-top: none;
-  border-left: 1px solid var(--line);
-}
-
-.tasklist-box:first-child {
-  border-left: none;
-}
-
-.tasklist-box-header {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-/* 4列表示で幅が狭いタスクページの見出し(特に「今週中(9/9〜)」のような
-   日付付きの長い見出し)は、+ボタンとの並びでデフォルトのcalendar-
-   unplanned-title(flex:none)のままだと欄の外にはみ出し、右隣の欄の
-   下に隠れてタップできなくなる。ここだけ縮小・省略を許可する。 */
-.tasklist-box-header .calendar-unplanned-title {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  gap: 10px;
 }
 
 .tasklist-list {
   flex-direction: column;
   align-items: stretch;
+  gap: 4px;
   /* 各欄の内側での上限付きスクロールはやめ、このページ全体の縦スクロール
      に任せる。overflow-x:visibleだけ残し、子タスクの人数バッジ
      (chip右上角からはみ出す)が切れないための余白(padding)は維持する。 */
@@ -2737,6 +2628,39 @@ body {
 .tasklist-list .cal-unplanned-chip-label {
   white-space: normal;
   overflow-wrap: break-word;
+}
+
+/* 子/孫/ひ孫タスク(予定・今週中・いつかいずれも共通)は、その深さぶん
+   だけ左に余白を足してインデントし、親の直後に連なっていることを示す。
+   カテゴリ見出しの代わりに、この字下げだけが階層関係を伝える。 */
+.tasklist-list .cal-unplanned-chip[data-depth="1"] {
+  padding-left: 32px;
+}
+
+.tasklist-list .cal-unplanned-chip[data-depth="2"] {
+  padding-left: 50px;
+}
+
+.tasklist-list .cal-unplanned-chip[data-depth="3"] {
+  padding-left: 68px;
+}
+
+/* 今週中/いつかのルートタスクは、子孫を長押しドラッグで一緒に運べる
+   よう、ルート行+インデントした子孫行を1つのdivにまとめている
+   (createTasklistFamilyWrapper参照)。このwrapper自身はcal-unplanned-chip
+   クラスを持つ(listEl内の並べ替え対象として認識させるため)が、見た目上は
+   ただの透明な入れ物であって欲しいので、チップ本体の見た目(枠線/背景/
+   パディング)はここで打ち消し、中の実際の行(ルート/子孫チップ)だけが
+   見えるようにする。 */
+.tasklist-list .cal-unplanned-chip.tasklist-family-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: default;
 }
 
 /* 「時間未定」タスクの常時表示行: 時間軸グリッドとは別の、スクロールし
