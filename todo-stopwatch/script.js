@@ -1803,6 +1803,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-09", text: "今週中で、1つのタスクを展開したまま別のタスクをタップしても、前のタスクの展開が閉じないことがある不具合を修正しました。指の揺れの大きさに関係なく、確実に切り替わるようにしています。" },
     { date: "2026-09-08", text: "ウィークリー/デイリーの「いつか」欄を全展開した時の「たたむ」「＋」ボタンの位置を、今週中の全展開時と同じ並び(欄の内容の右どなり)に揃えました。" },
     { date: "2026-09-08", text: "今週中の「全展開」を、いつかの全展開ツリーと同じ「タスクごとに列を分けて横に並べ、それぞれの子孫を列の下に表示する」見た目に変更しました。" },
     { date: "2026-09-08", text: "今週中の子タスクを抱えたタスクをタップした時の挙動を、いつかと同じ仕様に変更しました。他のタスクは横並びのまま動かず、タップしたタスクの子孫だけが専用の欄に展開されます。" },
@@ -5691,31 +5692,21 @@
     clearDragPreview();
     clearDragGhost();
 
-    // 実機では数pxの指の揺れだけで「pending」のまま最後まで留まらず、
-    // schedule/reorder等へ倒れてしまうことがある。今週中の子タスクを
-    // 抱えたチップの場合、そのフェーズ側は「有効な移動先が無い/実質
-    // 変化なし」の無反応で終わるだけなので、タップしたのに展開が
-    // 一切戻せないように見えてしまう。指の最終位置が開始位置のすぐ
-    // 近くのままなら、倒れた先のフェーズが何であれ実質タップとして
-    // 展開/折りたたみの切り替えを優先する。
-    const releaseDx = (ctx.lastClientX ?? ctx.startClientX) - ctx.startClientX;
-    const releaseDy = (ctx.lastClientY ?? ctx.startClientY) - ctx.startClientY;
-    const releasedNearStart = Math.hypot(releaseDx, releaseDy) < TAP_LIKE_RELEASE_TOLERANCE;
-    if (ctx.phase !== "pending" && ctx.scopeType === "week" && ctx.item.children && ctx.item.children.length && releasedNearStart) {
-      ctx.chip.classList.remove("dragging", "reordering");
-      ctx.chip.style.transition = "";
-      ctx.chip.style.transform = "";
-      trayDragCtx = null;
-      toggleThisWeekActiveItem(ctx.item);
-      return;
-    }
+    // 今週中の子タスクを抱えたチップをタップした時の展開/折りたたみ
+    // 切り替えは、実機の指の揺れで「pending」のまま最後まで留まらず
+    // schedule/scroll等へ倒れてしまっても、確実に効くようにしたい。
+    // 距離のしきい値で「これはタップだったはず」と先読みするのではなく、
+    // 各フェーズが実際に「有効な移動先が無かった/実質何も起きなかった」
+    // と結論した、まさにその地点でだけ切り替えを行う(距離に依存しない
+    // ぶん、揺れの大小に関係なく確実に効く)。
+    const thisWeekParentTap = ctx.scopeType === "week" && !!(ctx.item.children && ctx.item.children.length);
 
     if (ctx.phase === "pending") {
       trayDragCtx = null;
       if (ctx.scopeType === "week") {
         // 子タスクを抱えたチップは、いつかの親チップ同様タップで編集
         // モーダルではなく子孫の展開/折りたたみを切り替える。
-        if (ctx.item.children && ctx.item.children.length) toggleThisWeekActiveItem(ctx.item);
+        if (thisWeekParentTap) toggleThisWeekActiveItem(ctx.item);
         else promptWeeklyTaskEdit(ctx.dateStr, ctx.item);
       } else {
         promptRegularTaskEdit(ctx.dateStr, ctx.item);
@@ -5727,6 +5718,19 @@
       const listEl = ctx.listEl;
       const velocity = ctx.scrollVelocity;
       trayDragCtx = null;
+      // 横方向の揺れだけでscrollフェーズへ倒れた実質タップ(実際の移動量
+      // がごくわずかなまま)は、トレイをスクロールする代わりに展開/
+      // 折りたたみの切り替えとして扱う — 本当に指でトレイをスワイプ
+      // した場合はTAP_LIKE_RELEASE_TOLERANCEよりずっと大きく動くので、
+      // 通常のスクロール操作を巻き込む心配は無い。
+      if (thisWeekParentTap) {
+        const dx = (ctx.lastClientX ?? ctx.startClientX) - ctx.startClientX;
+        const dy = (ctx.lastClientY ?? ctx.startClientY) - ctx.startClientY;
+        if (Math.hypot(dx, dy) < TAP_LIKE_RELEASE_TOLERANCE) {
+          toggleThisWeekActiveItem(ctx.item);
+          return;
+        }
+      }
       chipTrayMomentumCancel = startMomentumScroll(
         () => listEl.scrollLeft,
         (v) => {
@@ -5814,7 +5818,18 @@
           return;
         }
 
-        if (!targetCol) return;
+        if (!targetCol) {
+          // いつかへの差し戻し・当日中への割り当て・スケジュールへの
+          // 配置、そのどれの対象にもならなかった=実質何も起きない
+          // 着地だった。子タスクを抱えたチップなら、これは指の揺れで
+          // 「pending」のまま留まらずscheduleフェーズへ倒れてしまった
+          // だけの実質タップとみなし、展開/折りたたみを切り替える
+          // (距離のしきい値を使わず、フェーズが実際に「有効な移動先が
+          // 無かった」と判定したこの地点でだけ行うので、揺れの大小に
+          // 関係なく確実に効く)。
+          if (item.children && item.children.length) toggleThisWeekActiveItem(item);
+          return;
+        }
         const weekStart = dateStr; // trayDragCtxの4番目の引数はweek scopeでは週の月曜日キー
         const targetDate = targetCol.dataset.date;
         const rect = targetCol.getBoundingClientRect();
