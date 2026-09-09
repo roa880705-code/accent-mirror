@@ -1812,6 +1812,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-09", text: "タスクページで、チップの上から指を素早く動かしてもページ自体をスクロールできない不具合を修正しました(チップは長押しでの並べ替えに対応させるため、ブラウザ標準のスクロール動作を切っているのが原因でした)。長押しせずに動かした場合は、これまで通りページがスクロールします。" },
     { date: "2026-09-09", text: "タスクページを全面的に作り直しました。「最優先」「スケジュール内」「今日中」「今週中」「いつか」というカテゴリの見出しをやめ、1本の縦並びリストに統合。今日の最優先→スケジュール内(子タスクを持つ予定)→今日中→明日の最優先→…と、その週の残り曜日を同じ順で並べたあと今週分の今週中タスク、続けて来週も同じ形で(内容がある週だけ)繰り返し、最後にいつかタスクを配置します。どのタスクもカテゴリ名は表示されず、並んでいる順番そのものが時系列を表します。子/孫/ひ孫タスクは親の直後にインデントして表示し、長押しドラッグでの並べ替えは子孫ごとまとめて動きます。" },
     { date: "2026-09-09", text: "タスクページで、なるべく多くのタスクが一覧できるようにしました。「最優先」「今日中」は今日分だけでなく、明日以降にタスクがある日も日付ごとに並べて表示されるようになりました。また、スケジュールに組み込み済みの予定が子タスクを持っている場合も、日付ごとに子/孫/ひ孫タスクまで一覧でき、タップするとデイリーページのその予定の詳細を開けます。" },
     { date: "2026-09-09", text: "スケジュール内の予定をタップしてメモを登録する際、メモ欄が小さい文字サイズだったためiPhoneで自動的にズームされてしまう不具合を修正しました。" },
@@ -5426,19 +5427,38 @@
   // タップだけの場合はonTapLikeRelease、実際に並べ替えた場合は
   // onReorderCommitを呼ぶ(どちらもclick経由ではなくここが直接呼ぶ)。
   let tasklistReorderCtx = null;
+  // タスクページのチップは(startTrayItemDrag系の横トレイと同じ理由で)
+  // touch-action:noneを持つため、長押しへ倒れなかった時にJS側が何もせず
+  // 追跡を打ち切るだけだと、ブラウザのネイティブなページスクロールは
+  // 二度と始まらない(タスクページ全体が動かせなくなる不具合の原因)。
+  // 横トレイのtrayDragCtxの"scroll"フェーズと同じ考え方で、ここでも
+  // listEl(実質.tasklist-page)のscrollTopをJS側で直接動かす。
+  let tasklistScrollMomentumCancel = null;
 
   function startTasklistChipDrag(e, chip, listEl, onTapLikeRelease, onReorderCommit) {
     if (e.button !== undefined && e.button !== 0) return;
     e.stopPropagation();
+    if (tasklistScrollMomentumCancel) {
+      tasklistScrollMomentumCancel();
+      tasklistScrollMomentumCancel = null;
+    }
+    const scrollEl = chip.closest(".tasklist-page") || listEl;
     tasklistReorderCtx = {
       chip,
       listEl,
+      scrollEl,
       onTapLikeRelease,
       onReorderCommit,
-      phase: "pending", // "pending" -> "reorder"
+      phase: "pending", // "pending" -> "reorder" | "scroll"
       heldLongEnough: false,
       startClientY: e.clientY,
       startTop: chip.offsetTop,
+      startScrollTop: scrollEl.scrollTop,
+      lastClientY: e.clientY,
+      lastMoveTime: null,
+      lastScrollTopSample: scrollEl.scrollTop,
+      scrollVelocity: 0,
+      scrollRafId: null,
       longPressTimer: null,
     };
     tasklistReorderCtx.longPressTimer = setTimeout(() => {
@@ -5466,14 +5486,12 @@
       }
       if (!ctx.heldLongEnough) {
         // 長押しが成立する前に動いた == 並べ替えの意図ではなく、ページの
-        // 縦スクロールのつもり。pointerdown側でpreventDefaultしていない
-        // のでネイティブスクロールはそのまま効く — こちらは指を離しても
-        // タップ扱いにならないよう、追跡を打ち切るだけにする。
-        document.removeEventListener("pointermove", onTasklistChipDragMove);
-        document.removeEventListener("pointerup", onTasklistChipDragEnd);
-        document.removeEventListener("pointercancel", onTasklistChipDragEnd);
+        // 縦スクロールのつもり。チップはtouch-action:noneを持つため、
+        // ここで追跡をやめて何もしなくてもネイティブスクロールは始まらない
+        // (横トレイのstartTrayItemDrag/"scroll"フェーズと同じ理由)ので、
+        // ここでもJS側でscrollElのscrollTopを直接動かす。
         ctx.chip.classList.remove("armed");
-        tasklistReorderCtx = null;
+        ctx.phase = "scroll";
         return;
       }
       ctx.chip.classList.remove("armed");
@@ -5481,6 +5499,26 @@
       ctx.chip.classList.add("reordering");
       ctx.chip.style.transition = "none";
       vibrate(15);
+    }
+
+    if (ctx.phase === "scroll") {
+      e.preventDefault();
+      ctx.lastClientY = e.clientY;
+      if (!ctx.scrollRafId) {
+        ctx.scrollRafId = requestAnimationFrame(() => {
+          ctx.scrollRafId = null;
+          if (!tasklistReorderCtx || tasklistReorderCtx !== ctx || ctx.phase !== "scroll") return;
+          ctx.scrollEl.scrollTop = ctx.startScrollTop - (ctx.lastClientY - ctx.startClientY);
+          const now = performance.now();
+          if (ctx.lastMoveTime !== null) {
+            const dt = now - ctx.lastMoveTime;
+            if (dt > 0) ctx.scrollVelocity = (ctx.scrollEl.scrollTop - ctx.lastScrollTopSample) / dt;
+          }
+          ctx.lastMoveTime = now;
+          ctx.lastScrollTopSample = ctx.scrollEl.scrollTop;
+        });
+      }
+      return;
     }
 
     if (ctx.phase === "reorder") {
@@ -5518,6 +5556,19 @@
     if (ctx.phase === "pending") {
       ctx.chip.classList.remove("armed");
       ctx.onTapLikeRelease();
+      return;
+    }
+
+    if (ctx.phase === "scroll") {
+      // 指を離した後も勢いに応じて減速しながらスクロールを続ける(横トレイ
+      // のscrollフェーズと同じ、startMomentumScroll参照)。
+      tasklistScrollMomentumCancel = startMomentumScroll(
+        () => ctx.scrollEl.scrollTop,
+        (v) => {
+          ctx.scrollEl.scrollTop = v;
+        },
+        ctx.scrollVelocity
+      );
       return;
     }
 

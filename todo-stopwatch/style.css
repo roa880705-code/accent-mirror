@@ -2598,8 +2598,12 @@ body {
 }
 
 .tasklist-unified-list {
-  flex: 1;
-  min-height: 0;
+  /* flex:none(自然な内容分の高さ)にしておく — flex:1; min-height:0だと
+     このリスト自身が高さを切り詰められてしまい、overflow指定が無いため
+     どちらの要素もスクロール可能な範囲として扱えなくなり、親.tasklist-
+     pageのoverflow-y:autoが効かなくなってしまっていた(スクロールできない
+     不具合の原因)。 */
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: 10px;
