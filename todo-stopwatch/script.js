@@ -1003,11 +1003,13 @@
   const taskGreatGrandchildList = document.getElementById("taskGreatGrandchildList");
   const tasklistUnplannedList = document.getElementById("tasklistUnplannedList");
   // タスクページ上部: スケジュールにはめ込んでいない全て(最優先/今日中/
-  // 今週中、今日分)を一望できる縦積みの3欄。いつか(上のtasklist系一式)と
-  // 違い、このページ専用の簡易表示(タップで既存の選択肢モーダルを開く
-  // だけ、ドラッグでの並べ替え/スケジュール化はここでは持たない)。
+  // 今週中、今日分)を一望できる縦積みの3+欄。タップで既存の選択肢
+  // モーダルを開くほか、長押し→上下ドラッグでの並べ替え(startTasklist
+  // ChipDrag参照、スケジュールへの持ち上げ/配置転換は無い)にも対応する。
   const tasklistPriorityList = document.getElementById("tasklistPriorityList");
+  const tasklistPriorityAddBtn = document.getElementById("tasklistPriorityAddBtn");
   const tasklistTodayList = document.getElementById("tasklistTodayList");
+  const tasklistTodayAddBtn = document.getElementById("tasklistTodayAddBtn");
   const tasklistThisWeekSections = document.getElementById("tasklistThisWeekSections");
   const tasklistSomedayRow = document.getElementById("tasklistSomedayRow");
   const tasklistSomedayAddBtn = document.getElementById("tasklistSomedayAddBtn");
@@ -1800,6 +1802,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-09", text: "タスクページで、いつかのタスクに子タスクを追加すると、孫/ひ孫タスクの欄が消えて表示が崩れる不具合を修正しました。また、タスクページのどの欄からもタスクの並べ替え(長押しで上下にドラッグ)・タップでの編集・＋ボタンでの追加ができるようになりました(いつかの子/孫/ひ孫欄は複数の親をまとめて表示しているため、並べ替えの対象外です)。" },
     { date: "2026-09-09", text: "タスクページで「今週中」の最後の欄と「いつか」欄の間が、区切り線が無く白く抜けて見えていた不具合を修正しました。" },
     { date: "2026-09-09", text: "タスクページを全面的に見直しました。子孫を抱えるタスクは常に全展開になり、たたむ操作は不要になりました。「いつか」欄は子/孫/ひ孫タスクの見出し付き3列で、どの親についてもまとめて子孫が見えます(ひ孫欄は誰にも無くても常に表示)。「今週中」も同じ形式で、タスクがある週ごとに「今週中(M/D〜)」として並びます。最優先/今日中/今週中/いつか、どの欄も件数が多い時に高さを切り詰めなくなり、ページ全体が縦にスクロールします。また「タスク」の表記を「いつか」に変更しました。" },
     { date: "2026-09-09", text: "ウィークリー/デイリーで「いつか」を全展開した際、ツリーが縦に伸びるほど「たたむ」「＋」ボタンが中央寄りにズレていく不具合を修正し、今週中と同じく常に欄の上端付近に固定されるようにしました。" },
@@ -4188,7 +4191,22 @@
     }
 
     chip.dataset.somedayId = task.id;
-    if (isVerticalSomedayContext(listEl)) {
+    if (listEl === tasklistUnplannedList) {
+      // タスクページのいつか直下(トップレベル)だけは、並べ替えの意味が
+      // 明確な単一配列(someday内のトップレベル項目)なので長押しドラッグ
+      // で並べ替え可能にする。子/孫/ひ孫欄は複数家族を束ねた一覧なので
+      // 対象外(タップのみ、下のelse-if分岐のまま)。
+      chip.trayItem = task;
+      chip.addEventListener("pointerdown", (e) =>
+        startTasklistChipDrag(e, chip, listEl, () => handleSomedayChipTap(task, true), () => {
+          captureUndoSnapshot();
+          const newOrder = Array.from(listEl.children).filter((c) => c.classList.contains("cal-unplanned-chip")).map((c) => c.trayItem);
+          applyReorderedSubset(someday, newOrder);
+          saveSomeday();
+          renderCalendar();
+        })
+      );
+    } else if (isVerticalSomedayContext(listEl)) {
       // 縦一覧のタスクページは常時全展開なので、タップは常に選択肢パネルへ
       // 直接進む(掘り下げの途中状態が無い)。
       chip.addEventListener("click", () => handleSomedayChipTap(task, true));
@@ -4420,6 +4438,14 @@
     // one frame later reliably corrects it, which is what actually chases
     // down the "branch line drifts into a chip's own label" reports.
     requestAnimationFrame(repositionSomedayConnectors);
+    // タスクページのいつか欄は常時全展開で、他ページの全展開トグルの状態
+    // にもactiveSomedayIds(1つの経路だけ掘り下げる通常モードの状態)にも
+    // 関知しない。renderSomedayList()はrenderCalendar()を経由せず単独で
+    // 呼ばれる箇所が多い(子タスク追加直後など)ため、renderCalendar()側の
+    // 別呼び出しに頼るとその経路だけタスクページが古いまま(または一部の
+    // 欄がactiveSomedayIdsに引きずられて隠れたまま)になる。ここで毎回
+    // 呼んで確実に同期させる。
+    renderTasklistSomedayColumns();
   }
 
   // 予定をタップして編集モード(詳細パネル表示中)になっている間は、その
@@ -5246,8 +5272,133 @@
   // 上に縦積みで一覧表示する。このページには時間軸グリッドが無いので、
   // 他のページのようなドラッグでの並べ替え/スケジュール化は持たず、
   // タップで既存の選択肢モーダルを開くだけのシンプルな表示にする。
+  // タスクページの縦一覧(最優先/今日中/今週中/いつかの各リスト)向けの、
+  // 長押し→上下ドラッグでの並べ替え。横トレイ用のstartTrayItemDrag/
+  // startSomedayChipDragとは別に、この専用の縦版を用意する — スケジュール
+  // への持ち上げや配置転換(reparent)は無く、同じ一覧内での並べ替えだけを
+  // サポートする(タスクの洗い出しに使う一覧としての、シンプルな管理)。
+  // タップだけの場合はonTapLikeRelease、実際に並べ替えた場合は
+  // onReorderCommitを呼ぶ(どちらもclick経由ではなくここが直接呼ぶ)。
+  let tasklistReorderCtx = null;
+
+  function startTasklistChipDrag(e, chip, listEl, onTapLikeRelease, onReorderCommit) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.stopPropagation();
+    tasklistReorderCtx = {
+      chip,
+      listEl,
+      onTapLikeRelease,
+      onReorderCommit,
+      phase: "pending", // "pending" -> "reorder"
+      heldLongEnough: false,
+      startClientY: e.clientY,
+      startTop: chip.offsetTop,
+      longPressTimer: null,
+    };
+    tasklistReorderCtx.longPressTimer = setTimeout(() => {
+      if (!tasklistReorderCtx || tasklistReorderCtx.phase !== "pending") return;
+      tasklistReorderCtx.longPressTimer = null;
+      tasklistReorderCtx.heldLongEnough = true;
+      tasklistReorderCtx.chip.classList.add("armed");
+      vibrate(10);
+    }, CHIP_REORDER_LONGPRESS_MS);
+    document.addEventListener("pointermove", onTasklistChipDragMove);
+    document.addEventListener("pointerup", onTasklistChipDragEnd);
+    document.addEventListener("pointercancel", onTasklistChipDragEnd);
+  }
+
+  function onTasklistChipDragMove(e) {
+    if (!tasklistReorderCtx) return;
+    const ctx = tasklistReorderCtx;
+
+    if (ctx.phase === "pending") {
+      const dy = e.clientY - ctx.startClientY;
+      if (Math.abs(dy) < PLAN_MOVE_TOLERANCE) return;
+      if (ctx.longPressTimer) {
+        clearTimeout(ctx.longPressTimer);
+        ctx.longPressTimer = null;
+      }
+      if (!ctx.heldLongEnough) {
+        // 長押しが成立する前に動いた == 並べ替えの意図ではなく、ページの
+        // 縦スクロールのつもり。pointerdown側でpreventDefaultしていない
+        // のでネイティブスクロールはそのまま効く — こちらは指を離しても
+        // タップ扱いにならないよう、追跡を打ち切るだけにする。
+        document.removeEventListener("pointermove", onTasklistChipDragMove);
+        document.removeEventListener("pointerup", onTasklistChipDragEnd);
+        document.removeEventListener("pointercancel", onTasklistChipDragEnd);
+        ctx.chip.classList.remove("armed");
+        tasklistReorderCtx = null;
+        return;
+      }
+      ctx.chip.classList.remove("armed");
+      ctx.phase = "reorder";
+      ctx.chip.classList.add("reordering");
+      ctx.chip.style.transition = "none";
+      vibrate(15);
+    }
+
+    if (ctx.phase === "reorder") {
+      e.preventDefault();
+      const desiredTop = ctx.startTop + (e.clientY - ctx.startClientY);
+      const currentTop = ctx.chip.offsetTop;
+      ctx.chip.style.transform = `translateY(${desiredTop - currentTop}px)`;
+
+      const chipRect = ctx.chip.getBoundingClientRect();
+      const chipCenter = chipRect.top + chipRect.height / 2;
+      const siblings = Array.from(ctx.listEl.children).filter((n) => n.classList.contains("cal-unplanned-chip"));
+      const draggedIndex = siblings.indexOf(ctx.chip);
+      for (let j = 0; j < siblings.length; j++) {
+        const sib = siblings[j];
+        if (sib === ctx.chip) continue;
+        const sibRect = sib.getBoundingClientRect();
+        if (chipCenter > sibRect.top && chipCenter < sibRect.bottom) {
+          if (j < draggedIndex) ctx.listEl.insertBefore(ctx.chip, sib);
+          else ctx.listEl.insertBefore(ctx.chip, sib.nextSibling);
+          break;
+        }
+      }
+    }
+  }
+
+  function onTasklistChipDragEnd() {
+    if (!tasklistReorderCtx) return;
+    const ctx = tasklistReorderCtx;
+    document.removeEventListener("pointermove", onTasklistChipDragMove);
+    document.removeEventListener("pointerup", onTasklistChipDragEnd);
+    document.removeEventListener("pointercancel", onTasklistChipDragEnd);
+    if (ctx.longPressTimer) clearTimeout(ctx.longPressTimer);
+    tasklistReorderCtx = null;
+
+    if (ctx.phase === "pending") {
+      ctx.chip.classList.remove("armed");
+      ctx.onTapLikeRelease();
+      return;
+    }
+
+    ctx.chip.classList.remove("reordering");
+    ctx.chip.style.transition = "transform 0.15s ease";
+    ctx.chip.style.transform = "";
+    const chipRef = ctx.chip;
+    setTimeout(() => {
+      chipRef.style.transition = "";
+    }, 160);
+    vibrate(15);
+    ctx.onReorderCommit();
+  }
+
+  // fullArrayのうち、表示されていた部分集合を新しい並び順(displayedNew、
+  // 同じ要素の並べ替え)に差し替える。表示に含まれない他の要素はその場の
+  // 位置を保ったまま(onTrayItemDragEndのreorderフェーズと同じ考え方)。
+  function applyReorderedSubset(fullArray, displayedNew) {
+    const reorderedSet = new Set(displayedNew);
+    let ri = 0;
+    const newOrder = fullArray.map((it) => (reorderedSet.has(it) ? displayedNew[ri++] : it));
+    fullArray.length = 0;
+    fullArray.push(...newOrder);
+  }
+
   function renderTasklistFlatSections() {
-    function renderFlat(listEl, items, fallbackLabel, emptyText, onTap) {
+    function renderFlat(listEl, items, fallbackLabel, emptyText, onTap, onReorderCommit) {
       listEl.innerHTML = "";
       if (!items.length) {
         const empty = document.createElement("span");
@@ -5260,6 +5411,7 @@
         const chip = document.createElement("button");
         chip.type = "button";
         chip.className = "cal-unplanned-chip";
+        chip.trayItem = item;
         const directChildCount = item.children ? item.children.filter((c) => !c.parentId).length : 0;
         // 今週中(唯一、子タスクを持ち得るこの一覧)は、いつかの親チップと
         // 同じ色付き・四角寄りの枠にする(最優先/今日中は子を持たないので
@@ -5275,19 +5427,36 @@
           badge.dataset.count = String(directChildCount);
           chip.appendChild(badge);
         }
-        chip.addEventListener("click", () => onTap(item));
+        chip.addEventListener("pointerdown", (e) =>
+          startTasklistChipDrag(e, chip, listEl, () => onTap(item), onReorderCommit)
+        );
         listEl.appendChild(chip);
       });
     }
 
     const dateStr = state.day;
-    const weekStart = mondayOfWeek(state.day);
 
     const priorityTasks = itemsArrayForDate(dateStr).filter((it) => it.priority && !it.completed);
-    renderFlat(tasklistPriorityList, priorityTasks, "最優先タスク", "最優先のタスクなし", (item) => promptRegularTaskEdit(dateStr, item));
+    renderFlat(tasklistPriorityList, priorityTasks, "最優先タスク", "最優先のタスクなし", (item) => promptRegularTaskEdit(dateStr, item), () => {
+      captureUndoSnapshot();
+      const newOrder = Array.from(tasklistPriorityList.children)
+        .filter((c) => c.classList.contains("cal-unplanned-chip"))
+        .map((c) => c.trayItem);
+      applyReorderedSubset(itemsArrayForDate(dateStr), newOrder);
+      persistItemsForDate(dateStr);
+      renderCalendar();
+    });
 
     const todayTasks = itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority && !it.completed);
-    renderFlat(tasklistTodayList, todayTasks, "今日中タスク", "今日中のタスクなし", (item) => promptRegularTaskEdit(dateStr, item));
+    renderFlat(tasklistTodayList, todayTasks, "今日中タスク", "今日中のタスクなし", (item) => promptRegularTaskEdit(dateStr, item), () => {
+      captureUndoSnapshot();
+      const newOrder = Array.from(tasklistTodayList.children)
+        .filter((c) => c.classList.contains("cal-unplanned-chip"))
+        .map((c) => c.trayItem);
+      applyReorderedSubset(itemsArrayForDate(dateStr), newOrder);
+      persistItemsForDate(dateStr);
+      renderCalendar();
+    });
   }
 
   // 今週中(M/D〜)の日付ラベル: formatDateLabelの曜日無し版。
@@ -5400,6 +5569,13 @@
     rootTitle.className = "calendar-unplanned-title";
     rootTitle.textContent = `今週中(${formatWeekStartLabel(weekStart)})`;
     rootHeader.appendChild(rootTitle);
+    const rootAddBtn = document.createElement("button");
+    rootAddBtn.type = "button";
+    rootAddBtn.className = "calendar-someday-add";
+    rootAddBtn.setAttribute("aria-label", "今週中のタスクを追加");
+    rootAddBtn.textContent = "＋";
+    rootAddBtn.addEventListener("click", () => addThisWeekTask(weekStart));
+    rootHeader.appendChild(rootAddBtn);
     rootBox.appendChild(rootHeader);
     const rootList = document.createElement("div");
     rootList.className = "calendar-unplanned-list tasklist-list";
@@ -5463,7 +5639,16 @@
           badge.dataset.count = String(directChildCount);
           chip.appendChild(badge);
         }
-        chip.addEventListener("click", () => promptWeeklyTaskEdit(weekStart, item));
+        chip.trayItem = item;
+        chip.addEventListener("pointerdown", (e) =>
+          startTasklistChipDrag(e, chip, rootList, () => promptWeeklyTaskEdit(weekStart, item), () => {
+            captureUndoSnapshot();
+            const newOrder = Array.from(rootList.children).filter((c) => c.classList.contains("cal-unplanned-chip")).map((c) => c.trayItem);
+            applyReorderedSubset(itemsArrayForWeek(weekStart), newOrder);
+            persistItemsForWeek(weekStart);
+            renderCalendar();
+          })
+        );
         rootList.appendChild(chip);
       });
 
@@ -7329,11 +7514,9 @@
     renderThisWeekTray();
     renderTasklistFlatSections();
     renderTasklistThisWeekSections();
+    // renderSomedayList()が末尾でrenderTasklistSomedayColumns()も呼ぶので
+    // タスクページのいつか欄はここで自動的に同期される。
     renderSomedayList();
-    // タスクページのいつか欄は常時全展開(他ページの全展開トグルの状態に
-    // 関係なく)なので、renderSomedayListが(他ページで全展開がONの場合に)
-    // 一時的に隠す/差し替えることがあっても、必ずここで正しい表示に戻す。
-    renderTasklistSomedayColumns();
     applyCalendarPlanEditingVisibility();
     renderCalendarDetail();
 
@@ -7681,6 +7864,24 @@
   monthlySomedayAddBtn.addEventListener("click", addSomedayTask);
   taskSomedayAddBtn.addEventListener("click", addSomedayTask);
   tasklistSomedayAddBtn.addEventListener("click", addSomedayTask);
+  // タスクページの最優先/今日中は、状態表示もitemsArrayForDate(state.day)
+  // ベース(renderTasklistFlatSections参照)なので、こちらもstate.dayへ
+  // 追加する(weekAnchorに頼るaddPriorityTask/他ページの＋ボタンとは別)。
+  tasklistPriorityAddBtn.addEventListener("click", async () => {
+    const name = await openNameModal("");
+    if (name === null) return;
+    const label = name.trim();
+    if (!label) return;
+    captureUndoSnapshot();
+    const item = freshItem(label);
+    item.priority = true;
+    ensureItemsArrayForDate(state.day).push(item);
+    sortItemsByPlan(state.day);
+    persistItemsForDate(state.day);
+    refreshTimerIfShowing(state.day);
+    renderCalendar();
+  });
+  tasklistTodayAddBtn.addEventListener("click", () => addUnscheduledTask(state.day));
 
   const somedayExpandAllBtns = [calendarSomedayExpandAllBtn, weeklySomedayExpandAllBtn, monthlySomedayExpandAllBtn, taskSomedayExpandAllBtn];
   function updateSomedayExpandAllBtns() {

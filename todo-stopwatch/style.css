@@ -2685,6 +2685,17 @@ body {
   gap: 8px;
 }
 
+/* 4列表示で幅が狭いタスクページの見出し(特に「今週中(9/9〜)」のような
+   日付付きの長い見出し)は、+ボタンとの並びでデフォルトのcalendar-
+   unplanned-title(flex:none)のままだと欄の外にはみ出し、右隣の欄の
+   下に隠れてタップできなくなる。ここだけ縮小・省略を許可する。 */
+.tasklist-box-header .calendar-unplanned-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .tasklist-list {
   flex-direction: column;
   align-items: stretch;
