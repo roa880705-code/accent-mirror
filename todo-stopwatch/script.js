@@ -1803,6 +1803,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-09", text: "今週中で、既に展開中のタスクをもう一度タップした時の動きを、いつかと同じ仕様に変更しました。展開をたたむのではなく、名前などの編集モーダルが開きます(展開は維持されたままです)。" },
     { date: "2026-09-09", text: "今週中で、子タスクを持たない別のタスクをタップした時に、展開中の子孫欄を閉じるようにしました(いつかと同じ仕様)。以前は展開中に無関係なタスクをタップしても何も起きませんでした。" },
     { date: "2026-09-09", text: "今週中で、1つのタスクを展開したまま別のタスクをタップしても、前のタスクの展開が閉じないことがある不具合を修正しました。指の揺れの大きさに関係なく、確実に切り替わるようにしています。" },
     { date: "2026-09-08", text: "ウィークリー/デイリーの「いつか」欄を全展開した時の「たたむ」「＋」ボタンの位置を、今週中の全展開時と同じ並び(欄の内容の右どなり)に揃えました。" },
@@ -4942,16 +4943,28 @@
 
   // 今週中で個別にタップしてドリルダウン中(子孫を専用行に表示中)の
   // アイテム。いつかのactiveSomedayIds同様、常に高々1件だけがアクティブ
-  // (別のタスクをタップすると差し替わる、同じタスクを再タップすると
-  // 解除)。thisWeekTasks[weekStart]の各アイテムはオブジェクトの参照が
-  // 再レンダーをまたいで保たれる(persistItemsForWeekはJSONへ書き出す
-  // だけで、メモリ上のオブジェクト自体は差し替えない)ので、idを新設せず
-  // オブジェクト参照そのものをキーにできる。ページ間・週の切り替えを
-  // またいでも保持する必要は無いセッション限りの表示状態。
+  // (別のタスクをタップすると差し替わる)。thisWeekTasks[weekStart]の
+  // 各アイテムはオブジェクトの参照が再レンダーをまたいで保たれる
+  // (persistItemsForWeekはJSONへ書き出すだけで、メモリ上のオブジェクト
+  // 自体は差し替えない)ので、idを新設せずオブジェクト参照そのものを
+  // キーにできる。ページ間・週の切り替えをまたいでも保持する必要は無い
+  // セッション限りの表示状態。
   let activeThisWeekItem = null;
-  function toggleThisWeekActiveItem(item) {
-    activeThisWeekItem = activeThisWeekItem === item ? null : item;
-    renderThisWeekTray();
+
+  // 子タスクを抱えたチップをタップした時の処理。いつかの
+  // handleSomedayChipTap(isParentTaskの分岐)と同じ仕様: まだ展開して
+  // いない別のタスクなら展開し、既に展開中の(今アクティブな)タスク
+  // 自身を再タップした場合は折りたたむのではなく、名前などの編集
+  // モーダルを開く(子タスク追加もここから)。全展開中は「今どれか1件
+  // だけ展開中」という状態自体が無いので、常に編集モーダルへ直接進む
+  // (いつかのsomedayExpandAllガードと同じ)。
+  function handleThisWeekParentTap(weekStart, item) {
+    if (!thisWeekExpandAll && activeThisWeekItem !== item) {
+      activeThisWeekItem = item;
+      renderThisWeekTray();
+      return;
+    }
+    promptWeeklyTaskEdit(weekStart, item);
   }
 
   // 子タスクを持たないチップをタップした時の処理。いつかの
@@ -4977,7 +4990,7 @@
   // schedule/scroll等へ倒れてしまった場合の各フォールバックからも、
   // 素直なタップ(pendingフェーズ)からも、ここへ集約する。
   function handleThisWeekTapLikeRelease(weekStart, item) {
-    if (item.children && item.children.length) toggleThisWeekActiveItem(item);
+    if (item.children && item.children.length) handleThisWeekParentTap(weekStart, item);
     else handleThisWeekLeafTap(weekStart, item);
   }
 
