@@ -500,8 +500,8 @@ body {
   list-style: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 6px;
 }
 
 .settings-section-title::-webkit-details-marker {
