@@ -1803,6 +1803,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-09", text: "予定詳細パネルの左側を並べ直しました。バッファ設定→マンスリーに表示/完了/削除(予定そのものに関わる項目)を上に、ブロック表示(OFF/メモ/子タスク)をその下にまとめました。バッファの前後は1行に収め、数字は自由入力ではなく10分刻みのプルダウン選択に変更しています。右側のメモ欄・子タスク欄は、左側と同じ高さまで目一杯広げました。" },
     { date: "2026-09-09", text: "予定詳細のブロック表示(OFF/メモ/子タスク)の切り替えを整理しました。OFFの時は右側に何も表示せず、メモを選ぶとメモ欄、子タスクを選ぶとその場所に子タスクの追加欄が表示されます(バーを引き上げて高さを広げなくても、子タスクの追加ボタンが最初から見えます)。" },
     { date: "2026-09-09", text: "予定をタップした際のメモ欄を、右揃えのまま幅・高さを縮めました(以前は欄いっぱいに広く、予定を開くたびに画面のほとんどを占めていました)。" },
     { date: "2026-09-09", text: "今週中でタスクを展開したまま、他の予定を開くなど今週中とは無関係な場所をタップしても展開が閉じないままだった不具合を修正しました。他のタスクをタップした場合に限らず、他をタップすれば自動的に展開がたたまれるようになりました。" },
@@ -2783,8 +2784,8 @@
     // (右側にメモ欄が広く表示されるため)。
     actions.append(...(monthlyBtn ? [monthlyBtn] : []), ...(completeBtn ? [completeBtn] : []), delBtn);
 
-    // 移動時間バッファ(前後)の入力欄 — 設定方法は後で作り直す前提の、
-    // 今はとりあえず動かすための簡易UI(数値入力2つ)。
+    // 移動時間バッファ(前後)の設定 — 1行に収まるよう、数字は自由入力
+    // ではなく10分刻みのプルダウンにし、欄の横幅も詰めている。
     const bufferRow = document.createElement("div");
     bufferRow.className = "cal-plan-buffer-row";
     const bufferCaption = document.createElement("span");
@@ -2792,21 +2793,29 @@
     bufferCaption.textContent = "バッファ";
     bufferRow.appendChild(bufferCaption);
 
+    const BUFFER_MINUTE_STEP = 10;
+    const BUFFER_MINUTE_MAX = 120;
     function buildBufferField(labelText, currentValue, onCommit) {
       const field = document.createElement("label");
       field.className = "cal-plan-buffer-field";
       const labelEl = document.createElement("span");
       labelEl.textContent = labelText;
-      const input = document.createElement("input");
-      input.type = "number";
-      input.min = "0";
-      input.step = "5";
-      input.inputMode = "numeric";
-      input.className = "cal-plan-buffer-input";
-      input.placeholder = "0";
-      input.value = currentValue || "";
-      input.addEventListener("change", () => onCommit(Math.max(0, parseInt(input.value, 10) || 0)));
-      field.append(labelEl, input, document.createTextNode("分"));
+      const select = document.createElement("select");
+      select.className = "cal-plan-buffer-select";
+      const cur = currentValue || 0;
+      const options = [];
+      for (let m = 0; m <= BUFFER_MINUTE_MAX; m += BUFFER_MINUTE_STEP) options.push(m);
+      if (!options.includes(cur)) options.push(cur); // 既存の10分刻みでない値も消さずに残す
+      options.sort((a, b) => a - b);
+      options.forEach((m) => {
+        const opt = document.createElement("option");
+        opt.value = String(m);
+        opt.textContent = String(m);
+        opt.selected = m === cur;
+        select.appendChild(opt);
+      });
+      select.addEventListener("change", () => onCommit(parseInt(select.value, 10) || 0));
+      field.append(labelEl, select);
       return field;
     }
 
@@ -2835,11 +2844,12 @@
       })
     );
 
+    let bufferClearBtn = null;
     if (plan.beforeBufferMin || plan.afterBufferMin) {
-      const bufferClearBtn = document.createElement("button");
+      bufferClearBtn = document.createElement("button");
       bufferClearBtn.type = "button";
       bufferClearBtn.className = "btn btn-modal-cancel cal-plan-buffer-clear";
-      bufferClearBtn.textContent = "クリア";
+      bufferClearBtn.textContent = "バッファをクリア";
       bufferClearBtn.addEventListener("click", () => {
         captureUndoSnapshot();
         delete plan.beforeBufferMin;
@@ -2848,14 +2858,13 @@
         renderCalendar();
         showPlanDetail(dateStr, plan);
       });
-      bufferRow.appendChild(bufferClearBtn);
     }
 
     // ブロック表示: カレンダーグリッド上の小さなブロックに、予定名+開始
     // 時刻の次の行から、メモか子タスクの一覧を追加表示するかどうかの
     // 選択(既定はOFF)。予定ごとに個別に選べる。
     const blockDisplayRow = document.createElement("div");
-    blockDisplayRow.className = "cal-plan-buffer-row";
+    blockDisplayRow.className = "cal-plan-buffer-row cal-plan-blockdisplay-row";
     const blockDisplayCaption = document.createElement("span");
     blockDisplayCaption.className = "cal-plan-buffer-caption";
     blockDisplayCaption.textContent = "ブロック表示";
@@ -2919,10 +2928,12 @@
       contentBox = buildPlanChildrenSection(dateStr, plan);
     }
 
-    // 左側: バッファ入力+操作ボタンをまとめた縦一列。
+    // 左側: 縦一列にまとめる。まず大元の予定そのものに関わる項目
+    // (バッファ設定→マンスリーに表示/完了/削除)、その下にブロック表示
+    // (OFF/メモ/子タスク、こちらは表示切替の設定)という並びにする。
     const leftCol = document.createElement("div");
     leftCol.className = "cal-plan-detail-left-col";
-    leftCol.append(bufferRow, blockDisplayRow, actions);
+    leftCol.append(bufferRow, ...(bufferClearBtn ? [bufferClearBtn] : []), actions, blockDisplayRow);
 
     const body = document.createElement("div");
     body.className = "cal-plan-detail-body";
