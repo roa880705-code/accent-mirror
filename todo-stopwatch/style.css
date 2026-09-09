@@ -2964,10 +2964,17 @@ body {
   gap: 6px;
 }
 
+/* 右揃えのまま、左端が画面のだいたい中央に来る程度まで狭め、縦幅も
+   半分程度に抑える(以前はflex:1でこの行の余白いっぱい・パネル下端
+   まで広がっていた)。幅はビューポート基準(50vw)にして「画面の」
+   中央という要望にそのまま合わせ、margin-left:autoでこの行の右端に
+   寄せたまま、align-self:flex-startで上寄せにする。 */
 .cal-plan-memo-textarea {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
+  flex: none;
+  align-self: flex-start;
+  width: 50vw;
+  height: 50%;
+  margin-left: auto;
   box-sizing: border-box;
   font-family: inherit;
   font-size: 0.75rem;

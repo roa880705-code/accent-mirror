@@ -1803,6 +1803,8 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-09", text: "予定をタップした際のメモ欄を、右揃えのまま幅・高さを縮めました(以前は欄いっぱいに広く、予定を開くたびに画面のほとんどを占めていました)。" },
+    { date: "2026-09-09", text: "今週中でタスクを展開したまま、他の予定を開くなど今週中とは無関係な場所をタップしても展開が閉じないままだった不具合を修正しました。他のタスクをタップした場合に限らず、他をタップすれば自動的に展開がたたまれるようになりました。" },
     { date: "2026-09-09", text: "今週中で、既に展開中のタスクをもう一度タップした時の動きを、いつかと同じ仕様に変更しました。展開をたたむのではなく、名前などの編集モーダルが開きます(展開は維持されたままです)。" },
     { date: "2026-09-09", text: "今週中で、子タスクを持たない別のタスクをタップした時に、展開中の子孫欄を閉じるようにしました(いつかと同じ仕様)。以前は展開中に無関係なタスクをタップしても何も起きませんでした。" },
     { date: "2026-09-09", text: "今週中で、1つのタスクを展開したまま別のタスクをタップしても、前のタスクの展開が閉じないことがある不具合を修正しました。指の揺れの大きさに関係なく、確実に切り替わるようにしています。" },
@@ -2969,6 +2971,10 @@
       e.stopPropagation();
       vibrate(10);
     }
+    // pointerdown側でpreventDefault()しているため、ここは本物のclick
+    // イベント経由ではない(=document側のclickリスナーには届かない)。
+    // 今週中/いつかの展開を畳む処理はここで直接呼ぶ必要がある。
+    collapseAllDrilldowns();
     selectedPlanId = plan.id;
     renderCalendar();
     showPlanDetail(dateStr, plan);
@@ -4951,6 +4957,30 @@
   // セッション限りの表示状態。
   let activeThisWeekItem = null;
 
+  // 今日中/今週中トレイを実際に横スワイプでスクロールした直後、指を
+  // 離した座標がスクロールでチップごと動いてしまいトレイの外(何も無い
+  // 背景)に来ることがある。その場合ブラウザは本物のclickイベントを
+  // そこへ発火してしまい、下のdocumentクリックリスナーから見ると「よそを
+  // タップした」ように見えて、ただスクロールしただけなのに展開が
+  // 畳まれてしまう。onTrayItemDragEnd側でスクロールと確定した直後に
+  // このフラグを立てて、直後の1回だけそのクリックを無視する。
+  let suppressNextOutsideTapCollapse = false;
+
+  // 今週中のドリルダウン展開(と、いつかの子孫展開)を閉じる共通処理。
+  // 通常はdocument全体のclickリスナー(下記)から呼ばれるが、予定ブロック
+  // のタップのように、ネイティブなclickイベントを経由せず独自の
+  // pointerdown/upで「タップ」を判定している(かつpointerdown側で
+  // preventDefault()しているため、その後ブラウザが本来出すはずの
+  // click自体が発火しない)箇所は、document側のリスナーでは検知できない
+  // ので、そこから直接この関数を呼ぶ必要がある。
+  function collapseAllDrilldowns() {
+    collapseSomedaySubtaskLayers();
+    if (activeThisWeekItem) {
+      activeThisWeekItem = null;
+      renderThisWeekTray();
+    }
+  }
+
   // 子タスクを抱えたチップをタップした時の処理。いつかの
   // handleSomedayChipTap(isParentTaskの分岐)と同じ仕様: まだ展開して
   // いない別のタスクなら展開し、既に展開中の(今アクティブな)タスク
@@ -5769,6 +5799,12 @@
           return;
         }
       }
+      suppressNextOutsideTapCollapse = true;
+      // ブラウザがスワイプ終端にclickを出さない(=既にトレイの内側で
+      // 指を離した)場合にフラグが残り続けないよう、直後に自動で戻す。
+      setTimeout(() => {
+        suppressNextOutsideTapCollapse = false;
+      }, 0);
       chipTrayMomentumCancel = startMomentumScroll(
         () => listEl.scrollLeft,
         (v) => {
@@ -7508,13 +7544,27 @@
   // tapping anywhere outside the いつか/子/孫/ひ孫タスク trays (the grid, a
   // day header, a plan block, ...) collapses back to just いつか — but not
   // a tab switch (state should still carry over between デイリー/マンスリー)
-  // or a modal click (those already manage this state deliberately).
+  // or a modal click (those already manage this state deliberately)。
+  // 今週中のドリルダウン欄も同じ考え方: 展開したままよそをタップ(予定を
+  // 開く等)すると、展開中の欄が画面に残って邪魔になるだけなので、
+  // ここで一緒に閉じる。
+  // 予定ブロックのタップは自分のpointerdownでpreventDefault()しており
+  // (=本物のclickイベント自体が発火しない)、そもそもこのリスナーには
+  // 届かない。そちらはonPlanBlockClickから直接collapseAllDrilldowns()を
+  // 呼んで対応済み(このリスナーをcapture段階にして無理に拾おうとすると、
+  // 今週中チップ自体の横スワイプ操作が意図せず展開を閉じてしまう副作用が
+  // 出たため、bubble段階のままにしている)。
   document.addEventListener("click", (e) => {
+    if (suppressNextOutsideTapCollapse) {
+      suppressNextOutsideTapCollapse = false;
+      return;
+    }
     if (!document.contains(e.target)) return; // stale target from a chip rebuilt this same tap
     if (e.target.closest(".calendar-unplanned")) return;
+    if (e.target.closest(".cal-thisweek-drilldown")) return;
     if (e.target.closest(".modal-backdrop")) return;
     if (e.target.closest(".tabs")) return;
-    collapseSomedaySubtaskLayers();
+    collapseAllDrilldowns();
   });
 
   initCalendarHours(dailyHoursEl);
