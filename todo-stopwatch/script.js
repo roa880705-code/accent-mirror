@@ -1024,6 +1024,12 @@
   const tasklistTodayList = document.getElementById("tasklistTodayList");
   const tasklistTodayAddBtn = document.getElementById("tasklistTodayAddBtn");
   const tasklistThisWeekSections = document.getElementById("tasklistThisWeekSections");
+  // タスクページ: 今日(state.day)は上の静的な最優先/今日中欄のまま、
+  // 明日以降に何かある日だけをここへ日付ごとに動的追加する(今週中の
+  // tasklistThisWeekSectionsと同じ考え方)。今日自身の「予定(子タスク
+  // あり)」行もここへ含める(最優先/今日中は既存の静的欄が担うが、この
+  // 行だけは今日分の静的欄が元々無いため)。
+  const tasklistFutureDateSections = document.getElementById("tasklistFutureDateSections");
   const tasklistSomedayRow = document.getElementById("tasklistSomedayRow");
   const tasklistSomedayAddBtn = document.getElementById("tasklistSomedayAddBtn");
   // ページ順(calendar/weekly/monthly/task)はsomedayLevelEls等の既存の
@@ -1826,6 +1832,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-09", text: "タスクページで、なるべく多くのタスクが一覧できるようにしました。「最優先」「今日中」は今日分だけでなく、明日以降にタスクがある日も日付ごとに(例:「最優先(9/10(木))」)並べて表示されるようになりました。また、スケジュールに組み込み済みの予定が子タスクを持っている場合も、日付ごとに「予定」の欄として子/孫/ひ孫タスクまで一覧でき、タップするとデイリーページのその予定の詳細を開けます。" },
     { date: "2026-09-09", text: "スケジュール内の予定をタップしてメモを登録する際、メモ欄が小さい文字サイズだったためiPhoneで自動的にズームされてしまう不具合を修正しました。" },
     { date: "2026-09-09", text: "ウィークリー/デイリー右上の「今週中」「いつか」の表示/非表示ボタンを、両ページで連動しないよう独立させました。設定ページの「表示設定」もウィークリー用・デイリー用それぞれ個別のチェックボックスに分けています。また、マンスリー/ログの「いつか」欄はこの設定と無関係に常に表示されるようにしました。" },
     { date: "2026-09-09", text: "ウィークリー/デイリーの日付ヘッダーに表示される日付タイトル(「旅行」のようなラベル)を、長押ししてスケジュールの時間軸へドラッグ&ドロップできるようにしました。他のドラッグと違い、日付タイトルからのドラッグは移動ではなくコピーになります(元の日付タイトルはそのまま残ります)。" },
@@ -5101,6 +5108,24 @@
 
   calendarPriorityAddBtn.addEventListener("click", addPriorityTask);
 
+  // 最優先タスクを指定日に追加する。addPriorityTask()はweekAnchor固定
+  // (ウィークリー/デイリーの最優先欄用)なので、タスクページの明日以降
+  // セクション(日付ごとに動的生成)用にdateStrを任意に取れる版を別途持つ。
+  async function addPriorityTaskForDate(dateStr) {
+    const name = await openNameModal("");
+    if (name === null) return;
+    const label = name.trim();
+    if (!label) return;
+    captureUndoSnapshot();
+    const item = freshItem(label);
+    item.priority = true;
+    ensureItemsArrayForDate(dateStr).push(item);
+    sortItemsByPlan(dateStr);
+    persistItemsForDate(dateStr);
+    refreshTimerIfShowing(dateStr);
+    renderCalendar();
+  }
+
   // デイリーの「今日中」トレイに直接タスクを追加する — これまでは他の
   // 経路(ログの＋タスクの追加など)で作ったplanId/priorityなしのitemが
   // 結果的にここへ並ぶだけで、専用の追加ボタンが無かった。
@@ -5874,6 +5899,237 @@
     weekStarts.forEach((weekStart) => {
       tasklistThisWeekSections.appendChild(buildTasklistThisWeekSection(weekStart, itemsArrayForWeek(weekStart)));
     });
+  }
+
+  // タスクページ: 指定日にスケジュール済みで子タスクを持つ予定(plan.
+  // children)があれば、今週中と同じ「子/孫/ひ孫タスク」見出し付き3列
+  // +ルートの行を1つ作る。1件も無ければnull(呼び出し側で追加しない)。
+  // plan.childrenは今週中アイテムのchildrenと全く同じ形なので、
+  // collectThisWeekFamilyLevels/createThisWeekChildChip/renderTasklist
+  // FamilyColumnsをそのまま使い回せる。ルートのチップは編集/並べ替えを
+  // 持たず(予定はスケジュール上で操作するもの)、タップするとjumpDaily
+  // ToPlanでデイリーページの該当予定の詳細パネルを開く。
+  function buildTasklistPlanFamilyRow(dateStr) {
+    const plansWithChildren = plansForDate(dateStr).filter((p) => p.children && p.children.length);
+    if (!plansWithChildren.length) return null;
+
+    const rootBox = document.createElement("div");
+    rootBox.className = "calendar-unplanned tasklist-box";
+    const rootHeader = document.createElement("div");
+    rootHeader.className = "tasklist-box-header";
+    const rootTitle = document.createElement("span");
+    rootTitle.className = "calendar-unplanned-title";
+    rootTitle.textContent = `予定(${formatDateLabel(dateStr)})`;
+    rootHeader.appendChild(rootTitle);
+    rootBox.appendChild(rootHeader);
+    const rootList = document.createElement("div");
+    rootList.className = "calendar-unplanned-list tasklist-list";
+    rootBox.appendChild(rootList);
+
+    const subtaskBox = document.createElement("div");
+    subtaskBox.className = "calendar-unplanned calendar-subtask-row tasklist-box";
+    const subtaskTitle = document.createElement("span");
+    subtaskTitle.className = "calendar-unplanned-title";
+    subtaskTitle.textContent = "子タスク";
+    subtaskBox.appendChild(subtaskTitle);
+    const subtaskList = document.createElement("div");
+    subtaskList.className = "calendar-unplanned-list tasklist-list";
+    subtaskBox.appendChild(subtaskList);
+
+    const grandchildBox = document.createElement("div");
+    grandchildBox.className = "calendar-unplanned calendar-subtask-row tasklist-box";
+    const grandchildTitle = document.createElement("span");
+    grandchildTitle.className = "calendar-unplanned-title";
+    grandchildTitle.textContent = "孫タスク";
+    grandchildBox.appendChild(grandchildTitle);
+    const grandchildList = document.createElement("div");
+    grandchildList.className = "calendar-unplanned-list tasklist-list";
+    grandchildBox.appendChild(grandchildList);
+
+    const greatGrandchildBox = document.createElement("div");
+    greatGrandchildBox.className = "calendar-unplanned calendar-subtask-row tasklist-box";
+    const greatGrandchildTitle = document.createElement("span");
+    greatGrandchildTitle.className = "calendar-unplanned-title";
+    greatGrandchildTitle.textContent = "ひ孫タスク";
+    greatGrandchildBox.appendChild(greatGrandchildTitle);
+    const greatGrandchildList = document.createElement("div");
+    greatGrandchildList.className = "calendar-unplanned-list tasklist-list";
+    greatGrandchildBox.appendChild(greatGrandchildList);
+
+    const row = document.createElement("div");
+    row.className = "tasklist-someday-row";
+    row.append(rootBox, subtaskBox, grandchildBox, greatGrandchildBox);
+
+    plansWithChildren.forEach((plan, idx) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "cal-unplanned-chip parent";
+      chip.dataset.somedayId = `tw-plan-root-${dateStr}-${idx}`;
+      const label = document.createElement("span");
+      label.className = "cal-unplanned-chip-label";
+      label.textContent = labelOf(plan, "予定");
+      chip.appendChild(label);
+      const directChildCount = planChildrenOf(plan, null).length;
+      if (directChildCount > 0) {
+        const badge = document.createElement("span");
+        badge.className = "cal-child-count-badge";
+        badge.dataset.count = String(directChildCount);
+        chip.appendChild(badge);
+      }
+      chip.addEventListener("click", (e) => {
+        e.stopPropagation();
+        jumpDailyToPlan(dateStr, plan);
+      });
+      rootList.appendChild(chip);
+    });
+
+    renderTasklistFamilyColumns(row, [subtaskList, grandchildList, greatGrandchildList], plansWithChildren, {
+      collectLevels: (plan) => collectThisWeekFamilyLevels(plan, `tw-plan-root-${dateStr}-${plansWithChildren.indexOf(plan)}`),
+      collectPairs: (plan) => {
+        const syntheticRootId = `tw-plan-root-${dateStr}-${plansWithChildren.indexOf(plan)}`;
+        const pairs = [];
+        const directChildren = planChildrenOf(plan, null);
+        if (directChildren.length) pairs.push({ parentTask: { id: syntheticRootId }, childTasks: directChildren });
+        (plan.children || []).forEach((node) => {
+          const kids = planChildrenOf(plan, node.id);
+          if (kids.length) pairs.push({ parentTask: node, childTasks: kids });
+        });
+        return pairs;
+      },
+      createChip: (task, listEl, depth, family) => {
+        const chip = createThisWeekChildChip(task, family);
+        chip.dataset.somedayId = task.id;
+        return chip;
+      },
+    });
+
+    return row;
+  }
+
+  // タスクページの明日以降セクション用、最優先/今日中どちらか1欄を新規に
+  // 組み立てる。今日分(#tasklistPriorityList等)は既存要素をrenderTasklist
+  // FlatSectionsで直接書き換えるのに対し、明日以降は日付ごとに欄自体を
+  // 動的生成するため、こちらはDOM構築から行う別関数として持つ。
+  function buildTasklistFlatBoxForDate(dateStr, title, items, emptyText, addAriaLabel, onAdd, onTap) {
+    const box = document.createElement("div");
+    box.className = "calendar-unplanned tasklist-box tasklist-flat-box";
+    const header = document.createElement("div");
+    header.className = "tasklist-box-header";
+    const titleEl = document.createElement("span");
+    titleEl.className = "calendar-unplanned-title";
+    titleEl.textContent = title;
+    header.appendChild(titleEl);
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "calendar-someday-add";
+    addBtn.setAttribute("aria-label", addAriaLabel);
+    addBtn.textContent = "＋";
+    addBtn.addEventListener("click", onAdd);
+    header.appendChild(addBtn);
+    box.appendChild(header);
+    const list = document.createElement("div");
+    list.className = "calendar-unplanned-list tasklist-list";
+    box.appendChild(list);
+
+    if (!items.length) {
+      const empty = document.createElement("span");
+      empty.className = "calendar-unplanned-empty";
+      empty.textContent = emptyText;
+      list.appendChild(empty);
+      return box;
+    }
+    items.forEach((item) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "cal-unplanned-chip";
+      chip.trayItem = item;
+      const label = document.createElement("span");
+      label.className = "cal-unplanned-chip-label";
+      label.textContent = labelOf(item, title);
+      chip.appendChild(label);
+      chip.addEventListener("pointerdown", (e) =>
+        startTasklistChipDrag(e, chip, list, () => onTap(item), () => {
+          captureUndoSnapshot();
+          const newOrder = Array.from(list.children)
+            .filter((c) => c.classList.contains("cal-unplanned-chip"))
+            .map((c) => c.trayItem);
+          applyReorderedSubset(itemsArrayForDate(dateStr), newOrder);
+          persistItemsForDate(dateStr);
+          renderCalendar();
+        })
+      );
+      list.appendChild(chip);
+    });
+    return box;
+  }
+
+  // 明日以降の1日分セクション: 最優先/今日中欄(今日と同じ縦積みの見た目)
+  // +(あれば)予定(子タスクあり)の行。3つとも空ならセクション自体を
+  // 作らない(=何かある日だけが並ぶ、今週中のthisWeekTasksと同じ方針)。
+  function buildTasklistDateSection(dateStr) {
+    const priorityTasks = itemsArrayForDate(dateStr).filter((it) => it.priority && !it.completed);
+    const todayTasks = itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority && !it.completed);
+    const familyRow = buildTasklistPlanFamilyRow(dateStr);
+    if (!priorityTasks.length && !todayTasks.length && !familyRow) return null;
+
+    const section = document.createElement("div");
+    section.className = "tasklist-week-section";
+
+    const dateLabel = formatDateLabel(dateStr);
+    const flatWrap = document.createElement("div");
+    flatWrap.className = "tasklist-flat-sections";
+    flatWrap.appendChild(
+      buildTasklistFlatBoxForDate(
+        dateStr,
+        `最優先(${dateLabel})`,
+        priorityTasks,
+        "最優先のタスクなし",
+        "最優先タスクを追加",
+        () => addPriorityTaskForDate(dateStr),
+        (item) => promptRegularTaskEdit(dateStr, item)
+      )
+    );
+    flatWrap.appendChild(
+      buildTasklistFlatBoxForDate(
+        dateStr,
+        `今日中(${dateLabel})`,
+        todayTasks,
+        "今日中のタスクなし",
+        "今日中タスクを追加",
+        () => addUnscheduledTask(dateStr),
+        (item) => promptRegularTaskEdit(dateStr, item)
+      )
+    );
+    section.appendChild(flatWrap);
+    if (familyRow) section.appendChild(familyRow);
+    return section;
+  }
+
+  // タスクページ「なるべく多くを表示したい」対応: 今日(state.day)は
+  // これまで通り静的な最優先/今日中欄(+今日分の予定行)が担い、明日
+  // 以降で何か表示すべきものがある日だけを、日付の早い順にここへ積む。
+  function renderTasklistFutureDateSections() {
+    tasklistFutureDateSections.innerHTML = "";
+    const todayFamilyRow = buildTasklistPlanFamilyRow(state.day);
+    if (todayFamilyRow) {
+      const wrap = document.createElement("div");
+      wrap.className = "tasklist-week-section";
+      wrap.appendChild(todayFamilyRow);
+      tasklistFutureDateSections.appendChild(wrap);
+    }
+    const futureDates = new Set();
+    Object.keys(drafts).forEach((d) => {
+      if (d > state.day) futureDates.add(d);
+    });
+    Object.keys(plans).forEach((d) => {
+      if (d > state.day) futureDates.add(d);
+    });
+    Array.from(futureDates)
+      .sort()
+      .forEach((dateStr) => {
+        const section = buildTasklistDateSection(dateStr);
+        if (section) tasklistFutureDateSections.appendChild(section);
+      });
   }
 
   // いつかタスクを今週中(weekStart週)へ移す共通処理。子タスクを抱えた
@@ -7717,6 +7973,7 @@
 
     renderThisWeekTray();
     renderTasklistFlatSections();
+    renderTasklistFutureDateSections();
     renderTasklistThisWeekSections();
     // renderSomedayList()が末尾でrenderTasklistSomedayColumns()も呼ぶので
     // タスクページのいつか欄はここで自動的に同期される。
@@ -7843,6 +8100,19 @@
   function jumpDailyToDate(dateStr) {
     dailyWeekAnchor = dateStr;
     goToPage(DAILY_PAGE);
+  }
+
+  // タスクページの「予定(子タスクあり)」チップをタップした時: タスク
+  // ページ自体には予定編集UIが無いため、onPlanBlockClickと同じ手順
+  // (展開を畳む→選択状態にする→再描画→詳細パネルを開く)でデイリー
+  // ページへ移動し、その予定の詳細パネルを開く。
+  function jumpDailyToPlan(dateStr, plan) {
+    collapseAllDrilldowns();
+    selectedPlanId = plan.id;
+    dailyWeekAnchor = dateStr;
+    goToPage(DAILY_PAGE);
+    renderCalendar();
+    showPlanDetail(dateStr, plan);
   }
 
   // タスクは原則マンスリーに表示しない — showOnMonthly が立っている項目
@@ -8071,20 +8341,7 @@
   // タスクページの最優先/今日中は、状態表示もitemsArrayForDate(state.day)
   // ベース(renderTasklistFlatSections参照)なので、こちらもstate.dayへ
   // 追加する(weekAnchorに頼るaddPriorityTask/他ページの＋ボタンとは別)。
-  tasklistPriorityAddBtn.addEventListener("click", async () => {
-    const name = await openNameModal("");
-    if (name === null) return;
-    const label = name.trim();
-    if (!label) return;
-    captureUndoSnapshot();
-    const item = freshItem(label);
-    item.priority = true;
-    ensureItemsArrayForDate(state.day).push(item);
-    sortItemsByPlan(state.day);
-    persistItemsForDate(state.day);
-    refreshTimerIfShowing(state.day);
-    renderCalendar();
-  });
+  tasklistPriorityAddBtn.addEventListener("click", () => addPriorityTaskForDate(state.day));
   tasklistTodayAddBtn.addEventListener("click", () => addUnscheduledTask(state.day));
 
   const somedayExpandAllBtns = [calendarSomedayExpandAllBtn, weeklySomedayExpandAllBtn, monthlySomedayExpandAllBtn, taskSomedayExpandAllBtn];
