@@ -3019,7 +3019,10 @@ body {
   margin-left: auto;
   box-sizing: border-box;
   font-family: inherit;
-  font-size: 0.75rem;
+  /* iOS Safari auto-zooms on focus for any text input under 16px, so this
+     stays at 16px rather than matching the app's usual small UI text
+     (見た目の詰め感はline-heightと行数で保つ)。 */
+  font-size: 16px;
   line-height: 1.5;
   color: var(--ink);
   background: var(--panel);
