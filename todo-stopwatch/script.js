@@ -625,12 +625,15 @@
       titleEl.textContent = entry.label;
       titleEl.title =
         entry.start === entry.end
-          ? "タップしてタイトルを編集"
-          : `${entry.start}〜${entry.end}・タップしてタイトルを編集`;
-      titleEl.addEventListener("click", (e) => {
-        e.stopPropagation();
-        editDayTitleEntry(entry);
-      });
+          ? "タップして編集、長押ししてスケジュールへコピー"
+          : `${entry.start}〜${entry.end}・タップして編集、長押ししてスケジュールへコピー`;
+      titleEl.addEventListener("pointerdown", (e) => startDayTitleDrag(e, titleEl, entry));
+      // 実際のタップ/編集判定はpointerdown起点のstartDayTitleDrag側で行う
+      // が、その後ブラウザが発火するclick自体は(pointerdownのstopPropagation
+      // では止まらず)そのままヘッダーへバブリングしてしまい、日付ジャンプ
+      // (ウィークリー)やそのタップ扱い判定と二重に反応してしまうため、
+      // ここで確実に止める。
+      titleEl.addEventListener("click", (e) => e.stopPropagation());
       container.appendChild(titleEl);
     });
     const addEl = document.createElement("span");
@@ -1802,6 +1805,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-09", text: "ウィークリー/デイリーの日付ヘッダーに表示される日付タイトル(「旅行」のようなラベル)を、長押ししてスケジュールの時間軸へドラッグ&ドロップできるようにしました。他のドラッグと違い、日付タイトルからのドラッグは移動ではなくコピーになります(元の日付タイトルはそのまま残ります)。" },
     { date: "2026-09-09", text: "ウィークリー/デイリーで「今週中」のタスクをドラッグして持ち上げた後、どこにも落とさず今週中欄自体へ戻すと、タップしたことになって展開されたり編集モーダルが開いたりしてしまう不具合を修正しました。" },
     { date: "2026-09-09", text: "設定ページの各項目を、デフォルトで折りたたんだ状態に変更しました。開閉の矢印も、項目名のすぐ右隣に表示するようにしました(以前は欄の右端に離れていました)。" },
     { date: "2026-09-09", text: "タスクページで、いつかのタスクに子タスクを追加すると、孫/ひ孫タスクの欄が消えて表示が崩れる不具合を修正しました。また、タスクページのどの欄からもタスクの並べ替え(長押しで上下にドラッグ)・タップでの編集・＋ボタンでの追加ができるようになりました(いつかの子/孫/ひ孫欄は複数の親をまとめて表示しているため、並べ替えの対象外です)。" },
@@ -3648,6 +3652,150 @@
       refreshTimerIfShowing(dateStr);
     }
 
+    renderCalendar();
+  }
+
+  // --- 日付タイトルをスケジュールへドラッグ&ドロップ(コピー) ---
+  // 予定/タスクの各ドラッグ(いつか・今週中・最優先・今日中)はどれも
+  // スケジュールへ落とすと元の置き場から「移動」するが、日付タイトルは
+  // 複数日にまたがる注釈ラベル(1つの予定というより期間そのものの見出し)
+  // なので、落としても元のタイトル自体は変えず、その時間帯に新しい予定を
+  // 1件「コピー」して作るだけにする。長押し(PLAN_LONGPRESS_MS)で持ち上げ
+  // てからグリッドへドラッグする操作感は既存の予定ブロックの移動ドラッグ
+  // と揃え、長押し前に動いた場合や、どこにも落とさなかった場合は何も
+  // しない。長押しせずすぐ指を離した場合は、従来通りタップとして編集
+  // モーダルを開く。
+  let dayTitleDragCtx = null;
+
+  function startDayTitleDrag(e, titleEl, entry) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.stopPropagation();
+    dayTitleDragCtx = {
+      titleEl,
+      entry,
+      armed: false,
+      moved: false,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      targetCol: null,
+      clientY: e.clientY,
+      lastVibrateMin: null,
+      timer: null,
+    };
+    dayTitleDragCtx.timer = setTimeout(() => {
+      if (!dayTitleDragCtx) return;
+      dayTitleDragCtx.timer = null;
+      dayTitleDragCtx.armed = true;
+      dayTitleDragCtx.titleEl.classList.add("armed");
+      vibrate(15);
+    }, PLAN_LONGPRESS_MS);
+    document.addEventListener("pointermove", onDayTitleDragMove);
+    document.addEventListener("pointerup", onDayTitleDragEnd);
+    document.addEventListener("pointercancel", onDayTitleDragEnd);
+  }
+
+  function onDayTitleDragMove(e) {
+    if (!dayTitleDragCtx) return;
+    const ctx = dayTitleDragCtx;
+    const dx = e.clientX - ctx.startClientX;
+    const dy = e.clientY - ctx.startClientY;
+
+    if (!ctx.armed) {
+      if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
+      // 長押しが成立する前に動いた == ドラッグの意図ではない、予定ブロック
+      // の移動ドラッグと同じくここで打ち切る(タップも発火させない)。
+      if (ctx.timer) clearTimeout(ctx.timer);
+      document.removeEventListener("pointermove", onDayTitleDragMove);
+      document.removeEventListener("pointerup", onDayTitleDragEnd);
+      document.removeEventListener("pointercancel", onDayTitleDragEnd);
+      dayTitleDragCtx = null;
+      return;
+    }
+
+    e.preventDefault();
+    if (!ctx.moved) {
+      if (Math.hypot(dx, dy) < PLAN_MOVE_TOLERANCE) return;
+      ctx.moved = true;
+      ctx.titleEl.classList.remove("armed");
+      ctx.titleEl.classList.add("dragging");
+      vibrate(15);
+    }
+
+    const bodyRect = calendarWeekBody.getBoundingClientRect();
+    const cols = Array.from(calendarWeekGrid.children);
+    let targetCol = null;
+    if (e.clientY >= bodyRect.top && e.clientY <= bodyRect.bottom) {
+      for (const col of cols) {
+        // 過去日には(その日のタイマー項目が既に無いので)コピーできない —
+        // 他のスケジュール作成経路と同じ制約。
+        if (col.dataset.date < state.day) continue;
+        const rect = col.getBoundingClientRect();
+        if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+          targetCol = col;
+          break;
+        }
+      }
+    }
+    cols.forEach((c) => c.classList.toggle("drop-target", c === targetCol));
+    ctx.targetCol = targetCol;
+    ctx.clientY = e.clientY;
+
+    if (targetCol) {
+      const colRect = targetCol.getBoundingClientRect();
+      const relY = e.clientY - colRect.top;
+      const rawMin = pxToMin(relY);
+      let startMin = Math.round(rawMin / 15) * 15;
+      startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+      if (startMin !== ctx.lastVibrateMin) {
+        vibrate(8);
+        ctx.lastVibrateMin = startMin;
+      }
+      showDragPreview(targetCol, ctx.entry.label, startMin, PLAN_DEFAULT_MIN);
+    } else {
+      clearDragPreview();
+    }
+  }
+
+  function onDayTitleDragEnd() {
+    if (!dayTitleDragCtx) return;
+    const ctx = dayTitleDragCtx;
+    document.removeEventListener("pointermove", onDayTitleDragMove);
+    document.removeEventListener("pointerup", onDayTitleDragEnd);
+    document.removeEventListener("pointercancel", onDayTitleDragEnd);
+    if (ctx.timer) clearTimeout(ctx.timer);
+    ctx.titleEl.classList.remove("armed", "dragging");
+    Array.from(calendarWeekGrid.children).forEach((c) => c.classList.remove("drop-target"));
+    clearDragPreview();
+    dayTitleDragCtx = null;
+
+    if (!ctx.moved) {
+      // ドラッグしなかった(長押しだけ、または即座に離した)場合は、
+      // 従来通りタップとして編集モーダルを開く。
+      editDayTitleEntry(ctx.entry);
+      return;
+    }
+
+    if (!ctx.targetCol) return;
+
+    vibrate(20);
+    const dateStr = ctx.targetCol.dataset.date;
+    const colRect = ctx.targetCol.getBoundingClientRect();
+    const relY = ctx.clientY - colRect.top;
+    const rawMin = pxToMin(relY);
+    let startMin = Math.round(rawMin / 15) * 15;
+    startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+    const endMin = startMin + PLAN_DEFAULT_MIN;
+    const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+    captureUndoSnapshot();
+    // コピーなので日付タイトル自体(dayTitles)には一切触れない。
+    addPlan(dateStr, { id, label: ctx.entry.label, startMin, endMin });
+    const item = freshItem(ctx.entry.label);
+    item.planId = id;
+    ensureItemsArrayForDate(dateStr).push(item);
+    sortItemsByPlan(dateStr);
+    persistItemsForDate(dateStr);
+    refreshTimerIfShowing(dateStr);
     renderCalendar();
   }
 
@@ -8266,7 +8414,7 @@
   // drag-to-select must not be hijacked).
   const SWIPE_NAV_EXCLUDE =
     ".calendar-day-col, .cal-unplanned-chip, .cal-plan-block, " +
-    ".cal-plan-resize-handle, .cal-unscheduled-row, .calendar-unplanned, input, textarea";
+    ".cal-plan-resize-handle, .cal-unscheduled-row, .calendar-unplanned, .mc-day-title, input, textarea";
 
   function swipeToAdjacentPeriod(delta) {
     // delta: +1 = 次(未来)側, -1 = 前(過去)側
