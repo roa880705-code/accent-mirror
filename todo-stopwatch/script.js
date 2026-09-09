@@ -172,22 +172,30 @@
     return {};
   }
 
+  // ウィークリー/デイリーは互いに独立した表示設定を持つ(以前は1つの
+  // 共通設定で両方を制御していた)。旧データ(showThisWeekBox/showSomedayBox
+  // がboolean)しか無い場合は、その値をウィークリー/デイリー両方の初期値
+  // として引き継ぐ(移行直後にどちらかが急に表示/非表示へ変わらないため)。
   function loadDisplaySettings() {
     try {
       const raw = localStorage.getItem(DISPLAY_SETTINGS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === "object") {
+          const legacyThisWeek = parsed.showThisWeekBox !== false;
+          const legacySomeday = parsed.showSomedayBox !== false;
           return {
-            showThisWeekBox: parsed.showThisWeekBox !== false,
-            showSomedayBox: parsed.showSomedayBox !== false,
+            showThisWeekBoxWeekly: parsed.showThisWeekBoxWeekly !== undefined ? parsed.showThisWeekBoxWeekly !== false : legacyThisWeek,
+            showThisWeekBoxDaily: parsed.showThisWeekBoxDaily !== undefined ? parsed.showThisWeekBoxDaily !== false : legacyThisWeek,
+            showSomedayBoxWeekly: parsed.showSomedayBoxWeekly !== undefined ? parsed.showSomedayBoxWeekly !== false : legacySomeday,
+            showSomedayBoxDaily: parsed.showSomedayBoxDaily !== undefined ? parsed.showSomedayBoxDaily !== false : legacySomeday,
           };
         }
       }
     } catch (e) {
       // corrupt storage, fall through to defaults
     }
-    return { showThisWeekBox: true, showSomedayBox: true };
+    return { showThisWeekBoxWeekly: true, showThisWeekBoxDaily: true, showSomedayBoxWeekly: true, showSomedayBoxDaily: true };
   }
 
   function saveDisplaySettings() {
@@ -876,8 +884,10 @@
   const settingsAnnouncementsList = document.getElementById("settingsAnnouncementsList");
   const settingsFaqList = document.getElementById("settingsFaqList");
   const periodEnabledToggle = document.getElementById("periodEnabledToggle");
-  const showThisWeekBoxToggle = document.getElementById("showThisWeekBoxToggle");
-  const showSomedayBoxToggle = document.getElementById("showSomedayBoxToggle");
+  const showThisWeekBoxWeeklyToggle = document.getElementById("showThisWeekBoxWeeklyToggle");
+  const showSomedayBoxWeeklyToggle = document.getElementById("showSomedayBoxWeeklyToggle");
+  const showThisWeekBoxDailyToggle = document.getElementById("showThisWeekBoxDailyToggle");
+  const showSomedayBoxDailyToggle = document.getElementById("showSomedayBoxDailyToggle");
   // 設定ページのチェックボックスと同じ状態を指す、ウィークリー/デイリー
   // 各ページ自身のヘッダーに置くトグルボタン。3箇所どこから切り替えても
   // 即座に他へ連動する(updateBoxDisplayToggleUI参照)。
@@ -1725,49 +1735,60 @@
     refreshCalendarHours();
   });
 
-  // 設定ページのチェックボックス2つ + ウィークリー/デイリー各ページの
-  // ボタン2つずつ、計6箇所の見た目を1箇所にまとめて揃える。
+  // 設定ページのチェックボックス4つ(ウィークリー用/デイリー用それぞれの
+  // 今週中・いつか) + ウィークリー/デイリー各ページのボタン4つ、計8箇所の
+  // 見た目を1箇所にまとめて揃える。ウィークリーとデイリーは互いに独立
+  // (どちらかを切り替えてももう片方には影響しない)。
   function updateBoxDisplayToggleUI() {
-    showThisWeekBoxToggle.checked = displaySettings.showThisWeekBox;
-    showSomedayBoxToggle.checked = displaySettings.showSomedayBox;
-    weeklyThisWeekToggleBtn.classList.toggle("active", displaySettings.showThisWeekBox);
-    calendarThisWeekToggleBtn.classList.toggle("active", displaySettings.showThisWeekBox);
-    weeklySomedayToggleBtn.classList.toggle("active", displaySettings.showSomedayBox);
-    calendarSomedayToggleBtn.classList.toggle("active", displaySettings.showSomedayBox);
+    showThisWeekBoxWeeklyToggle.checked = displaySettings.showThisWeekBoxWeekly;
+    showThisWeekBoxDailyToggle.checked = displaySettings.showThisWeekBoxDaily;
+    showSomedayBoxWeeklyToggle.checked = displaySettings.showSomedayBoxWeekly;
+    showSomedayBoxDailyToggle.checked = displaySettings.showSomedayBoxDaily;
+    weeklyThisWeekToggleBtn.classList.toggle("active", displaySettings.showThisWeekBoxWeekly);
+    calendarThisWeekToggleBtn.classList.toggle("active", displaySettings.showThisWeekBoxDaily);
+    weeklySomedayToggleBtn.classList.toggle("active", displaySettings.showSomedayBoxWeekly);
+    calendarSomedayToggleBtn.classList.toggle("active", displaySettings.showSomedayBoxDaily);
   }
 
-  function toggleShowThisWeekBox() {
-    displaySettings.showThisWeekBox = !displaySettings.showThisWeekBox;
+  function toggleDisplaySetting(key) {
+    displaySettings[key] = !displaySettings[key];
     saveDisplaySettings();
     updateBoxDisplayToggleUI();
     renderCalendar();
   }
 
-  function toggleShowSomedayBox() {
-    displaySettings.showSomedayBox = !displaySettings.showSomedayBox;
-    saveDisplaySettings();
-    updateBoxDisplayToggleUI();
-    renderCalendar();
-  }
-
-  showThisWeekBoxToggle.addEventListener("change", () => {
-    displaySettings.showThisWeekBox = showThisWeekBoxToggle.checked;
+  showThisWeekBoxWeeklyToggle.addEventListener("change", () => {
+    displaySettings.showThisWeekBoxWeekly = showThisWeekBoxWeeklyToggle.checked;
     saveDisplaySettings();
     updateBoxDisplayToggleUI();
     renderCalendar();
   });
 
-  showSomedayBoxToggle.addEventListener("change", () => {
-    displaySettings.showSomedayBox = showSomedayBoxToggle.checked;
+  showThisWeekBoxDailyToggle.addEventListener("change", () => {
+    displaySettings.showThisWeekBoxDaily = showThisWeekBoxDailyToggle.checked;
     saveDisplaySettings();
     updateBoxDisplayToggleUI();
     renderCalendar();
   });
 
-  weeklyThisWeekToggleBtn.addEventListener("click", toggleShowThisWeekBox);
-  calendarThisWeekToggleBtn.addEventListener("click", toggleShowThisWeekBox);
-  weeklySomedayToggleBtn.addEventListener("click", toggleShowSomedayBox);
-  calendarSomedayToggleBtn.addEventListener("click", toggleShowSomedayBox);
+  showSomedayBoxWeeklyToggle.addEventListener("change", () => {
+    displaySettings.showSomedayBoxWeekly = showSomedayBoxWeeklyToggle.checked;
+    saveDisplaySettings();
+    updateBoxDisplayToggleUI();
+    renderCalendar();
+  });
+
+  showSomedayBoxDailyToggle.addEventListener("change", () => {
+    displaySettings.showSomedayBoxDaily = showSomedayBoxDailyToggle.checked;
+    saveDisplaySettings();
+    updateBoxDisplayToggleUI();
+    renderCalendar();
+  });
+
+  weeklyThisWeekToggleBtn.addEventListener("click", () => toggleDisplaySetting("showThisWeekBoxWeekly"));
+  calendarThisWeekToggleBtn.addEventListener("click", () => toggleDisplaySetting("showThisWeekBoxDaily"));
+  weeklySomedayToggleBtn.addEventListener("click", () => toggleDisplaySetting("showSomedayBoxWeekly"));
+  calendarSomedayToggleBtn.addEventListener("click", () => toggleDisplaySetting("showSomedayBoxDaily"));
 
   periodAddBtn.addEventListener("click", () => {
     const last = periodSettings.periods[periodSettings.periods.length - 1];
@@ -1805,6 +1826,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-09", text: "ウィークリー/デイリー右上の「今週中」「いつか」の表示/非表示ボタンを、両ページで連動しないよう独立させました。設定ページの「表示設定」もウィークリー用・デイリー用それぞれ個別のチェックボックスに分けています。また、マンスリー/ログの「いつか」欄はこの設定と無関係に常に表示されるようにしました。" },
     { date: "2026-09-09", text: "ウィークリー/デイリーの日付ヘッダーに表示される日付タイトル(「旅行」のようなラベル)を、長押ししてスケジュールの時間軸へドラッグ&ドロップできるようにしました。他のドラッグと違い、日付タイトルからのドラッグは移動ではなくコピーになります(元の日付タイトルはそのまま残ります)。" },
     { date: "2026-09-09", text: "ウィークリー/デイリーで「今週中」のタスクをドラッグして持ち上げた後、どこにも落とさず今週中欄自体へ戻すと、タップしたことになって展開されたり編集モーダルが開いたりしてしまう不具合を修正しました。" },
     { date: "2026-09-09", text: "設定ページの各項目を、デフォルトで折りたたんだ状態に変更しました。開閉の矢印も、項目名のすぐ右隣に表示するようにしました(以前は欄の右端に離れていました)。" },
@@ -4617,17 +4639,22 @@
     calendarUnscheduledRow.hidden = editing;
     // 編集中は問答無用で隠すが、編集中でなくても設定で非表示にした欄は
     // 引き続き隠したまま(移動などの機能自体はhidden中でも裏で動くので、
-    // ここではDOM上の表示/非表示だけを決める)。
+    // ここではDOM上の表示/非表示だけを決める)。ウィークリー/デイリーは
+    // 互いに独立した設定を持つので、今どちらのページを見ているかで参照
+    // する設定を切り替える。
     // 今週中の全展開中は、いつか欄をユーザー設定に関係なく自動的に隠し、
     // 今週中の展開表示にスペースを譲る。
-    calendarUnplannedBox.hidden = editing || !displaySettings.showSomedayBox || thisWeekExpandAll;
     const prefix = calendarUnplannedBox.id === "weeklyUnplannedBox" ? "weekly" : "calendar";
+    const isWeekly = prefix === "weekly";
+    const showSomeday = isWeekly ? displaySettings.showSomedayBoxWeekly : displaySettings.showSomedayBoxDaily;
+    const showThisWeek = isWeekly ? displaySettings.showThisWeekBoxWeekly : displaySettings.showThisWeekBoxDaily;
+    calendarUnplannedBox.hidden = editing || !showSomeday || thisWeekExpandAll;
     const thisWeekBox = document.getElementById(`${prefix}ThisWeekBox`);
-    if (thisWeekBox) thisWeekBox.hidden = editing || !displaySettings.showThisWeekBox;
-    // マンスリー/ログのいつか欄はこの編集状態と無関係(予定詳細パネルを
-    // 持たないページなので)、設定だけで決まる。
-    monthlyUnplannedBoxEl.hidden = !displaySettings.showSomedayBox;
-    taskUnplannedBox.hidden = !displaySettings.showSomedayBox;
+    if (thisWeekBox) thisWeekBox.hidden = editing || !showThisWeek;
+    // マンスリー/ログのいつか欄は、ウィークリー/デイリーの表示設定とは
+    // 無関係に常時表示する。
+    monthlyUnplannedBoxEl.hidden = false;
+    taskUnplannedBox.hidden = false;
     if (!editing) return;
     ["SomedayTree", "SubtaskConnector", "SubtaskBox", "GrandchildConnector", "GrandchildBox", "GreatGrandchildConnector", "GreatGrandchildBox"].forEach(
       (suffix) => {

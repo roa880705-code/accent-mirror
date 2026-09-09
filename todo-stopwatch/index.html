@@ -64,15 +64,24 @@
           </details>
           <details class="settings-section">
             <summary class="settings-section-title">表示設定</summary>
+            <p class="settings-section-note">ウィークリーとデイリーはそれぞれ独立して設定できます。</p>
             <label class="settings-toggle-row">
-              <input type="checkbox" id="showThisWeekBoxToggle">
-              <span>ウィークリー/デイリーに「今週中」欄を表示する</span>
+              <input type="checkbox" id="showThisWeekBoxWeeklyToggle">
+              <span>ウィークリーに「今週中」欄を表示する</span>
             </label>
             <label class="settings-toggle-row">
-              <input type="checkbox" id="showSomedayBoxToggle">
-              <span>マンスリー/ウィークリー/デイリー/ログに「いつか」欄を表示する</span>
+              <input type="checkbox" id="showSomedayBoxWeeklyToggle">
+              <span>ウィークリーに「いつか」欄を表示する</span>
             </label>
-            <p class="settings-section-note">非表示にしても、タスクページからはこれまで通り確認・移動できます。</p>
+            <label class="settings-toggle-row">
+              <input type="checkbox" id="showThisWeekBoxDailyToggle">
+              <span>デイリーに「今週中」欄を表示する</span>
+            </label>
+            <label class="settings-toggle-row">
+              <input type="checkbox" id="showSomedayBoxDailyToggle">
+              <span>デイリーに「いつか」欄を表示する</span>
+            </label>
+            <p class="settings-section-note">非表示にしても、タスクページからはこれまで通り確認・移動できます。マンスリー/ログの「いつか」欄はこの設定と関係なく常に表示されます。</p>
           </details>
           <details class="settings-section">
             <summary class="settings-section-title">よくある質問</summary>
