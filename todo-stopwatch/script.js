@@ -1812,6 +1812,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-10", text: "タスクページの樹形図(予定/今週中/いつか)に、「親」「子」「孫」「ひ孫」の列見出しと、列同士を区切る縦線を追加しました。子孫を持たない単独のタスクでも4列すべての見出しを表示し、どの家族でも同じ位置関係で深さが分かるようにしています。" },
     { date: "2026-09-10", text: "過去の日付にも予定を設定できるようにしました。過去日でも、空きスペースの長押しで新規予定を作成、最優先/今日中/今週中/いつかのタスクをスケジュールへドラッグ、既存の予定を別の日へ移動、といった操作がすべて行えます(以前は今日以降の日付でしかできませんでした)。" },
     { date: "2026-09-10", text: "タスクページの樹形図(親/子/孫/ひ孫)が、ラベルが長いと画面の横幅からはみ出してしまう不具合を修正しました。4列は維持したまま、それぞれの列の幅を画面に収まるよう均等割りにし、長い名前は列の中で折り返すようにしています。" },
     { date: "2026-09-09", text: "タスクページの子タスクを持つ予定/今週中/いつかを、親が1番左・子・孫・ひ孫と進むごとに1列ずつ右へ進む樹形図(連結線つき)で表示するようにしました(以前は親の直後に字下げして縦に並べる表示でした)。" },
@@ -5702,6 +5703,9 @@
   //   getId(task): 連結線描画用にチップを探すdata-someday-idの値を返す
   //     (既定はtask.id — 今週中/予定のルートのように安定したidを持たない
   //     場合だけ呼び出し側が合成idを返すカスタム版を渡す)
+  // 親/子/孫/ひ孫の列見出し(deviceの深さと対応、常にこの4つの並び)。
+  const TASKLIST_TREE_DEPTH_LABELS = ["親", "子", "孫", "ひ孫"];
+
   function buildTasklistTreeGrid(rootTask, getChildren, maxDepth, createChipFn, getId = (t) => t.id) {
     const levels = [[rootTask], [], [], []];
     function walk(task, depth) {
@@ -5715,18 +5719,33 @@
 
     const grid = document.createElement("div");
     grid.className = "tasklist-family-tree";
+    // 中身の有無に関わらず親/子/孫/ひ孫の4列を常に作る — 縦線と見出しで
+    // 「どの列が何段目か」をどの家族(樹形図)でも同じ位置関係で示すため。
     levels.forEach((tasksAtDepth, depth) => {
-      if (!tasksAtDepth.length) return;
+      const col = document.createElement("div");
+      col.className = "tasklist-family-tree-col";
+      // 連結線(someday-branch-line)がこの後gridへ直接追加されるため、
+      // CSSの:last-childでは(4列目の後にも兄弟要素が増えて)最後の列を
+      // 正しく判定できない — depthで直接判定するクラスを付ける。
+      if (depth === levels.length - 1) col.classList.add("tasklist-family-tree-col-last");
+      col.style.gridColumn = String(depth + 1);
+      col.style.gridRow = "1";
+
+      const label = document.createElement("div");
+      label.className = "tasklist-family-tree-col-label";
+      label.textContent = TASKLIST_TREE_DEPTH_LABELS[depth] || "";
+      col.appendChild(label);
+
       const cell = document.createElement("div");
       cell.className = "someday-tree-cell tasklist-family-tree-cell";
-      cell.style.gridColumn = String(depth + 1);
-      cell.style.gridRow = "1";
       tasksAtDepth.forEach((task) => {
         const chip = createChipFn(task, depth);
         chip.dataset.somedayId = getId(task);
         cell.appendChild(chip);
       });
-      grid.appendChild(cell);
+      col.appendChild(cell);
+
+      grid.appendChild(col);
     });
 
     const connectorPairs = [];

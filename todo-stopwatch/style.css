@@ -2667,7 +2667,31 @@ body {
   grid-template-columns: repeat(4, 1fr);
   width: 100%;
   column-gap: 10px;
-  align-items: start;
+  /* startではなくstretchにして、4列(親/子/孫/ひ孫)の高さを揃える —
+     縦線(border-right、下記)がどの家族でも列の全高にわたって伸びるよう
+     にするため。 */
+  align-items: stretch;
+}
+
+/* 親/子/孫/ひ孫の1列分(見出し+チップ)をまとめる入れ物。列同士の境目に
+   縦線を引いて区分けする(1番右のひ孫列だけは右隣が無いので線を引かない)。 */
+.tasklist-family-tree-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 8px;
+}
+
+.tasklist-family-tree-col:not(.tasklist-family-tree-col-last) {
+  border-right: 1px solid var(--line);
+}
+
+.tasklist-family-tree-col-label {
+  flex: none;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--muted);
 }
 
 .someday-tree-cell.tasklist-family-tree-cell {
