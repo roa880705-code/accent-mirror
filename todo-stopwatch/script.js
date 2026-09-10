@@ -1827,6 +1827,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-10", text: "タスクページの樹形図で、予定・今週中の子/孫/ひ孫タスクをタップしても何も起きない不具合を修正しました。タップすると変更修正・子タスク追加・完了・削除の選択肢が開き、その場で編集できます。" },
     { date: "2026-09-10", text: "タスクページの右端に、スクロール位置が常に分かる縦スクロールバーを追加しました(スマホでのスクロールの反応が分かりづらいという声を受けての対応です)。つまみを直接ドラッグしてスクロールすることもできます。" },
     { date: "2026-09-10", text: "タスクページで、チップの上から素早く指を動かしてスクロールした時の反応が鈍かった不具合を修正しました。並べ替え(長押し)の意図が無いと判断した最初の一手からすぐ画面が追従するようになり、タップやドラッグ並べ替えとの区別はこれまで通り保たれます。" },
     { date: "2026-09-10", text: "タスクページで「予定(子タスクあり)」をタップすると、これまではデイリーページへ移動して詳細パネルを開いていましたが、タスクページから離れずその場でモーダルとして編集できるようにしました。名前の変更や子タスクの追加・編集もタスクページに留まったまま行えます。" },
@@ -2750,6 +2751,12 @@
 
   function showPlanDetail(dateStr, plan) {
     const targetEl = planDetailTargetOverride || calendarDetail;
+    // タスクページのモーダルへ描画する時は、ここで実際に中身ができた
+    // タイミングでモーダル自体(外枠)も開く — 呼び出し元(openTasklistPlan
+    // DetailやopenTasklistPlanChildEdit)で先に開いてしまうと、選択肢
+    // モーダル(openTaskChoiceModal)の返事を待つ間、中身が空のままこちら
+    // が一瞬見えてしまうため。
+    if (targetEl === tasklistPlanDetailContent) tasklistPlanDetailModal.hidden = false;
     targetEl.hidden = false;
     targetEl.innerHTML = "";
 
@@ -5267,6 +5274,33 @@
     return chip;
   }
 
+  // タスクページの予定の樹形図専用: createThisWeekChildChip(表示専用、
+  // タップ無し)と見た目は同じだが、タップすると予定詳細パネルと同じ
+  // 変更修正/子タスク追加/完了/削除の選択肢(promptPlanChildEditOrAddChild)
+  // が開く — ウィークリー/デイリーの展開表示(表示専用のまま)とは違い、
+  // タスクページにはそれ以外に子/孫/ひ孫を編集する手段が無いため。
+  function createTasklistPlanDescendantChip(dateStr, plan, child, depth) {
+    const chip = createThisWeekChildChip(child, plan);
+    chip.addEventListener("click", (e) => {
+      e.stopPropagation();
+      vibrate(10);
+      openTasklistPlanChildEdit(dateStr, plan, child, depth);
+    });
+    return chip;
+  }
+
+  // タスクページの今週中の樹形図専用(上のcreateTasklistPlanDescendantChip
+  // と同じ考え方)。
+  function createTasklistThisWeekDescendantChip(weekStart, item, child, depth) {
+    const chip = createThisWeekChildChip(child, item);
+    chip.addEventListener("click", (e) => {
+      e.stopPropagation();
+      vibrate(10);
+      promptTasklistThisWeekChildEdit(weekStart, item, child, depth);
+    });
+    return chip;
+  }
+
   // 展開中のアイテム1つ分、子/孫/ひ孫を階層ごとの行に分けて並べる
   // (予定詳細パネルのbuildPlanChildrenSectionと同じ深さの数え方・
   // データ形なので、そちらのplanChildrenOf/AtDepthをそのまま使い回せる)。
@@ -5841,7 +5875,7 @@
         });
         return rootChip;
       }
-      return createThisWeekChildChip(task, plan);
+      return createTasklistPlanDescendantChip(dateStr, plan, task, depth);
     }, getId);
   }
 
@@ -5899,7 +5933,7 @@
         );
         return rootChip;
       }
-      return createThisWeekChildChip(task, item);
+      return createTasklistThisWeekDescendantChip(weekStart, item, task, depth);
     }, getId);
 
     wrapper.appendChild(grid);
@@ -6198,6 +6232,62 @@
         const items = itemsArrayForWeek(weekStart);
         const idx = items.indexOf(item);
         if (idx >= 0) items.splice(idx, 1);
+        persistItemsForWeek(weekStart);
+        renderCalendar();
+      }
+    });
+  }
+
+  // タスクページの今週中の樹形図で、子/孫/ひ孫チップ(ルート自身ではない)を
+  // タップした時。データ形(id/parentId/done)は予定の子タスクと同じ
+  // (planChildrenOf/addPlanChildToTree/removePlanChildAndDescendantsは
+  // どちらもそのまま使い回せる)ので、promptPlanChildEditOrAddChildと
+  // ほぼ同じ選択肢・処理を、保存先だけ今週中用(persistItemsForWeek)に
+  // 差し替えて提供する。
+  function promptTasklistThisWeekChildEdit(weekStart, item, child, depth) {
+    const showComplete = !planChildrenOf(item, child.id).length;
+    openTaskChoiceModal(child, {
+      showAddChild: depth < PLAN_CHILD_MAX_DEPTH,
+      showComplete,
+      completeLabel: child.done ? "完了を取り消す" : "完了",
+      showMemo: true,
+    }).then((choice) => {
+      if (choice === "edit") {
+        openNameModal(child.label).then((name) => {
+          if (name === null) return;
+          const label = name.trim();
+          if (!label) return;
+          captureUndoSnapshot();
+          child.label = label;
+          persistItemsForWeek(weekStart);
+          renderCalendar();
+        });
+      } else if (choice === "memo") {
+        openMemoModal(child.memo).then((text) => {
+          if (text === null) return;
+          captureUndoSnapshot();
+          const trimmed = text.trim();
+          if (trimmed) child.memo = trimmed;
+          else delete child.memo;
+          persistItemsForWeek(weekStart);
+          renderCalendar();
+        });
+      } else if (choice === "addChild") {
+        openNameModal("", PLAN_CHILD_LABELS[depth]).then((name) => {
+          if (name === null || !name.trim()) return;
+          captureUndoSnapshot();
+          addPlanChildToTree(item, child.id, name.trim());
+          persistItemsForWeek(weekStart);
+          renderCalendar();
+        });
+      } else if (choice === "complete") {
+        captureUndoSnapshot();
+        child.done = !child.done;
+        persistItemsForWeek(weekStart);
+        renderCalendar();
+      } else if (choice === "delete") {
+        captureUndoSnapshot();
+        removePlanChildAndDescendants(item, child.id);
         persistItemsForWeek(weekStart);
         renderCalendar();
       }
@@ -8042,12 +8132,25 @@
 
   // タスクページの「予定(子タスクあり)」チップをタップした時: デイリー
   // ページへ遷移せず、タスクページの上にモーダルを重ねてその場で同じ
-  // 詳細パネル(showPlanDetail)を編集できるようにする。
+  // 詳細パネル(showPlanDetail)を編集できるようにする。モーダル自体を
+  // 開く処理はshowPlanDetail側に任せる(中身ができたタイミングで開く)。
   function openTasklistPlanDetail(dateStr, plan) {
     planDetailTargetOverride = tasklistPlanDetailContent;
     planDetailCloseOverride = closeTasklistPlanDetail;
-    tasklistPlanDetailModal.hidden = false;
     showPlanDetail(dateStr, plan);
+  }
+
+  // タスクページの予定の樹形図で、子/孫/ひ孫チップ(ルート自身ではない)を
+  // タップした時: 予定詳細パネル(showPlanDetail内のbuildPlanChildrenSection
+  // →createPlanChildChip)が既に持っている、その子タスク1件ぶんの変更修正/
+  // 子タスク追加/完了/削除の選択肢(promptPlanChildEditOrAddChild)を、
+  // タスクページからもそのまま呼び出す。選択肢モーダルの返事を待つ間は
+  // まだ何も描画しない(showPlanDetailが実際に呼ばれた時だけタスクページ
+  // 側のモーダルが開く)ので、キャンセルした場合はモーダルは一切開かない。
+  function openTasklistPlanChildEdit(dateStr, plan, child, depth) {
+    planDetailTargetOverride = tasklistPlanDetailContent;
+    planDetailCloseOverride = closeTasklistPlanDetail;
+    promptPlanChildEditOrAddChild(dateStr, plan, child, depth);
   }
 
   function closeTasklistPlanDetail() {
