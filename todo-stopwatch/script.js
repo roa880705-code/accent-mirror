@@ -1812,6 +1812,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-10", text: "タスクページの最優先/今日中タスクも、予定/今週中/いつかと同じ親/子/孫/ひ孫の4列樹形図の「親」列に収まるようにしました(子タスクを持たない親タスクとして統一的に表示されます)。スケジュール内に組み込み済みで子タスクを持たない予定は、これまで通りタスクページには表示されません。" },
     { date: "2026-09-10", text: "タスクページの樹形図(予定/今週中/いつか)に、「親」「子」「孫」「ひ孫」の列見出しと、列同士を区切る縦線を追加しました。子孫を持たない単独のタスクでも4列すべての見出しを表示し、どの家族でも同じ位置関係で深さが分かるようにしています。" },
     { date: "2026-09-10", text: "過去の日付にも予定を設定できるようにしました。過去日でも、空きスペースの長押しで新規予定を作成、最優先/今日中/今週中/いつかのタスクをスケジュールへドラッグ、既存の予定を別の日へ移動、といった操作がすべて行えます(以前は今日以降の日付でしかできませんでした)。" },
     { date: "2026-09-10", text: "タスクページの樹形図(親/子/孫/ひ孫)が、ラベルが長いと画面の横幅からはみ出してしまう不具合を修正しました。4列は維持したまま、それぞれの列の幅を画面に収まるよう均等割りにし、長い名前は列の中で折り返すようにしています。" },
@@ -5666,20 +5667,35 @@
     if (!items.length && !emptyOk) return;
     const list = createTasklistList();
     items.forEach((item) => {
-      const chip = createTasklistRowChip(labelOf(item, fallbackLabel), 0);
-      chip.trayItem = item;
-      chip.addEventListener("pointerdown", (e) =>
-        startTasklistChipDrag(e, chip, list, () => promptRegularTaskEdit(dateStr, item), () => {
-          captureUndoSnapshot();
-          const newOrder = Array.from(list.children)
-            .filter((c) => c.classList.contains("cal-unplanned-chip"))
-            .map((c) => c.trayItem);
-          applyReorderedSubset(itemsArrayForDate(dateStr), newOrder);
-          persistItemsForDate(dateStr);
-          renderCalendar();
-        })
+      // 最優先/今日中は子タスクを持ち得ないが、常に子を持たない「親
+      // タスク」として扱い、他の家族(今週中/いつか/予定)と同じ親/子/孫/
+      // ひ孫の4列樹形図(の「親」列だけ埋まった形)で表示する — ページ
+      // 全体でどの行も同じ列構成に揃えるため。
+      const wrapper = createTasklistFamilyWrapper();
+      wrapper.trayItem = item;
+      const grid = buildTasklistTreeGrid(
+        item,
+        () => [],
+        PLAN_CHILD_MAX_DEPTH,
+        () => {
+          const chip = createTasklistRowChip(labelOf(item, fallbackLabel), 0);
+          chip.addEventListener("pointerdown", (e) =>
+            startTasklistChipDrag(e, wrapper, list, () => promptRegularTaskEdit(dateStr, item), () => {
+              captureUndoSnapshot();
+              const newOrder = Array.from(list.children)
+                .filter((c) => c.classList.contains("cal-unplanned-chip"))
+                .map((c) => c.trayItem);
+              applyReorderedSubset(itemsArrayForDate(dateStr), newOrder);
+              persistItemsForDate(dateStr);
+              renderCalendar();
+            })
+          );
+          return chip;
+        },
+        () => TASKLIST_TREE_ROOT_ID
       );
-      list.appendChild(chip);
+      wrapper.appendChild(grid);
+      list.appendChild(wrapper);
     });
     appendTasklistAddBtn(list, ariaAddLabel, onAdd);
     container.appendChild(list);
