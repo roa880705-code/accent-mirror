@@ -98,7 +98,7 @@
               <input type="checkbox" id="showSomedayBoxDailyToggle">
               <span>デイリーに「いつか」欄を表示する</span>
             </label>
-            <p class="settings-section-note">非表示にしても、タスクページからはこれまで通り確認・移動できます。マンスリー/ログの「いつか」欄はこの設定と関係なく常に表示されます。</p>
+            <p class="settings-section-note">非表示にしても、タスクページからはこれまで通り確認・移動できます。マンスリーの「いつか」欄はこの設定と関係なく常に表示されます(ログには「いつか」欄はありません)。</p>
           </details>
           <details class="settings-section">
             <summary class="settings-section-title">よくある質問</summary>
@@ -313,28 +313,6 @@
         </div>
         <div class="list-wrap">
           <main id="list" class="list"></main>
-        </div>
-        <div class="calendar-unplanned" id="taskUnplannedBox">
-          <span class="calendar-unplanned-title">いつか</span>
-          <div class="calendar-unplanned-list" id="taskUnplannedList"></div>
-          <button type="button" class="someday-expand-all-btn" id="taskSomedayExpandAllBtn">全展開</button>
-          <button type="button" class="calendar-someday-add" id="taskSomedayAddBtn" aria-label="いつかを追加">＋</button>
-        </div>
-        <div class="someday-tree" id="taskSomedayTree" hidden></div>
-        <div class="someday-branch" id="taskSubtaskConnector" hidden></div>
-        <div class="calendar-unplanned calendar-subtask-row" id="taskSubtaskBox" hidden>
-          <span class="calendar-unplanned-title">子タスク</span>
-          <div class="calendar-unplanned-list" id="taskSubtaskList"></div>
-        </div>
-        <div class="someday-branch" id="taskGrandchildConnector" hidden></div>
-        <div class="calendar-unplanned calendar-subtask-row" id="taskGrandchildBox" hidden>
-          <span class="calendar-unplanned-title">孫タスク</span>
-          <div class="calendar-unplanned-list" id="taskGrandchildList"></div>
-        </div>
-        <div class="someday-branch" id="taskGreatGrandchildConnector" hidden></div>
-        <div class="calendar-unplanned calendar-subtask-row" id="taskGreatGrandchildBox" hidden>
-          <span class="calendar-unplanned-title">ひ孫タスク</span>
-          <div class="calendar-unplanned-list" id="taskGreatGrandchildList"></div>
         </div>
       </section>
     </div>

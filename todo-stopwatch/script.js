@@ -1048,17 +1048,6 @@
   const monthlyGrandchildList = document.getElementById("monthlyGrandchildList");
   const monthlyGreatGrandchildBox = document.getElementById("monthlyGreatGrandchildBox");
   const monthlyGreatGrandchildList = document.getElementById("monthlyGreatGrandchildList");
-  const taskUnplannedBox = document.getElementById("taskUnplannedBox");
-  const taskUnplannedList = document.getElementById("taskUnplannedList");
-  const taskSomedayAddBtn = document.getElementById("taskSomedayAddBtn");
-  const taskSomedayExpandAllBtn = document.getElementById("taskSomedayExpandAllBtn");
-  const taskSomedayTree = document.getElementById("taskSomedayTree");
-  const taskSubtaskBox = document.getElementById("taskSubtaskBox");
-  const taskSubtaskList = document.getElementById("taskSubtaskList");
-  const taskGrandchildBox = document.getElementById("taskGrandchildBox");
-  const taskGrandchildList = document.getElementById("taskGrandchildList");
-  const taskGreatGrandchildBox = document.getElementById("taskGreatGrandchildBox");
-  const taskGreatGrandchildList = document.getElementById("taskGreatGrandchildList");
   // タスクページ: 最優先/スケジュール内(子タスクを持つ予定)/今日中/
   // 今週中/いつかのカテゴリ見出しを一切出さず、時系列順に1本の縦並びで
   // 並べる唯一の入れ物(renderTasklistUnifiedList参照)。
@@ -1068,11 +1057,11 @@
   const tasklistScrollArea = document.getElementById("tasklistScrollArea");
   const tasklistScrollbar = document.getElementById("tasklistScrollbar");
   const tasklistScrollbarThumb = document.getElementById("tasklistScrollbarThumb");
-  // ページ順(calendar/weekly/monthly/task)はsomedayLevelEls等の既存の
-  // 並びに合わせる — 全展開ツリー(家族ごとに列、深さごとに行)は横積みの
-  // この4ページだけの機能。タスクページは別の縦一列レンダラを持つので
-  // 対象外。
-  const somedayTreeEls = [calendarSomedayTree, weeklySomedayTree, monthlySomedayTree, taskSomedayTree];
+  // ページ順(calendar/weekly/monthly)はsomedayLevelEls等の既存の並びに
+  // 合わせる — 全展開ツリー(家族ごとに列、深さごとに行)は横積みのこの
+  // 3ページだけの機能。タスクページ(縦一覧)は別の専用レンダラを持ち、
+  // ログにはそもそも「いつか」欄自体が無いので、どちらも対象外。
+  const somedayTreeEls = [calendarSomedayTree, weeklySomedayTree, monthlySomedayTree];
   const calendarSubtaskConnector = document.getElementById("calendarSubtaskConnector");
   const calendarGrandchildConnector = document.getElementById("calendarGrandchildConnector");
   const calendarGreatGrandchildConnector = document.getElementById("calendarGreatGrandchildConnector");
@@ -1082,9 +1071,6 @@
   const monthlySubtaskConnector = document.getElementById("monthlySubtaskConnector");
   const monthlyGrandchildConnector = document.getElementById("monthlyGrandchildConnector");
   const monthlyGreatGrandchildConnector = document.getElementById("monthlyGreatGrandchildConnector");
-  const taskSubtaskConnector = document.getElementById("taskSubtaskConnector");
-  const taskGrandchildConnector = document.getElementById("taskGrandchildConnector");
-  const taskGreatGrandchildConnector = document.getElementById("taskGreatGrandchildConnector");
   const breakdownModal = document.getElementById("breakdownModal");
   const historyModal = document.getElementById("historyModal");
   const openBreakdownBtn = document.getElementById("openBreakdownBtn");
@@ -1948,6 +1934,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-10", text: "ログページから「いつか」欄を排除しました。「いつか」タスクの確認・追加・編集は、タスクページ・ウィークリー・デイリー・マンスリーから引き続き行えます。" },
     { date: "2026-09-10", text: "ウィークリー/デイリーの時間軸の右端に、スクロール位置が常に分かる縦スクロールバーを追加しました(タスクページと同じ方式です)。つまみを直接ドラッグしてスクロールすることもできます。" },
     { date: "2026-09-10", text: "設定ページに「表示時間帯」を追加しました。ウィークリー/デイリーの時間軸に表示する時間帯を、例えば朝7:00〜夜21:00のように絞れます。範囲外の時間は完全に非表示になり、スクロールしても出てきません(既定は0:00〜24:00でこれまで通りです)。" },
     { date: "2026-09-10", text: "ウィークリーページ右上の表示切替ボタン(今週中/いつか)に「当日中」を追加しました。当日中欄の表示/非表示をここから切り替えられます(設定ページの表示設定とも連動します)。デイリーの今日中トレイは常設のままです。" },
@@ -4202,41 +4189,42 @@
   // ページ間で共有する1つのグローバルな状態にする。
   let thisWeekExpandAll = false;
 
-  // Every tray level, across all four pages it's duplicated onto — used to
+  // Every tray level, across all three pages it's duplicated onto — used to
   // drive rendering/visibility generically instead of hand-listing every
   // list/box combination at each call site. Index 0 is いつか itself
   // (always visible, no box to show/hide).
-  // タスクページ(縦一覧)はここに含まない — Miller Columns形式の他の4
-  // ページ(calendar/weekly/monthly/task)とは別の、常に全て縦一列・
-  // インデント表示の専用レンダラ(renderTasklistUnifiedList)を持つため。
+  // タスクページ(縦一覧)・ログはここに含まない — Miller Columns形式の
+  // 他の3ページ(calendar/weekly/monthly)とは別に、タスクページは常に
+  // 全て縦一列・インデント表示の専用レンダラ(renderTasklistUnifiedList)
+  // を持ち、ログにはそもそも「いつか」欄自体が無いため。
   const somedayLevelEls = [
-    { lists: [calendarUnplannedList, weeklyUnplannedList, monthlyUnplannedList, taskUnplannedList], boxes: null },
+    { lists: [calendarUnplannedList, weeklyUnplannedList, monthlyUnplannedList], boxes: null },
     {
-      lists: [calendarSubtaskList, weeklySubtaskList, monthlySubtaskList, taskSubtaskList],
-      boxes: [calendarSubtaskBox, weeklySubtaskBox, monthlySubtaskBox, taskSubtaskBox],
+      lists: [calendarSubtaskList, weeklySubtaskList, monthlySubtaskList],
+      boxes: [calendarSubtaskBox, weeklySubtaskBox, monthlySubtaskBox],
     },
     {
-      lists: [calendarGrandchildList, weeklyGrandchildList, monthlyGrandchildList, taskGrandchildList],
-      boxes: [calendarGrandchildBox, weeklyGrandchildBox, monthlyGrandchildBox, taskGrandchildBox],
+      lists: [calendarGrandchildList, weeklyGrandchildList, monthlyGrandchildList],
+      boxes: [calendarGrandchildBox, weeklyGrandchildBox, monthlyGrandchildBox],
     },
     {
-      lists: [calendarGreatGrandchildList, weeklyGreatGrandchildList, monthlyGreatGrandchildList, taskGreatGrandchildList],
-      boxes: [calendarGreatGrandchildBox, weeklyGreatGrandchildBox, monthlyGreatGrandchildBox, taskGreatGrandchildBox],
+      lists: [calendarGreatGrandchildList, weeklyGreatGrandchildList, monthlyGreatGrandchildList],
+      boxes: [calendarGreatGrandchildBox, weeklyGreatGrandchildBox, monthlyGreatGrandchildBox],
     },
   ];
 
   // connectorEls[d][pageIdx] draws the line from the active parent at depth
   // d down to the tray holding its children (somedayLevelEls[d + 1]) — same
-  // page order as somedayLevelEls (calendar/weekly/monthly/task)。
+  // page order as somedayLevelEls (calendar/weekly/monthly)。
   const somedayConnectorEls = [
-    [calendarSubtaskConnector, weeklySubtaskConnector, monthlySubtaskConnector, taskSubtaskConnector],
-    [calendarGrandchildConnector, weeklyGrandchildConnector, monthlyGrandchildConnector, taskGrandchildConnector],
-    [calendarGreatGrandchildConnector, weeklyGreatGrandchildConnector, monthlyGreatGrandchildConnector, taskGreatGrandchildConnector],
+    [calendarSubtaskConnector, weeklySubtaskConnector, monthlySubtaskConnector],
+    [calendarGrandchildConnector, weeklyGrandchildConnector, monthlyGrandchildConnector],
+    [calendarGreatGrandchildConnector, weeklyGreatGrandchildConnector, monthlyGreatGrandchildConnector],
   ];
 
   // the containing block each page's connectors are positioned absolutely
-  // against — .calendar/.monthly-calendar for those pages, or .page itself
-  // for ログ・タスク(縦一覧)(どちらも専用ラッパーを持たない)
+  // against — .calendar/.monthly-calendar for those pages (どちらも専用
+  // ラッパーを持たない)。
   const somedayConnectorRoots = somedayLevelEls[0].lists.map((listEl) => listEl.closest(".calendar, .monthly-calendar, .page"));
 
   function addSomedayBranchLine(containerEl, x, y, w, h) {
@@ -4778,10 +4766,9 @@
     calendarUnplannedBox.hidden = editing || !showSomeday || thisWeekExpandAll;
     const thisWeekBox = document.getElementById(`${prefix}ThisWeekBox`);
     if (thisWeekBox) thisWeekBox.hidden = editing || !showThisWeek;
-    // マンスリー/ログのいつか欄は、ウィークリー/デイリーの表示設定とは
-    // 無関係に常時表示する。
+    // マンスリーのいつか欄は、ウィークリー/デイリーの表示設定とは無関係
+    // に常時表示する(ログには「いつか」欄自体が無い)。
     monthlyUnplannedBoxEl.hidden = false;
-    taskUnplannedBox.hidden = false;
     if (!editing) return;
     ["SomedayTree", "SubtaskConnector", "SubtaskBox", "GrandchildConnector", "GrandchildBox", "GreatGrandchildConnector", "GreatGrandchildBox"].forEach(
       (suffix) => {
@@ -8612,12 +8599,12 @@
   calendarSomedayAddBtn.addEventListener("click", addSomedayTask);
   weeklySomedayAddBtn.addEventListener("click", addSomedayTask);
   monthlySomedayAddBtn.addEventListener("click", addSomedayTask);
-  taskSomedayAddBtn.addEventListener("click", addSomedayTask);
   // タスクページの最優先/今日中/今週中/いつかの各＋ボタンは、カテゴリ
   // 見出しごと動的生成(renderTasklistUnifiedList内のappendTasklistAddBtn
-  // 参照)になったため、ここでの静的な要素参照は不要になった。
+  // 参照)になったため、ここでの静的な要素参照は不要になった。ログには
+  // そもそも「いつか」欄自体が無い。
 
-  const somedayExpandAllBtns = [calendarSomedayExpandAllBtn, weeklySomedayExpandAllBtn, monthlySomedayExpandAllBtn, taskSomedayExpandAllBtn];
+  const somedayExpandAllBtns = [calendarSomedayExpandAllBtn, weeklySomedayExpandAllBtn, monthlySomedayExpandAllBtn];
   function updateSomedayExpandAllBtns() {
     somedayExpandAllBtns.forEach((btn) => {
       btn.textContent = somedayExpandAll ? "たたむ" : "全展開";
