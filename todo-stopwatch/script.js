@@ -1018,6 +1018,11 @@
   // 今週中/いつかのカテゴリ見出しを一切出さず、時系列順に1本の縦並びで
   // 並べる唯一の入れ物(renderTasklistUnifiedList参照)。
   const tasklistUnifiedList = document.getElementById("tasklistUnifiedList");
+  // タスクページの実際のスクロール要素(.tasklist-page自身はスクロール
+  // しない — updateTasklistScrollbar/startTasklistChipDrag参照)。
+  const tasklistScrollArea = document.getElementById("tasklistScrollArea");
+  const tasklistScrollbar = document.getElementById("tasklistScrollbar");
+  const tasklistScrollbarThumb = document.getElementById("tasklistScrollbarThumb");
   // ページ順(calendar/weekly/monthly/task)はsomedayLevelEls等の既存の
   // 並びに合わせる — 全展開ツリー(家族ごとに列、深さごとに行)は横積みの
   // この4ページだけの機能。タスクページは別の縦一列レンダラを持つので
@@ -1822,6 +1827,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-10", text: "タスクページの右端に、スクロール位置が常に分かる縦スクロールバーを追加しました(スマホでのスクロールの反応が分かりづらいという声を受けての対応です)。つまみを直接ドラッグしてスクロールすることもできます。" },
     { date: "2026-09-10", text: "タスクページで、チップの上から素早く指を動かしてスクロールした時の反応が鈍かった不具合を修正しました。並べ替え(長押し)の意図が無いと判断した最初の一手からすぐ画面が追従するようになり、タップやドラッグ並べ替えとの区別はこれまで通り保たれます。" },
     { date: "2026-09-10", text: "タスクページで「予定(子タスクあり)」をタップすると、これまではデイリーページへ移動して詳細パネルを開いていましたが、タスクページから離れずその場でモーダルとして編集できるようにしました。名前の変更や子タスクの追加・編集もタスクページに留まったまま行えます。" },
     { date: "2026-09-10", text: "タスクページの最優先/今日中タスクも、予定/今週中/いつかと同じ親/子/孫/ひ孫の4列樹形図の「親」列に収まるようにしました(子タスクを持たない親タスクとして統一的に表示されます)。スケジュール内に組み込み済みで子タスクを持たない予定は、これまで通りタスクページには表示されません。" },
@@ -5471,7 +5477,7 @@
       tasklistScrollMomentumCancel();
       tasklistScrollMomentumCancel = null;
     }
-    const scrollEl = chip.closest(".tasklist-page") || listEl;
+    const scrollEl = chip.closest(".tasklist-scroll-area") || listEl;
     tasklistReorderCtx = {
       chip,
       listEl,
@@ -6017,8 +6023,85 @@
     });
 
     appendTasklistSomedayCluster(tasklistUnifiedList);
+    updateTasklistScrollbar();
+    // 追加/削除直後はまだレイアウトが確定しておらず、scrollHeightが1フレーム
+    // 古い値のままのことがあるため、確定後にもう一度合わせ直す。
+    requestAnimationFrame(updateTasklistScrollbar);
   }
 
+  // 右端に常時重ねる縦スクロールバーのつまみの高さ・位置を、実際の
+  // スクロール量(#tasklistScrollAreaのscrollTop/scrollHeight)に合わせて
+  // 描き直す。スクロール可能な分が無ければ(内容が画面に収まっていれば)
+  // バーごと隠す。
+  const TASKLIST_SCROLLBAR_INSET = 4; // CSSの.tasklist-scrollbarのtop/bottomと合わせる
+  const TASKLIST_SCROLLBAR_MIN_THUMB = 24;
+  function updateTasklistScrollbar() {
+    const el = tasklistScrollArea;
+    const viewH = el.clientHeight;
+    const contentH = el.scrollHeight;
+    if (contentH <= viewH + 1) {
+      tasklistScrollbar.hidden = true;
+      return;
+    }
+    tasklistScrollbar.hidden = false;
+    const trackH = Math.max(0, viewH - TASKLIST_SCROLLBAR_INSET * 2);
+    const thumbH = Math.min(trackH, Math.max(TASKLIST_SCROLLBAR_MIN_THUMB, (viewH / contentH) * trackH));
+    const maxThumbTop = Math.max(0, trackH - thumbH);
+    const maxScroll = contentH - viewH;
+    const ratio = maxScroll > 0 ? el.scrollTop / maxScroll : 0;
+    tasklistScrollbarThumb.style.height = `${thumbH}px`;
+    tasklistScrollbarThumb.style.top = `${ratio * maxThumbTop}px`;
+  }
+  tasklistScrollArea.addEventListener("scroll", updateTasklistScrollbar, { passive: true });
+  window.addEventListener("resize", updateTasklistScrollbar);
+
+  // つまみ自体を直接ドラッグしてスクロールする — チップの長押し判定
+  // (タップ/並べ替え/スクロールの3択)を経由しない独立した操作なので、
+  // 指の動きの向きや速さに関係なく、どんな時でも確実にスクロールできる。
+  let tasklistScrollbarDragCtx = null;
+  tasklistScrollbarThumb.addEventListener("pointerdown", (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    if (tasklistScrollMomentumCancel) {
+      tasklistScrollMomentumCancel();
+      tasklistScrollMomentumCancel = null;
+    }
+    const el = tasklistScrollArea;
+    const viewH = el.clientHeight;
+    const trackH = Math.max(0, viewH - TASKLIST_SCROLLBAR_INSET * 2);
+    const thumbH = tasklistScrollbarThumb.getBoundingClientRect().height;
+    const maxThumbTop = Math.max(0, trackH - thumbH);
+    const maxScroll = el.scrollHeight - viewH;
+    tasklistScrollbarThumb.classList.add("dragging");
+    tasklistScrollbarDragCtx = {
+      startY: e.clientY,
+      startTop: parseFloat(tasklistScrollbarThumb.style.top) || 0,
+      maxThumbTop,
+      maxScroll,
+    };
+    document.addEventListener("pointermove", onTasklistScrollbarThumbMove);
+    document.addEventListener("pointerup", onTasklistScrollbarThumbEnd);
+    document.addEventListener("pointercancel", onTasklistScrollbarThumbEnd);
+  });
+
+  function onTasklistScrollbarThumbMove(e) {
+    if (!tasklistScrollbarDragCtx) return;
+    e.preventDefault();
+    const ctx = tasklistScrollbarDragCtx;
+    const dy = e.clientY - ctx.startY;
+    const newTop = Math.max(0, Math.min(ctx.maxThumbTop, ctx.startTop + dy));
+    const ratio = ctx.maxThumbTop > 0 ? newTop / ctx.maxThumbTop : 0;
+    tasklistScrollArea.scrollTop = ratio * ctx.maxScroll;
+  }
+
+  function onTasklistScrollbarThumbEnd() {
+    document.removeEventListener("pointermove", onTasklistScrollbarThumbMove);
+    document.removeEventListener("pointerup", onTasklistScrollbarThumbEnd);
+    document.removeEventListener("pointercancel", onTasklistScrollbarThumbEnd);
+    tasklistScrollbarThumb.classList.remove("dragging");
+    tasklistScrollbarDragCtx = null;
+  }
 
   // いつかタスクを今週中(weekStart週)へ移す共通処理。子タスクを抱えた
   // タスク(親)もそのまま家系ごと運ぶ(最優先/今日中と違い、今週中は

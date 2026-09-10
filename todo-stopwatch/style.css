@@ -2583,18 +2583,78 @@ body {
    は出さない。 --- */
 
 .tasklist-page {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  /* 実際にスクロールするのは中の#tasklistScrollArea — この要素自身は
+     スクロールしない(overflow:hidden)ことで、右に重ねる#tasklistScrollbar
+     が中身のスクロールに巻き込まれず、常に同じ画面上の位置(右端)に
+     留まり続けるようにする。 */
+  overflow: hidden;
+}
+
+.tasklist-scroll-area {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 2px;
-  padding: 2px 2px 4px;
+  /* 右側に重なる#tasklistScrollbarの分だけ、中身がその下に隠れないよう
+     右側の余白を広めに取る。 */
+  padding: 2px 12px 4px 2px;
   /* 各欄の高さを切り詰めて内側で個別にスクロールさせていたのをやめ、
-     このページ自体を1本の縦スクロールにした(件数が多くても表示範囲を
+     このページ全体を1本の縦スクロールにした(件数が多くても表示範囲を
      一定に留めず、常に全部を映す)。 */
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/* スマホでの縦スクロールの反応が分かりづらいという指摘を受けて追加した、
+   右端に常時重ねる縦スクロールバー。ネイティブのスクロールバー(タッチ
+   端末では基本非表示、あるいはスクロール中だけ一瞬光る程度)に頼らず、
+   スクロール可能な範囲と現在位置を常に視覚的に示す。つまみ自体を直接
+   ドラッグしてスクロールすることもでき、チップの長押し判定(タップ/
+   並べ替え/スクロールの3択)を経由しない、確実に効く代替のスクロール
+   手段にもなる。 */
+.tasklist-scrollbar {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  right: 3px;
+  width: 5px;
+  border-radius: 999px;
+  background: var(--panel-line);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.tasklist-scrollbar[hidden] {
+  display: none;
+}
+
+.tasklist-scrollbar-thumb {
+  position: absolute;
+  /* 見た目の太さは親(.tasklist-scrollbar)の幅(5px)のままだが、指での
+     つまみやすさのため、実際につかめる範囲(pointer-events)は左右に
+     広げる。 */
+  left: -8px;
+  right: -8px;
+  border-radius: 999px;
+  background: var(--muted);
+  opacity: 0.75;
+  touch-action: none;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.tasklist-scrollbar-thumb:active,
+.tasklist-scrollbar-thumb.dragging {
+  background: var(--accent);
+  opacity: 1;
 }
 
 .tasklist-unified-list {

@@ -93,8 +93,16 @@
         <div class="tasklist-page">
           <!-- タスクページ: カテゴリ(最優先/スケジュール内/今日中/今週中/いつか)の
                くくりを見出しとしては出さず、日時が決まっているものから時系列順に
-               1列の縦並びで並べる。中身はJS(renderTasklistUnifiedList)が組み立てる。 -->
-          <div class="tasklist-unified-list" id="tasklistUnifiedList"></div>
+               1列の縦並びで並べる。中身はJS(renderTasklistUnifiedList)が組み立てる。
+               実際にスクロールするのは#tasklistScrollArea(この.tasklist-page自体は
+               スクロールしない) — 右側の#tasklistScrollbarをスクロールに巻き込まず
+               常に同じ位置に重ねて表示するため。 -->
+          <div class="tasklist-scroll-area" id="tasklistScrollArea">
+            <div class="tasklist-unified-list" id="tasklistUnifiedList"></div>
+          </div>
+          <div class="tasklist-scrollbar" id="tasklistScrollbar" hidden>
+            <div class="tasklist-scrollbar-thumb" id="tasklistScrollbarThumb"></div>
+          </div>
         </div>
       </section>
       <section class="page">
