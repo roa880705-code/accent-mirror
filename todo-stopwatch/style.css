@@ -1827,12 +1827,63 @@ body {
   border-color: var(--tab-daily);
 }
 
+/* 実際にスクロールするのは中の.calendar-week-body — この外枠自身は
+   スクロールしない(タスクページの.tasklist-page/.tasklist-scroll-area
+   と同じ考え方)ことで、右に重ねる.calendar-scrollbarが中身のスクロール
+   に巻き込まれず、常に画面上の同じ位置(右端)に留まり続ける。 */
+.calendar-week-body-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
 .calendar-week-body {
   flex: 1;
   min-height: 0;
   display: flex;
   overflow-y: auto;
+  /* 右端に重なる.calendar-scrollbarの分だけ、日付列がその下に隠れない
+     よう右側の余白を取る。 */
+  padding-right: 9px;
   border-top: 1px solid var(--line);
+}
+
+.calendar-scrollbar {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  right: 3px;
+  width: 5px;
+  border-radius: 999px;
+  background: var(--panel-line);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.calendar-scrollbar[hidden] {
+  display: none;
+}
+
+.calendar-scrollbar-thumb {
+  position: absolute;
+  /* 見た目の太さは親(.calendar-scrollbar)の幅(5px)のままだが、指での
+     つまみやすさのため、実際につかめる範囲(pointer-events)は左右に
+     広げる。 */
+  left: -8px;
+  right: -8px;
+  border-radius: 999px;
+  background: var(--muted);
+  opacity: 0.75;
+  touch-action: none;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.calendar-scrollbar-thumb:active,
+.calendar-scrollbar-thumb.dragging {
+  background: var(--accent);
+  opacity: 1;
 }
 
 .calendar-hours {

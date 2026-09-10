@@ -987,6 +987,10 @@
   const weeklyWeekGridEl = document.getElementById("weeklyWeekGrid");
   const weeklyDetailEl = document.getElementById("weeklyDetail");
   const weeklyUnscheduledRowEl = document.getElementById("weeklyUnscheduledRow");
+  const dailyCalScrollbarEl = document.getElementById("calendarCalScrollbar");
+  const dailyCalScrollbarThumbEl = document.getElementById("calendarCalScrollbarThumb");
+  const weeklyCalScrollbarEl = document.getElementById("weeklyCalScrollbar");
+  const weeklyCalScrollbarThumbEl = document.getElementById("weeklyCalScrollbarThumb");
   let calendarWeekLabel = dailyWeekLabelEl;
   let calendarWeekHeader = dailyWeekHeaderEl;
   let calendarWeekBody = dailyWeekBodyEl;
@@ -1944,6 +1948,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-10", text: "ウィークリー/デイリーの時間軸の右端に、スクロール位置が常に分かる縦スクロールバーを追加しました(タスクページと同じ方式です)。つまみを直接ドラッグしてスクロールすることもできます。" },
     { date: "2026-09-10", text: "設定ページに「表示時間帯」を追加しました。ウィークリー/デイリーの時間軸に表示する時間帯を、例えば朝7:00〜夜21:00のように絞れます。範囲外の時間は完全に非表示になり、スクロールしても出てきません(既定は0:00〜24:00でこれまで通りです)。" },
     { date: "2026-09-10", text: "ウィークリーページ右上の表示切替ボタン(今週中/いつか)に「当日中」を追加しました。当日中欄の表示/非表示をここから切り替えられます(設定ページの表示設定とも連動します)。デイリーの今日中トレイは常設のままです。" },
     { date: "2026-09-10", text: "タスクページの樹形図で、予定・今週中の子/孫/ひ孫タスクをタップしても何も起きない不具合を修正しました。タップすると変更修正・子タスク追加・完了・削除の選択肢が開き、その場で編集できます。" },
@@ -7758,6 +7763,71 @@
     calendarDetail.append(stack, legend);
   }
 
+  // ウィークリー/デイリーの時間軸(.calendar-week-body)右端に重ねる、
+  // タスクページと同じ考え方の縦スクロールバー(updateTasklistScrollbar
+  // 参照)。表示時間帯を絞る設定でグリッドの高さが動的に変わるため、
+  // renderCalendar()のたびに再計算する。
+  const CAL_SCROLLBAR_INSET = 4;
+  const CAL_SCROLLBAR_MIN_THUMB = 24;
+  function makeCalScrollbarController(bodyEl, trackEl, thumbEl) {
+    function update() {
+      const viewH = bodyEl.clientHeight;
+      const contentH = bodyEl.scrollHeight;
+      if (contentH <= viewH + 1) {
+        trackEl.hidden = true;
+        return;
+      }
+      trackEl.hidden = false;
+      const trackH = Math.max(0, viewH - CAL_SCROLLBAR_INSET * 2);
+      const thumbH = Math.min(trackH, Math.max(CAL_SCROLLBAR_MIN_THUMB, (viewH / contentH) * trackH));
+      const maxThumbTop = Math.max(0, trackH - thumbH);
+      const maxScroll = contentH - viewH;
+      const ratio = maxScroll > 0 ? bodyEl.scrollTop / maxScroll : 0;
+      thumbEl.style.height = `${thumbH}px`;
+      thumbEl.style.top = `${ratio * maxThumbTop}px`;
+    }
+    bodyEl.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+
+    // つまみ自体を直接ドラッグしてスクロールする(タスクページの
+    // スクロールバーと同じ操作性)。
+    let dragCtx = null;
+    function onThumbMove(e) {
+      if (!dragCtx) return;
+      e.preventDefault();
+      const dy = e.clientY - dragCtx.startY;
+      const newTop = Math.max(0, Math.min(dragCtx.maxThumbTop, dragCtx.startTop + dy));
+      const ratio = dragCtx.maxThumbTop > 0 ? newTop / dragCtx.maxThumbTop : 0;
+      bodyEl.scrollTop = ratio * dragCtx.maxScroll;
+    }
+    function onThumbEnd() {
+      document.removeEventListener("pointermove", onThumbMove);
+      document.removeEventListener("pointerup", onThumbEnd);
+      document.removeEventListener("pointercancel", onThumbEnd);
+      thumbEl.classList.remove("dragging");
+      dragCtx = null;
+    }
+    thumbEl.addEventListener("pointerdown", (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const viewH = bodyEl.clientHeight;
+      const trackH = Math.max(0, viewH - CAL_SCROLLBAR_INSET * 2);
+      const thumbH = thumbEl.getBoundingClientRect().height;
+      const maxThumbTop = Math.max(0, trackH - thumbH);
+      const maxScroll = bodyEl.scrollHeight - viewH;
+      thumbEl.classList.add("dragging");
+      dragCtx = { startY: e.clientY, startTop: parseFloat(thumbEl.style.top) || 0, maxThumbTop, maxScroll };
+      document.addEventListener("pointermove", onThumbMove);
+      document.addEventListener("pointerup", onThumbEnd);
+      document.addEventListener("pointercancel", onThumbEnd);
+    });
+
+    return update;
+  }
+  const updateDailyCalScrollbar = makeCalScrollbarController(dailyWeekBodyEl, dailyCalScrollbarEl, dailyCalScrollbarThumbEl);
+  const updateWeeklyCalScrollbar = makeCalScrollbarController(weeklyWeekBodyEl, weeklyCalScrollbarEl, weeklyCalScrollbarThumbEl);
+
   function renderCalendar() {
     clearLongPress(); // the grid is about to be torn down and rebuilt
     const start = parseDateStr(weekAnchor);
@@ -8158,6 +8228,16 @@
         calendarWeekBody.scrollTop = Math.max(0, dayMinToPx(nowMin - 90));
       });
     }
+
+    updateDailyCalScrollbar();
+    updateWeeklyCalScrollbar();
+    // 直後はまだレイアウトが確定しておらずscrollHeightが1フレーム古い
+    // ままのことがあるため、確定後にもう一度合わせ直す(タスクページの
+    // updateTasklistScrollbar呼び出しと同じ理由)。
+    requestAnimationFrame(() => {
+      updateDailyCalScrollbar();
+      updateWeeklyCalScrollbar();
+    });
 
     refreshAllMonthlyContent();
   }
