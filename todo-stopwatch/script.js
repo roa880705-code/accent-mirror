@@ -1812,6 +1812,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-10", text: "過去の日付にも予定を設定できるようにしました。過去日でも、空きスペースの長押しで新規予定を作成、最優先/今日中/今週中/いつかのタスクをスケジュールへドラッグ、既存の予定を別の日へ移動、といった操作がすべて行えます(以前は今日以降の日付でしかできませんでした)。" },
     { date: "2026-09-10", text: "タスクページの樹形図(親/子/孫/ひ孫)が、ラベルが長いと画面の横幅からはみ出してしまう不具合を修正しました。4列は維持したまま、それぞれの列の幅を画面に収まるよう均等割りにし、長い名前は列の中で折り返すようにしています。" },
     { date: "2026-09-09", text: "タスクページの子タスクを持つ予定/今週中/いつかを、親が1番左・子・孫・ひ孫と進むごとに1列ずつ右へ進む樹形図(連結線つき)で表示するようにしました(以前は親の直後に字下げして縦に並べる表示でした)。" },
     { date: "2026-09-09", text: "タスクページで、チップの上から指を素早く動かしてもページ自体をスクロールできない不具合を修正しました(チップは長押しでの並べ替えに対応させるため、ブラウザ標準のスクロール動作を切っているのが原因でした)。長押しせずに動かした場合は、これまで通りページがスクロールします。" },
@@ -3083,7 +3084,6 @@
     if (e.target !== dayCol) return; // an existing block handles its own gesture
     if (e.button !== undefined && e.button !== 0) return;
     clearLongPress();
-    const canCreatePlan = dateStr >= state.day; // no long-press-to-create on a past day, but the swipe-to-navigate gesture below still works there
 
     if (calendarMomentumCancel) {
       calendarMomentumCancel();
@@ -3165,14 +3165,12 @@
     document.addEventListener("pointercancel", onUp);
     activeDayPress = { cleanup };
 
-    if (canCreatePlan) {
-      timer = setTimeout(() => {
-        timer = null;
-        cleanup();
-        activeDayPress = null;
-        startPlanRangeDraw(dayCol, dateStr, startY);
-      }, PLAN_LONGPRESS_MS);
-    }
+    timer = setTimeout(() => {
+      timer = null;
+      cleanup();
+      activeDayPress = null;
+      startPlanRangeDraw(dayCol, dateStr, startY);
+    }, PLAN_LONGPRESS_MS);
   }
 
   // --- Googleカレンダー式: 長押しで始点を固定し、指を離すまでドラッグで
@@ -3626,7 +3624,7 @@
       return;
     }
 
-    if (!hoverDate || hoverDate < state.day) {
+    if (!hoverDate) {
       renderCalendar();
       return;
     }
@@ -3740,9 +3738,6 @@
     let targetCol = null;
     if (e.clientY >= bodyRect.top && e.clientY <= bodyRect.bottom) {
       for (const col of cols) {
-        // 過去日には(その日のタイマー項目が既に無いので)コピーできない —
-        // 他のスケジュール作成経路と同じ制約。
-        if (col.dataset.date < state.day) continue;
         const rect = col.getBoundingClientRect();
         if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
           targetCol = col;
@@ -5006,8 +5001,7 @@
 
   function renderPriorityBox() {
     const dateStr = weekAnchor;
-    calendarPriorityBox.hidden = dateStr < state.day;
-    if (calendarPriorityBox.hidden) return;
+    calendarPriorityBox.hidden = false;
 
     calendarPriorityList.innerHTML = "";
     const tasks = itemsArrayForDate(dateStr).filter((it) => it.priority && !it.completed);
@@ -6256,17 +6250,13 @@
         if (!hasChildren) {
           if (unschedCols.length) {
             for (const col of unschedCols) {
-              if (col.dataset.date < state.day) continue;
               if (rectContains(col.getBoundingClientRect(), e.clientX, e.clientY)) {
                 zoneTargetCol = col;
                 overZone = true;
                 break;
               }
             }
-          } else if (
-            calendarUnscheduledRow.dataset.date >= state.day &&
-            rectContains(calendarUnscheduledRow.getBoundingClientRect(), e.clientX, e.clientY)
-          ) {
+          } else if (rectContains(calendarUnscheduledRow.getBoundingClientRect(), e.clientX, e.clientY)) {
             zoneTargetCol = calendarUnscheduledRow;
             overZone = true;
           }
@@ -6287,13 +6277,11 @@
         else calendarUnscheduledRow.classList.remove("drop-target");
 
         // 特定の曜日に紐付いていないタスクなので、今日中/最優先の「自分の
-        // 日付の列だけ」より対象を広げ、表示中の週の列すべて(過去日は
-        // 除く)を対象にする。
+        // 日付の列だけ」より対象を広げ、表示中の週の列すべてを対象にする。
         const bodyRect = calendarWeekBody.getBoundingClientRect();
         const weekCols = Array.from(calendarWeekGrid.children);
         let weekTargetCol = null;
         for (const col of weekCols) {
-          if (col.dataset.date < state.day) continue;
           const rect = col.getBoundingClientRect();
           if (
             e.clientX >= rect.left &&
@@ -6812,10 +6800,6 @@
       const bodyRect = calendarWeekBody.getBoundingClientRect();
       if (e.clientY >= bodyRect.top && e.clientY <= bodyRect.bottom) {
         for (const col of cols) {
-          // a past day can't be a drop target: いつか has no linked timer item
-          // once its date has passed, so anything dropped there would just
-          // vanish into an unreachable past-day draft
-          if (col.dataset.date < state.day) continue;
           const rect = col.getBoundingClientRect();
           if (
             e.clientX >= rect.left &&
@@ -6839,17 +6823,13 @@
       if (!targetCol && !isParentTask(ctx.task.id)) {
         if (unschedCols.length) {
           for (const col of unschedCols) {
-            if (col.dataset.date < state.day) continue;
             if (rectContains(col.getBoundingClientRect(), e.clientX, e.clientY)) {
               targetCol = col;
               overZone = true;
               break;
             }
           }
-        } else if (
-          calendarUnscheduledRow.dataset.date >= state.day &&
-          rectContains(calendarUnscheduledRow.getBoundingClientRect(), e.clientX, e.clientY)
-        ) {
+        } else if (rectContains(calendarUnscheduledRow.getBoundingClientRect(), e.clientX, e.clientY)) {
           targetCol = calendarUnscheduledRow;
           overZone = true;
         }
@@ -6889,7 +6869,6 @@
       let targetMonthlyCell = null;
       const monthlyCells = Array.from(document.querySelectorAll(".monthly-cell"));
       for (const cell of monthlyCells) {
-        if (cell.dataset.date < state.day) continue;
         const rect = cell.getBoundingClientRect();
         if (
           e.clientX >= rect.left &&
@@ -6906,10 +6885,9 @@
       if (targetMonthlyCell) return;
 
       // Still nothing — we may be over デイリー専用の「最優先」トレイ(階層
-      // を持たないフラットな置き場)。表示中の日付が今日以降のときだけ
-      // ドロップ先として有効。
+      // を持たないフラットな置き場)。
       let targetPriorityList = false;
-      if (weekAnchor >= state.day && !isParentTask(ctx.task.id)) {
+      if (!isParentTask(ctx.task.id)) {
         const priorityRect = calendarPriorityBox.getBoundingClientRect();
         targetPriorityList = rectContains(priorityRect, e.clientX, e.clientY);
       }
@@ -6929,12 +6907,10 @@
 
       // Still nothing — we may be on the ログ page instead, where dropping
       // onto the task list adds it as a plain task with no time set, same
-      // as a day's own "time undetermined" zone. Same past-day protection
-      // as everywhere else: a date already gone can't be a drop target.
+      // as a day's own "time undetermined" zone.
       let targetTaskList = null;
       const listWrapRect = listWrap.getBoundingClientRect();
       if (
-        viewingDate >= state.day &&
         e.clientX >= listWrapRect.left &&
         e.clientX <= listWrapRect.right &&
         e.clientY >= listWrapRect.top &&
@@ -7450,8 +7426,7 @@
     });
     const dayUnscheduled = {};
     dayDates.forEach((dateStr) => {
-      const eligible = dateStr >= state.day;
-      dayUnscheduled[dateStr] = eligible ? itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority && !it.completed) : [];
+      dayUnscheduled[dateStr] = itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority && !it.completed);
     });
     // 「時間未定」タスクはスクロール不要な常時表示の専用行(下記)にすべて
     // 表示するので、時間軸グリッド自体は24時間ぶんの高さで固定でよい。
@@ -7559,7 +7534,7 @@
         calendarNowLineEl = line;
       }
 
-      if (dateStr >= state.day) {
+      {
         // 前後の移動時間バッファも「その時間帯を占有している」ものとして
         // 重なり判定(layoutSegments)に含める — 他の予定が移動時間へ
         // めり込まず、正しく横に並んで避けてくれるようにするため。
@@ -7704,12 +7679,6 @@
         );
       }
 
-      // attached unconditionally (not just for dateStr >= state.day): a
-      // past day column still needs this for the swipe-to-navigate gesture
-      // (ウィークリー can show past days now that it's a fixed Monday-start
-      // week rather than always starting at today) — onDayColPointerDown
-      // itself gates the long-press-to-create-a-plan part to present/future
-      // days only.
       dayCol.addEventListener("pointerdown", (e) => onDayColPointerDown(e, dayCol, dateStr));
 
       calendarWeekGrid.appendChild(dayCol);
@@ -7736,34 +7705,30 @@
 
       const list = document.createElement("div");
       list.className = "calendar-unplanned-list";
-      if (dateStr >= state.day) {
-        const unscheduledForDay = dayUnscheduled[dateStr];
-        if (unscheduledForDay.length) {
-          unscheduledForDay.forEach((item, idx) => {
-            const chip = document.createElement("div");
-            chip.className = "cal-unscheduled-row";
-            chip.trayItem = item;
-            chip.textContent = labelOf(item, `タスク${idx + 1}`);
-            chip.addEventListener("pointerdown", (e) => startTrayItemDrag(e, chip, item, dateStr, "cal-unscheduled-row", "予定"));
-            list.appendChild(chip);
-          });
-        } else {
-          const empty = document.createElement("span");
-          empty.className = "calendar-unplanned-empty";
-          empty.textContent = "今日中のタスクなし";
-          list.appendChild(empty);
-        }
+      const unscheduledForDay = dayUnscheduled[dateStr];
+      if (unscheduledForDay.length) {
+        unscheduledForDay.forEach((item, idx) => {
+          const chip = document.createElement("div");
+          chip.className = "cal-unscheduled-row";
+          chip.trayItem = item;
+          chip.textContent = labelOf(item, `タスク${idx + 1}`);
+          chip.addEventListener("pointerdown", (e) => startTrayItemDrag(e, chip, item, dateStr, "cal-unscheduled-row", "予定"));
+          list.appendChild(chip);
+        });
+      } else {
+        const empty = document.createElement("span");
+        empty.className = "calendar-unplanned-empty";
+        empty.textContent = "今日中のタスクなし";
+        list.appendChild(empty);
       }
       calendarUnscheduledRow.appendChild(list);
-      if (dateStr >= state.day) {
-        const addBtn = document.createElement("button");
-        addBtn.type = "button";
-        addBtn.className = "calendar-someday-add";
-        addBtn.setAttribute("aria-label", "今日中のタスクを追加");
-        addBtn.textContent = "＋";
-        addBtn.addEventListener("click", () => addUnscheduledTask(dateStr));
-        calendarUnscheduledRow.appendChild(addBtn);
-      }
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "calendar-someday-add";
+      addBtn.setAttribute("aria-label", "今日中のタスクを追加");
+      addBtn.textContent = "＋";
+      addBtn.addEventListener("click", () => addUnscheduledTask(dateStr));
+      calendarUnscheduledRow.appendChild(addBtn);
     } else {
       // 今週中/いつか欄の1番左の見出し(calendar-unplanned-title)と縦に
       // 揃う位置に、この行自身の見出しとして「当日中」を表示する(この
@@ -7777,19 +7742,17 @@
         const col = document.createElement("div");
         col.className = "cal-unscheduled-day";
         col.dataset.date = dateStr;
-        if (dateStr >= state.day) {
-          const unscheduledForDay = dayUnscheduled[dateStr];
-          unscheduledForDay.forEach((item, idx) => {
-            const row = document.createElement("div");
-            row.className = "cal-unscheduled-row";
-            row.trayItem = item;
-            row.textContent = labelOf(item, `タスク${idx + 1}`);
-            row.addEventListener("pointerdown", (e) => startTrayItemDrag(e, row, item, dateStr, "cal-unscheduled-row", "予定"));
-            col.appendChild(row);
-          });
-          // タスクが無い日は、何列も並ぶと「タスクなし」の連呼が目障りに
-          // なるため、プレースホルダー文言を出さず空欄のままにする。
-        }
+        const unscheduledForDay = dayUnscheduled[dateStr];
+        unscheduledForDay.forEach((item, idx) => {
+          const row = document.createElement("div");
+          row.className = "cal-unscheduled-row";
+          row.trayItem = item;
+          row.textContent = labelOf(item, `タスク${idx + 1}`);
+          row.addEventListener("pointerdown", (e) => startTrayItemDrag(e, row, item, dateStr, "cal-unscheduled-row", "予定"));
+          col.appendChild(row);
+        });
+        // タスクが無い日は、何列も並ぶと「タスクなし」の連呼が目障りに
+        // なるため、プレースホルダー文言を出さず空欄のままにする。
         calendarUnscheduledRow.appendChild(col);
       });
     }
