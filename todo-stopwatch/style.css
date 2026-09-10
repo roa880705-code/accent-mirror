@@ -2620,7 +2620,11 @@ body {
   padding: 4px 8px 0 0;
 }
 
-.tasklist-list .cal-unplanned-chip {
+/* .tasklist-list(並べ替え対応の一覧)だけでなく、並べ替えを持たない
+   予定(スケジュール内)の樹形図のように.tasklist-unified-list直下へ
+   そのまま置かれるチップにも同じ見た目(全幅・折り返し)を適用したいので、
+   共通の祖先である.tasklist-unified-listを基準にする。 */
+.tasklist-unified-list .cal-unplanned-chip {
   max-width: none;
   width: 100%;
   text-align: left;
@@ -2629,7 +2633,7 @@ body {
   cursor: pointer;
 }
 
-.tasklist-list .cal-unplanned-chip-label {
+.tasklist-unified-list .cal-unplanned-chip-label {
   white-space: normal;
   overflow-wrap: break-word;
 }
@@ -2649,17 +2653,20 @@ body {
   cursor: default;
 }
 
-/* 子タスクを持つ予定・今週中・いつかいずれも共通の樹形図: 親が1番左
-   (列1)、子・孫・ひ孫と進むごとに1列ずつ右へ(親子関係は連結線
-   someday-branch-lineで示す — drawSomedayTreeConnectorLines参照)。
-   1つの家族だけなので行は常に1行(既存の全展開ツリーは複数家族を
-   列として横に並べるためgrid-auto-flow:columnだったが、ここは深さの
-   列だけでよい)。 */
+/* 子タスクを持つ予定・今週中・いつかいずれも共通の樹形図: 親(列1)/子
+   (列2)/孫(列3)/ひ孫(列4)の4列を常に固定し、幅は画面(このリストの
+   横幅)に必ず収まるよう均等割り(1fr×4)にする — max-contentのように
+   ラベルの長さに応じて際限なく広がらせるのではなく、長いラベルは列の
+   中で折り返す(親子関係は連結線someday-branch-lineで示す —
+   drawSomedayTreeConnectorLines参照)。1つの家族だけなので行は常に1行
+   (既存の全展開ツリーは複数家族を列として横に並べるためgrid-auto-flow:
+   columnだったが、ここは深さの列だけでよい)。 */
 .tasklist-family-tree {
   position: relative;
   display: grid;
-  grid-auto-columns: max-content;
-  column-gap: 20px;
+  grid-template-columns: repeat(4, 1fr);
+  width: 100%;
+  column-gap: 10px;
   align-items: start;
 }
 
@@ -2667,11 +2674,12 @@ body {
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
+  min-width: 0;
 }
 
 .tasklist-family-tree .cal-unplanned-chip {
-  width: auto;
-  max-width: 40vw;
+  width: 100%;
+  max-width: none;
 }
 
 /* 「時間未定」タスクの常時表示行: 時間軸グリッドとは別の、スクロールし
