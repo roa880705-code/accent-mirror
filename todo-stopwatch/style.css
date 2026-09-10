@@ -2902,6 +2902,25 @@ body {
   background: var(--line);
 }
 
+/* タスクページから予定(子タスクあり)をタップした時に開く、in-place
+   編集モーダル。中身はshowPlanDetailが組み立てる既存のweekly/daily用
+   パネルをそのまま再利用する。パネル自身の高さ調整用リサイズハンドルは
+   ドラッグで動かす先(calendarDetailの高さ)が無いこのモーダル内では
+   意味を持たないため非表示にする。 */
+.cal-plan-detail-modal-box {
+  width: min(92vw, 460px);
+  max-height: 82vh;
+}
+
+#tasklistPlanDetailContent {
+  overflow-y: auto;
+  max-height: calc(82vh - 90px);
+}
+
+#tasklistPlanDetailModal .cal-plan-detail-resize-handle {
+  display: none;
+}
+
 /* 子タスクツリーが縦に伸びてcalendarDetail自体がスクロールしても、
    情報行+操作ボタンはツリーの真上に貼り付いたまま常時見えるようにする。
    flex:1で、パネル(calendarDetail)の高さに余裕がある分だけ伸びる

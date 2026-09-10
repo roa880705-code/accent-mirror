@@ -1407,6 +1407,16 @@
   const itemMemoModalDelete = document.getElementById("itemMemoModalDelete");
   const itemMemoModalCancel = document.getElementById("itemMemoModalCancel");
 
+  // タスクページから予定(スケジュール内、子タスクを持つもの)をタップ
+  // した時に開く、予定詳細パネルのモーダル版。中身(タスクページ上部
+  // #tasklistPlanDetailContent)自体はshowPlanDetailが組み立てる既存の
+  // weekly/daily用パネルと全く同じ内容を再利用する(planDetailOverrideEl
+  // 参照) — タスクページにはweekly/dailyのようなデイリーへの遷移を伴わず
+  // その場で編集できるようにするため。
+  const tasklistPlanDetailModal = document.getElementById("tasklistPlanDetailModal");
+  const tasklistPlanDetailContent = document.getElementById("tasklistPlanDetailContent");
+  const tasklistPlanDetailCloseBtn = document.getElementById("tasklistPlanDetailCloseBtn");
+
   function openMemoModal(initial) {
     return new Promise((resolve) => {
       itemMemoModalInput.value = initial || "";
@@ -1812,6 +1822,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-10", text: "タスクページで「予定(子タスクあり)」をタップすると、これまではデイリーページへ移動して詳細パネルを開いていましたが、タスクページから離れずその場でモーダルとして編集できるようにしました。名前の変更や子タスクの追加・編集もタスクページに留まったまま行えます。" },
     { date: "2026-09-10", text: "タスクページの最優先/今日中タスクも、予定/今週中/いつかと同じ親/子/孫/ひ孫の4列樹形図の「親」列に収まるようにしました(子タスクを持たない親タスクとして統一的に表示されます)。スケジュール内に組み込み済みで子タスクを持たない予定は、これまで通りタスクページには表示されません。" },
     { date: "2026-09-10", text: "タスクページの樹形図(予定/今週中/いつか)に、「親」「子」「孫」「ひ孫」の列見出しと、列同士を区切る縦線を追加しました。子孫を持たない単独のタスクでも4列すべての見出しを表示し、どの家族でも同じ位置関係で深さが分かるようにしています。" },
     { date: "2026-09-10", text: "過去の日付にも予定を設定できるようにしました。過去日でも、空きスペースの長押しで新規予定を作成、最優先/今日中/今週中/いつかのタスクをスケジュールへドラッグ、既存の予定を別の日へ移動、といった操作がすべて行えます(以前は今日以降の日付でしかできませんでした)。" },
@@ -2719,9 +2730,21 @@
     });
   }
 
+  // 通常はnull(=weekly/dailyの既存パネルcalendarDetailへ描画する)。
+  // タスクページから予定をタップした時だけ、一時的にモーダル内の入れ物
+  // (tasklistPlanDetailContent)へ差し替える — showPlanDetail自身も、
+  // その中から呼ばれる子タスク編集系の関数(buildPlanChildrenSection以下、
+  // いずれもshowPlanDetail(dateStr, plan)を再帰的に呼んで作り直すだけ)も、
+  // 個別に引数を引き回さずこの共有変数を見るので、呼び出し側の変更なしに
+  // 描画先を切り替えられる。closeOverrideは削除時などパネル自体を閉じる
+  // 操作の差し替え先(モーダルなら閉じるボタンと同じ後始末を行う)。
+  let planDetailTargetOverride = null;
+  let planDetailCloseOverride = null;
+
   function showPlanDetail(dateStr, plan) {
-    calendarDetail.hidden = false;
-    calendarDetail.innerHTML = "";
+    const targetEl = planDetailTargetOverride || calendarDetail;
+    targetEl.hidden = false;
+    targetEl.innerHTML = "";
 
     // 名前欄: 別途「編集」ボタンを押さなくても、ここへ直接入力して
     // (フォーカスを外すと)そのまま予定名を変更できる。
@@ -2768,8 +2791,12 @@
         persistItemsForDate(dateStr);
         refreshTimerIfShowing(dateStr);
       }
-      calendarDetail.hidden = true;
-      calendarDetail.innerHTML = "";
+      if (planDetailCloseOverride) {
+        planDetailCloseOverride();
+      } else {
+        calendarDetail.hidden = true;
+        calendarDetail.innerHTML = "";
+      }
       renderCalendar();
     });
 
@@ -2973,7 +3000,7 @@
     const header = document.createElement("div");
     header.className = "cal-plan-detail-header";
     header.append(resizeHandle, nameRow, body);
-    calendarDetail.append(header);
+    targetEl.append(header);
   }
 
   // calendarDetailの上端のつまみをドラッグして、パネルの高さ(CSSの
@@ -5784,7 +5811,8 @@
   // 子タスクを持つ予定(スケジュール内)1件ぶんの樹形図。予定はタスク
   // ページ上で並べ替え/追加を行わない(スケジュール側で操作するもの)ので
   // wrapperは使わず、樹形図をそのままcontainerへ積む。ルートをタップ
-  // するとjumpDailyToPlanでデイリーページのその予定の詳細を開く。
+  // するとopenTasklistPlanDetailでタスクページ上にモーダルを開き、
+  // デイリーへ遷移せずその場で詳細を編集できるようにする。
   function buildTasklistPlanFamilyTree(plan, dateStr) {
     const directChildCount = planChildrenOf(plan, null).length;
     const getChildren = (task) => planChildrenOf(plan, task === plan ? null : task.id);
@@ -5797,7 +5825,7 @@
         rootChip.addEventListener("click", (e) => {
           e.stopPropagation();
           vibrate(10);
-          jumpDailyToPlan(dateStr, plan);
+          openTasklistPlanDetail(dateStr, plan);
         });
         return rootChip;
       }
@@ -7923,18 +7951,26 @@
     goToPage(DAILY_PAGE);
   }
 
-  // タスクページの「予定(子タスクあり)」チップをタップした時: タスク
-  // ページ自体には予定編集UIが無いため、onPlanBlockClickと同じ手順
-  // (展開を畳む→選択状態にする→再描画→詳細パネルを開く)でデイリー
-  // ページへ移動し、その予定の詳細パネルを開く。
-  function jumpDailyToPlan(dateStr, plan) {
-    collapseAllDrilldowns();
-    selectedPlanId = plan.id;
-    dailyWeekAnchor = dateStr;
-    goToPage(DAILY_PAGE);
-    renderCalendar();
+  // タスクページの「予定(子タスクあり)」チップをタップした時: デイリー
+  // ページへ遷移せず、タスクページの上にモーダルを重ねてその場で同じ
+  // 詳細パネル(showPlanDetail)を編集できるようにする。
+  function openTasklistPlanDetail(dateStr, plan) {
+    planDetailTargetOverride = tasklistPlanDetailContent;
+    planDetailCloseOverride = closeTasklistPlanDetail;
+    tasklistPlanDetailModal.hidden = false;
     showPlanDetail(dateStr, plan);
   }
+
+  function closeTasklistPlanDetail() {
+    tasklistPlanDetailModal.hidden = true;
+    tasklistPlanDetailContent.innerHTML = "";
+    planDetailTargetOverride = null;
+    planDetailCloseOverride = null;
+  }
+
+  tasklistPlanDetailCloseBtn.addEventListener("click", () => {
+    closeTasklistPlanDetail();
+  });
 
   // タスクは原則マンスリーに表示しない — showOnMonthly が立っている項目
   // (マンスリーの日付セルへ直接ドロップしたもの、またはウィークリー/
@@ -8445,6 +8481,12 @@
     if (isCalendarPage(activePage) && !isCalendarPage(i) && selectedPlanId) {
       selectedPlanId = null;
       renderCalendar();
+    }
+    // タスクページの予定編集モーダルを開いたまま別タブへ切り替えた場合、
+    // 閉じるボタンを押さずに離脱してもplanDetailTargetOverrideが残り続けて
+    // 他ページのcalendarDetail描画まで巻き込まないよう、ここで確実に閉じる。
+    if (i !== TASKLIST_PAGE && planDetailTargetOverride === tasklistPlanDetailContent) {
+      closeTasklistPlanDetail();
     }
     // ログは常に「開いたら今日」— 他のページから切り替えて入るたびに
     // viewingDateを今日へ戻す(ページ内の日付ピッカーで別の日に移っても、
