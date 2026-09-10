@@ -1932,6 +1932,11 @@ body {
   display: flex;
   height: calc(var(--hour-h) * 24);
   position: relative;
+  /* 表示時間帯を絞る設定で、グリッドの高さが24時間ぶんより縮んだ時、
+     範囲外にあたる現在時刻線・予定ブロック・記録済みログの帯などが
+     この箱の外へはみ出して.calendar-week-bodyのスクロール可能範囲を
+     広げてしまわないよう、はみ出し部分ごと切り取る。 */
+  overflow: hidden;
   /* Two layers: the hour gridlines on top, and a 0:00-24:00 time-of-day
      tint underneath (night -> morning -> daytime -> evening -> dusk ->
      night again) so the grid gives an at-a-glance sense of what part of
