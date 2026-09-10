@@ -189,13 +189,16 @@
             showThisWeekBoxDaily: parsed.showThisWeekBoxDaily !== undefined ? parsed.showThisWeekBoxDaily !== false : legacyThisWeek,
             showSomedayBoxWeekly: parsed.showSomedayBoxWeekly !== undefined ? parsed.showSomedayBoxWeekly !== false : legacySomeday,
             showSomedayBoxDaily: parsed.showSomedayBoxDaily !== undefined ? parsed.showSomedayBoxDaily !== false : legacySomeday,
+            // 「当日中」はウィークリーだけの設定(デイリーは今日中トレイが
+            // 常設なのでこの設定の対象外)。
+            showUnscheduledBoxWeekly: parsed.showUnscheduledBoxWeekly !== false,
           };
         }
       }
     } catch (e) {
       // corrupt storage, fall through to defaults
     }
-    return { showThisWeekBoxWeekly: true, showThisWeekBoxDaily: true, showSomedayBoxWeekly: true, showSomedayBoxDaily: true };
+    return { showThisWeekBoxWeekly: true, showThisWeekBoxDaily: true, showSomedayBoxWeekly: true, showSomedayBoxDaily: true, showUnscheduledBoxWeekly: true };
   }
 
   function saveDisplaySettings() {
@@ -888,11 +891,14 @@
   const showSomedayBoxWeeklyToggle = document.getElementById("showSomedayBoxWeeklyToggle");
   const showThisWeekBoxDailyToggle = document.getElementById("showThisWeekBoxDailyToggle");
   const showSomedayBoxDailyToggle = document.getElementById("showSomedayBoxDailyToggle");
+  // 「当日中」はウィークリーだけの設定(デイリーの今日中トレイは常設)。
+  const showUnscheduledBoxWeeklyToggle = document.getElementById("showUnscheduledBoxWeeklyToggle");
   // 設定ページのチェックボックスと同じ状態を指す、ウィークリー/デイリー
   // 各ページ自身のヘッダーに置くトグルボタン。3箇所どこから切り替えても
   // 即座に他へ連動する(updateBoxDisplayToggleUI参照)。
   const weeklyThisWeekToggleBtn = document.getElementById("weeklyThisWeekToggleBtn");
   const weeklySomedayToggleBtn = document.getElementById("weeklySomedayToggleBtn");
+  const weeklyUnscheduledToggleBtn = document.getElementById("weeklyUnscheduledToggleBtn");
   const calendarThisWeekToggleBtn = document.getElementById("calendarThisWeekToggleBtn");
   const calendarSomedayToggleBtn = document.getElementById("calendarSomedayToggleBtn");
   const monthlyUnplannedBoxEl = document.getElementById("monthlyUnplannedBox");
@@ -1739,16 +1745,19 @@
   // 設定ページのチェックボックス4つ(ウィークリー用/デイリー用それぞれの
   // 今週中・いつか) + ウィークリー/デイリー各ページのボタン4つ、計8箇所の
   // 見た目を1箇所にまとめて揃える。ウィークリーとデイリーは互いに独立
-  // (どちらかを切り替えてももう片方には影響しない)。
+  // (どちらかを切り替えてももう片方には影響しない)。「当日中」はウィーク
+  // リーだけの設定なので、チェックボックス・ボタンともに1箇所ずつ。
   function updateBoxDisplayToggleUI() {
     showThisWeekBoxWeeklyToggle.checked = displaySettings.showThisWeekBoxWeekly;
     showThisWeekBoxDailyToggle.checked = displaySettings.showThisWeekBoxDaily;
     showSomedayBoxWeeklyToggle.checked = displaySettings.showSomedayBoxWeekly;
     showSomedayBoxDailyToggle.checked = displaySettings.showSomedayBoxDaily;
+    showUnscheduledBoxWeeklyToggle.checked = displaySettings.showUnscheduledBoxWeekly;
     weeklyThisWeekToggleBtn.classList.toggle("active", displaySettings.showThisWeekBoxWeekly);
     calendarThisWeekToggleBtn.classList.toggle("active", displaySettings.showThisWeekBoxDaily);
     weeklySomedayToggleBtn.classList.toggle("active", displaySettings.showSomedayBoxWeekly);
     calendarSomedayToggleBtn.classList.toggle("active", displaySettings.showSomedayBoxDaily);
+    weeklyUnscheduledToggleBtn.classList.toggle("active", displaySettings.showUnscheduledBoxWeekly);
   }
 
   function toggleDisplaySetting(key) {
@@ -1786,10 +1795,18 @@
     renderCalendar();
   });
 
+  showUnscheduledBoxWeeklyToggle.addEventListener("change", () => {
+    displaySettings.showUnscheduledBoxWeekly = showUnscheduledBoxWeeklyToggle.checked;
+    saveDisplaySettings();
+    updateBoxDisplayToggleUI();
+    renderCalendar();
+  });
+
   weeklyThisWeekToggleBtn.addEventListener("click", () => toggleDisplaySetting("showThisWeekBoxWeekly"));
   calendarThisWeekToggleBtn.addEventListener("click", () => toggleDisplaySetting("showThisWeekBoxDaily"));
   weeklySomedayToggleBtn.addEventListener("click", () => toggleDisplaySetting("showSomedayBoxWeekly"));
   calendarSomedayToggleBtn.addEventListener("click", () => toggleDisplaySetting("showSomedayBoxDaily"));
+  weeklyUnscheduledToggleBtn.addEventListener("click", () => toggleDisplaySetting("showUnscheduledBoxWeekly"));
 
   periodAddBtn.addEventListener("click", () => {
     const last = periodSettings.periods[periodSettings.periods.length - 1];
@@ -1827,6 +1844,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-10", text: "ウィークリーページ右上の表示切替ボタン(今週中/いつか)に「当日中」を追加しました。当日中欄の表示/非表示をここから切り替えられます(設定ページの表示設定とも連動します)。デイリーの今日中トレイは常設のままです。" },
     { date: "2026-09-10", text: "タスクページの樹形図で、予定・今週中の子/孫/ひ孫タスクをタップしても何も起きない不具合を修正しました。タップすると変更修正・子タスク追加・完了・削除の選択肢が開き、その場で編集できます。" },
     { date: "2026-09-10", text: "タスクページの右端に、スクロール位置が常に分かる縦スクロールバーを追加しました(スマホでのスクロールの反応が分かりづらいという声を受けての対応です)。つまみを直接ドラッグしてスクロールすることもできます。" },
     { date: "2026-09-10", text: "タスクページで、チップの上から素早く指を動かしてスクロールした時の反応が鈍かった不具合を修正しました。並べ替え(長押し)の意図が無いと判断した最初の一手からすぐ画面が追従するようになり、タップやドラッグ並べ替えとの区別はこれまで通り保たれます。" },
@@ -4623,7 +4641,6 @@
   // 尊重し、ここでは何もしない。
   function applyCalendarPlanEditingVisibility() {
     const editing = !!selectedPlanId;
-    calendarUnscheduledRow.hidden = editing;
     // 編集中は問答無用で隠すが、編集中でなくても設定で非表示にした欄は
     // 引き続き隠したまま(移動などの機能自体はhidden中でも裏で動くので、
     // ここではDOM上の表示/非表示だけを決める)。ウィークリー/デイリーは
@@ -4633,6 +4650,9 @@
     // 今週中の展開表示にスペースを譲る。
     const prefix = calendarUnplannedBox.id === "weeklyUnplannedBox" ? "weekly" : "calendar";
     const isWeekly = prefix === "weekly";
+    // 「当日中」はウィークリーだけの表示切替設定(デイリーの今日中トレイ
+    // はこの設定と無関係に常設のまま)。
+    calendarUnscheduledRow.hidden = editing || (isWeekly && !displaySettings.showUnscheduledBoxWeekly);
     const showSomeday = isWeekly ? displaySettings.showSomedayBoxWeekly : displaySettings.showSomedayBoxDaily;
     const showThisWeek = isWeekly ? displaySettings.showThisWeekBoxWeekly : displaySettings.showThisWeekBoxDaily;
     calendarUnplannedBox.hidden = editing || !showSomeday || thisWeekExpandAll;

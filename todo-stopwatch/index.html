@@ -66,6 +66,10 @@
             <summary class="settings-section-title">表示設定</summary>
             <p class="settings-section-note">ウィークリーとデイリーはそれぞれ独立して設定できます。</p>
             <label class="settings-toggle-row">
+              <input type="checkbox" id="showUnscheduledBoxWeeklyToggle">
+              <span>ウィークリーに「当日中」欄を表示する</span>
+            </label>
+            <label class="settings-toggle-row">
               <input type="checkbox" id="showThisWeekBoxWeeklyToggle">
               <span>ウィークリーに「今週中」欄を表示する</span>
             </label>
@@ -149,6 +153,7 @@
               <button id="weeklyNextBtn" class="calendar-nav-btn" type="button" aria-label="次の週">&#8250;</button>
             </div>
             <div class="calendar-header-toggles">
+              <button type="button" class="timetable-toggle-btn box-toggle-btn" id="weeklyUnscheduledToggleBtn" title="当日中欄の表示切替">当日中</button>
               <button type="button" class="timetable-toggle-btn box-toggle-btn" id="weeklyThisWeekToggleBtn" title="今週中欄の表示切替">今週中</button>
               <button type="button" class="timetable-toggle-btn box-toggle-btn" id="weeklySomedayToggleBtn" title="いつか欄の表示切替">いつか</button>
             </div>
