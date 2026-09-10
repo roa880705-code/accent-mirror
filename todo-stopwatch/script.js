@@ -21,6 +21,10 @@
   const TIMETABLE_VISIBLE_KEY = "todoStopwatch:timetableVisible:v1";
   // 端末ローカルの表示設定(今のところ同期はしない)。
   const PERIOD_SETTINGS_KEY = "todoStopwatch:periodSettings:v1";
+  // ウィークリー/デイリーの時間軸に表示する時間帯(例: 7:00〜21:00のみ)。
+  // 範囲外の時間はグリッド自体の高さから切り詰めて完全に表示しない
+  // (スクロールしても出てこない)。
+  const CALENDAR_HOUR_RANGE_KEY = "todoStopwatch:calendarHourRange:v1";
   // 「今週中」欄: 週(月曜日の日付文字列)ごとに持つ、階層を持たないフラット
   // なタスク一覧。いつか(無期限)と今日中(その日限定)の中間の置き場。
   const THIS_WEEK_TASKS_KEY = "todoStopwatch:thisWeekTasks:v1";
@@ -370,6 +374,27 @@
     return m;
   }
 
+  // ウィークリー/デイリーの時間軸に表示する時間帯。startMin/endMinは0時
+  // からの分数(5分刻み)で、既定は0:00〜24:00(=制限なし、これまで通り
+  // 24時間分すべて表示)。壊れたデータ(範囲が1時間未満など)は既定へ
+  // 戻す。
+  function loadCalendarHourRange() {
+    try {
+      const raw = localStorage.getItem(CALENDAR_HOUR_RANGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Number.isFinite(parsed.startMin) && Number.isFinite(parsed.endMin)) {
+          const startMin = Math.max(0, Math.min(1435, Math.round(parsed.startMin / 5) * 5));
+          const endMin = Math.max(0, Math.min(1440, Math.round(parsed.endMin / 5) * 5));
+          if (endMin - startMin >= 60) return { startMin, endMin };
+        }
+      }
+    } catch (e) {
+      // corrupt storage, fall through to default
+    }
+    return { startMin: 0, endMin: 1440 };
+  }
+
   function loadPeriodSettings() {
     try {
       const raw = localStorage.getItem(PERIOD_SETTINGS_KEY);
@@ -465,6 +490,7 @@
   let timetable = loadTimetable();
   let timetableVisibleDates = loadTimetableVisibleDates();
   let displaySettings = loadDisplaySettings();
+  let calendarHourRange = loadCalendarHourRange();
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -533,6 +559,11 @@
   function savePeriodSettings() {
     localStorage.setItem(PERIOD_SETTINGS_KEY, JSON.stringify(periodSettings));
     window.AppSync?.markDirty("periodSettings:v1", periodSettings);
+  }
+
+  function saveCalendarHourRange() {
+    localStorage.setItem(CALENDAR_HOUR_RANGE_KEY, JSON.stringify(calendarHourRange));
+    window.AppSync?.markDirty("calendarHourRange:v1", calendarHourRange);
   }
 
   function saveTimetable() {
@@ -887,6 +918,10 @@
   const settingsAnnouncementsList = document.getElementById("settingsAnnouncementsList");
   const settingsFaqList = document.getElementById("settingsFaqList");
   const periodEnabledToggle = document.getElementById("periodEnabledToggle");
+  const calendarHourRangeStartHour = document.getElementById("calendarHourRangeStartHour");
+  const calendarHourRangeStartMinute = document.getElementById("calendarHourRangeStartMinute");
+  const calendarHourRangeEndHour = document.getElementById("calendarHourRangeEndHour");
+  const calendarHourRangeEndMinute = document.getElementById("calendarHourRangeEndMinute");
   const showThisWeekBoxWeeklyToggle = document.getElementById("showThisWeekBoxWeeklyToggle");
   const showSomedayBoxWeeklyToggle = document.getElementById("showSomedayBoxWeeklyToggle");
   const showThisWeekBoxDailyToggle = document.getElementById("showThisWeekBoxDailyToggle");
@@ -1836,6 +1871,71 @@
 
   renderPeriodSettingsUI();
 
+  // --- 設定ページ: 表示時間帯 ---
+  // ウィークリー/デイリーの時間軸に表示する時間帯(例: 7:00〜21:00のみ)。
+  // 終了は24時(終日)まで選べるようにするため、時セレクトだけ1〜24時の
+  // 範囲にし、24時を選んだ時は分を00固定・編集不可にする(24:05等は
+  // 意味を持たないため)。
+  function renderCalendarHourRangeUI() {
+    calendarHourRangeStartHour.innerHTML = "";
+    for (let h = 0; h < 24; h++) {
+      const opt = document.createElement("option");
+      opt.value = String(h);
+      opt.textContent = `${h}時`;
+      if (h === Math.floor(calendarHourRange.startMin / 60)) opt.selected = true;
+      calendarHourRangeStartHour.appendChild(opt);
+    }
+    calendarHourRangeStartMinute.innerHTML = "";
+    for (let m = 0; m < 60; m += 5) {
+      const opt = document.createElement("option");
+      opt.value = String(m);
+      opt.textContent = String(m).padStart(2, "0");
+      if (m === calendarHourRange.startMin % 60) opt.selected = true;
+      calendarHourRangeStartMinute.appendChild(opt);
+    }
+    calendarHourRangeEndHour.innerHTML = "";
+    for (let h = 1; h <= 24; h++) {
+      const opt = document.createElement("option");
+      opt.value = String(h);
+      opt.textContent = h === 24 ? "24時(終日)" : `${h}時`;
+      if (h === Math.floor(calendarHourRange.endMin / 60)) opt.selected = true;
+      calendarHourRangeEndHour.appendChild(opt);
+    }
+    calendarHourRangeEndMinute.innerHTML = "";
+    for (let m = 0; m < 60; m += 5) {
+      const opt = document.createElement("option");
+      opt.value = String(m);
+      opt.textContent = String(m).padStart(2, "0");
+      if (m === calendarHourRange.endMin % 60) opt.selected = true;
+      calendarHourRangeEndMinute.appendChild(opt);
+    }
+    calendarHourRangeEndMinute.disabled = calendarHourRange.endMin >= 1440;
+  }
+
+  function onCalendarHourRangeChange() {
+    const startHour = Number(calendarHourRangeStartHour.value);
+    const startMinute = Number(calendarHourRangeStartMinute.value);
+    const endHour = Number(calendarHourRangeEndHour.value);
+    const endMinute = endHour === 24 ? 0 : Number(calendarHourRangeEndMinute.value);
+    const startMin = startHour * 60 + startMinute;
+    let endMin = endHour * 60 + endMinute;
+    // 開始と終了の間隔が短すぎる(60分未満)場合は、終了を開始+60分へ
+    // 押し出して不正な範囲にならないようにする。
+    if (endMin - startMin < 60) endMin = Math.min(1440, startMin + 60);
+    calendarHourRange = { startMin, endMin };
+    saveCalendarHourRange();
+    renderCalendarHourRangeUI();
+    refreshCalendarHours();
+    renderCalendar();
+  }
+
+  calendarHourRangeStartHour.addEventListener("change", onCalendarHourRangeChange);
+  calendarHourRangeStartMinute.addEventListener("change", onCalendarHourRangeChange);
+  calendarHourRangeEndHour.addEventListener("change", onCalendarHourRangeChange);
+  calendarHourRangeEndMinute.addEventListener("change", onCalendarHourRangeChange);
+
+  renderCalendarHourRangeUI();
+
   // --- 設定ページ: 表示設定 ---
   updateBoxDisplayToggleUI();
 
@@ -1844,6 +1944,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-10", text: "設定ページに「表示時間帯」を追加しました。ウィークリー/デイリーの時間軸に表示する時間帯を、例えば朝7:00〜夜21:00のように絞れます。範囲外の時間は完全に非表示になり、スクロールしても出てきません(既定は0:00〜24:00でこれまで通りです)。" },
     { date: "2026-09-10", text: "ウィークリーページ右上の表示切替ボタン(今週中/いつか)に「当日中」を追加しました。当日中欄の表示/非表示をここから切り替えられます(設定ページの表示設定とも連動します)。デイリーの今日中トレイは常設のままです。" },
     { date: "2026-09-10", text: "タスクページの樹形図で、予定・今週中の子/孫/ひ孫タスクをタップしても何も起きない不具合を修正しました。タップすると変更修正・子タスク追加・完了・削除の選択肢が開き、その場で編集できます。" },
     { date: "2026-09-10", text: "タスクページの右端に、スクロール位置が常に分かる縦スクロールバーを追加しました(スマホでのスクロールの反応が分かりづらいという声を受けての対応です)。つまみを直接ドラッグしてスクロールすることもできます。" },
@@ -2147,6 +2248,20 @@
   }
   function pxToMin(px) {
     return (px / CAL_HOUR_H) * 60;
+  }
+
+  // minToPx/pxToMinは「長さ(分)⇔長さ(px)」の純粋な換算(予定の長さや、
+  // ドラッグの移動量など)。一方、時間軸グリッド内の「絶対時刻(0時からの
+  // 分)⇔グリッド上端からのpx位置」は、表示時間帯の設定(calendarHourRange、
+  // 既定は0:00〜24:00で実質無効)の開始時刻ぶんだけ原点がずれる — 表示
+  // 範囲を朝7:00開始にした場合、7:00がグリッドの上端(0px)になるため。
+  // 絶対時刻を扱う箇所(ブロック/現在時刻線/リサイズハンドルの位置、
+  // ポインタ位置から時刻を逆算する箇所)はこちらを使う。
+  function dayMinToPx(minOfDay) {
+    return minToPx(minOfDay - calendarHourRange.startMin);
+  }
+  function pxToDayMin(px) {
+    return pxToMin(px) + calendarHourRange.startMin;
   }
 
   // any date string within the currently-displayed window — this always
@@ -3242,13 +3357,13 @@
   function startPlanRangeDraw(dayCol, dateStr, startClientY) {
     vibrate(20);
     const rect = dayCol.getBoundingClientRect();
-    const rawMin = pxToMin(startClientY - rect.top);
+    const rawMin = pxToDayMin(startClientY - rect.top);
     let anchorMin = Math.round(rawMin / 5) * 5;
-    anchorMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, anchorMin));
+    anchorMin = Math.max(calendarHourRange.startMin, Math.min(calendarHourRange.endMin - PLAN_DEFAULT_MIN, anchorMin));
     // starts at the usual default length so a long-press with no follow-up
     // drag still creates a normal-sized plan; dragging overrides this as
     // soon as the pointer moves.
-    const initialEnd = Math.min(1440, anchorMin + PLAN_DEFAULT_MIN);
+    const initialEnd = Math.min(calendarHourRange.endMin, anchorMin + PLAN_DEFAULT_MIN);
 
     planDrawCtx = {
       dayCol,
@@ -3276,9 +3391,9 @@
     // stationary finger — only a real, deliberate drag should override it
     if (Math.abs(e.clientY - ctx.startClientY) < PLAN_MOVE_TOLERANCE) return;
     const rect = ctx.dayCol.getBoundingClientRect();
-    const rawMin = pxToMin(e.clientY - rect.top);
+    const rawMin = pxToDayMin(e.clientY - rect.top);
     let pointerMin = Math.round(rawMin / 5) * 5;
-    pointerMin = Math.max(0, Math.min(1440, pointerMin));
+    pointerMin = Math.max(calendarHourRange.startMin, Math.min(calendarHourRange.endMin, pointerMin));
 
     // the drag can extend either later (below the anchor) or earlier (above
     // it) — whichever side the pointer is on becomes the moving edge, while
@@ -3289,8 +3404,8 @@
       if (pointerMin >= ctx.anchorMin) endMin = startMin + PLAN_MIN_DURATION;
       else startMin = endMin - PLAN_MIN_DURATION;
     }
-    startMin = Math.max(0, startMin);
-    endMin = Math.min(1440, endMin);
+    startMin = Math.max(calendarHourRange.startMin, startMin);
+    endMin = Math.min(calendarHourRange.endMin, endMin);
 
     ctx.startMin = startMin;
     ctx.endMin = endMin;
@@ -3542,7 +3657,7 @@
     // even though the finger itself still covers part of the block.
     const dyMin = pxToMin(e.clientY - planDragCtx.startClientY) * PLAN_DRAG_DAMPING;
     let startMin = Math.round((planDragCtx.plan.startMin + dyMin) / 5) * 5;
-    startMin = Math.max(0, Math.min(1440 - planDragCtx.duration, startMin));
+    startMin = Math.max(calendarHourRange.startMin, Math.min(calendarHourRange.endMin - planDragCtx.duration, startMin));
 
     planDragCtx.hoverDate = targetCol.dataset.date;
     planDragCtx.previewStartMin = startMin;
@@ -3552,7 +3667,7 @@
     }
 
     if (planDragCtx.block.parentElement !== targetCol) targetCol.appendChild(planDragCtx.block);
-    planDragCtx.block.style.top = `${minToPx(startMin)}px`;
+    planDragCtx.block.style.top = `${dayMinToPx(startMin)}px`;
     planDragCtx.block.style.height = `${minToPx(planDragCtx.duration)}px`;
     planDragCtx.block.style.left = "1px";
     planDragCtx.block.style.width = "calc(100% - 2px)";
@@ -3813,9 +3928,9 @@
     if (targetCol) {
       const colRect = targetCol.getBoundingClientRect();
       const relY = e.clientY - colRect.top;
-      const rawMin = pxToMin(relY);
+      const rawMin = pxToDayMin(relY);
       let startMin = Math.round(rawMin / 15) * 15;
-      startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+      startMin = Math.max(calendarHourRange.startMin, Math.min(calendarHourRange.endMin - PLAN_DEFAULT_MIN, startMin));
       if (startMin !== ctx.lastVibrateMin) {
         vibrate(8);
         ctx.lastVibrateMin = startMin;
@@ -3851,9 +3966,9 @@
     const dateStr = ctx.targetCol.dataset.date;
     const colRect = ctx.targetCol.getBoundingClientRect();
     const relY = ctx.clientY - colRect.top;
-    const rawMin = pxToMin(relY);
+    const rawMin = pxToDayMin(relY);
     let startMin = Math.round(rawMin / 15) * 15;
-    startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+    startMin = Math.max(calendarHourRange.startMin, Math.min(calendarHourRange.endMin - PLAN_DEFAULT_MIN, startMin));
     const endMin = startMin + PLAN_DEFAULT_MIN;
     const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
@@ -3898,14 +4013,14 @@
     const { plan, startClientY } = planResizeCtx;
     const deltaMin = pxToMin(e.clientY - startClientY);
     let endMin = Math.round((plan.endMin + deltaMin) / 5) * 5;
-    endMin = Math.max(plan.startMin + PLAN_MIN_DURATION, Math.min(1440, endMin));
+    endMin = Math.max(plan.startMin + PLAN_MIN_DURATION, Math.min(calendarHourRange.endMin, endMin));
     planResizeCtx.previewEndMin = endMin;
     if (endMin !== planResizeCtx.lastVibrateMin) {
       vibrate(8);
       planResizeCtx.lastVibrateMin = endMin;
     }
     planResizeCtx.block.style.height = `${minToPx(endMin - plan.startMin)}px`;
-    planResizeCtx.handle.style.top = `${minToPx(endMin)}px`;
+    planResizeCtx.handle.style.top = `${dayMinToPx(endMin)}px`;
   }
 
   function onPlanResizeEnd() {
@@ -3943,7 +4058,7 @@
       dragPreviewEl.style.pointerEvents = "none";
     }
     if (dragPreviewEl.parentElement !== dayCol) dayCol.appendChild(dragPreviewEl);
-    dragPreviewEl.style.top = `${minToPx(startMin)}px`;
+    dragPreviewEl.style.top = `${dayMinToPx(startMin)}px`;
     dragPreviewEl.style.height = `${minToPx(Math.max(1, duration))}px`;
     dragPreviewEl.style.left = "1px";
     dragPreviewEl.style.width = "calc(100% - 2px)";
@@ -6561,9 +6676,9 @@
         if (weekTargetCol) {
           const colRect = weekTargetCol.getBoundingClientRect();
           const relY = e.clientY - colRect.top;
-          const rawMin = pxToMin(relY);
+          const rawMin = pxToDayMin(relY);
           let startMin = Math.round(rawMin / 15) * 15;
-          startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+          startMin = Math.max(calendarHourRange.startMin, Math.min(calendarHourRange.endMin - PLAN_DEFAULT_MIN, startMin));
           showDragPreview(weekTargetCol, labelOf(ctx.item, ctx.fallbackLabel), startMin, PLAN_DEFAULT_MIN);
         } else {
           clearDragPreview();
@@ -6620,9 +6735,9 @@
       if (targetCol) {
         const colRect = targetCol.getBoundingClientRect();
         const relY = e.clientY - colRect.top;
-        const rawMin = pxToMin(relY);
+        const rawMin = pxToDayMin(relY);
         let startMin = Math.round(rawMin / 15) * 15;
-        startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+        startMin = Math.max(calendarHourRange.startMin, Math.min(calendarHourRange.endMin - PLAN_DEFAULT_MIN, startMin));
         showDragPreview(targetCol, labelOf(ctx.item, ctx.fallbackLabel), startMin, PLAN_DEFAULT_MIN);
       } else {
         clearDragPreview();
@@ -6806,9 +6921,9 @@
         const targetDate = targetCol.dataset.date;
         const rect = targetCol.getBoundingClientRect();
         const relY = clientY - rect.top;
-        const rawMin = pxToMin(relY);
+        const rawMin = pxToDayMin(relY);
         let startMin = Math.round(rawMin / 15) * 15;
-        startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+        startMin = Math.max(calendarHourRange.startMin, Math.min(calendarHourRange.endMin - PLAN_DEFAULT_MIN, startMin));
         const endMin = startMin + PLAN_DEFAULT_MIN;
         const planId = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
@@ -6885,9 +7000,9 @@
 
       const rect = targetCol.getBoundingClientRect();
       const relY = clientY - rect.top;
-      const rawMin = pxToMin(relY);
+      const rawMin = pxToDayMin(relY);
       let startMin = Math.round(rawMin / 15) * 15;
-      startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+      startMin = Math.max(calendarHourRange.startMin, Math.min(calendarHourRange.endMin - PLAN_DEFAULT_MIN, startMin));
       const endMin = startMin + PLAN_DEFAULT_MIN;
       const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
@@ -7115,9 +7230,9 @@
         } else {
           const colRect = targetCol.getBoundingClientRect();
           const relY = e.clientY - colRect.top;
-          const rawMin = pxToMin(relY);
+          const rawMin = pxToDayMin(relY);
           let startMin = Math.round(rawMin / 15) * 15;
-          startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+          startMin = Math.max(calendarHourRange.startMin, Math.min(calendarHourRange.endMin - PLAN_DEFAULT_MIN, startMin));
           showDragPreview(targetCol, ctx.task.label, startMin, PLAN_DEFAULT_MIN);
         }
         return;
@@ -7416,9 +7531,9 @@
 
       const rect = targetCol.getBoundingClientRect();
       const relY = clientY - rect.top;
-      const rawMin = pxToMin(relY);
+      const rawMin = pxToDayMin(relY);
       let startMin = Math.round(rawMin / 15) * 15;
-      startMin = Math.max(0, Math.min(1440 - PLAN_DEFAULT_MIN, startMin));
+      startMin = Math.max(calendarHourRange.startMin, Math.min(calendarHourRange.endMin - PLAN_DEFAULT_MIN, startMin));
       const endMin = startMin + PLAN_DEFAULT_MIN;
       const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
@@ -7691,8 +7806,14 @@
       dayUnscheduled[dateStr] = itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority && !it.completed);
     });
     // 「時間未定」タスクはスクロール不要な常時表示の専用行(下記)にすべて
-    // 表示するので、時間軸グリッド自体は24時間ぶんの高さで固定でよい。
-    calendarWeekGrid.style.height = `${24 * CAL_HOUR_H}px`;
+    // 表示するので、時間軸グリッド自体は設定された表示時間帯ぶんの高さで
+    // 固定でよい。範囲外の時間はグリッドの外に出るため、スクロールしても
+    // 見えなくなる(設定ページの「完全に切り取る」挙動)。
+    calendarWeekGrid.style.height = `${dayMinToPx(calendarHourRange.endMin)}px`;
+    // 背景の昼夜グラデーション(常に実時間0:00〜24:00にマッピングされる)は
+    // グリッドの原点が表示時間帯の開始時刻にずれた分だけ位置も合わせて
+    // ずらし、時間帯を絞っても色の対応がずれないようにする。
+    calendarWeekGrid.style.backgroundPosition = `top, 0 ${dayMinToPx(0)}px`;
 
     for (let i = 0; i < CAL_DAYS; i++) {
       const dateStr = dayDates[i];
@@ -7775,7 +7896,7 @@
         const durMin = Math.max(1, (seg.endMs - seg.startMs) / 60000);
         const block = document.createElement("div");
         block.className = "cal-block";
-        block.style.top = `${minToPx(startMinOfDay)}px`;
+        block.style.top = `${dayMinToPx(startMinOfDay)}px`;
         block.style.height = `${minToPx(durMin)}px`;
         block.style.left = `calc(${(col / colCount) * 100}% + 1px)`;
         block.style.width = `calc(${(1 / colCount) * 100}% - 2px)`;
@@ -7791,7 +7912,7 @@
         const nowMin = now.getHours() * 60 + now.getMinutes();
         const line = document.createElement("div");
         line.className = "cal-now-line";
-        line.style.top = `${minToPx(nowMin)}px`;
+        line.style.top = `${dayMinToPx(nowMin)}px`;
         dayCol.appendChild(line);
         calendarNowLineEl = line;
       }
@@ -7826,7 +7947,7 @@
                 if (heightMin <= 0) return null;
                 const piece = document.createElement("div");
                 piece.className = `cal-plan-buffer-spine ${cls}`;
-                piece.style.top = `${minToPx(topMin)}px`;
+                piece.style.top = `${dayMinToPx(topMin)}px`;
                 piece.style.height = `${minToPx(heightMin)}px`;
                 piece.style.left = spineLeft;
                 piece.style.width = `${PLAN_BUFFER_SPINE_W}px`;
@@ -7879,7 +8000,7 @@
             const block = document.createElement("div");
             block.className = "cal-plan-block";
             block.classList.toggle("has-buffer", hasBuffer);
-            block.style.top = `${minToPx(p.startMin)}px`;
+            block.style.top = `${dayMinToPx(p.startMin)}px`;
             block.style.height = `${minToPx(Math.max(1, p.endMin - p.startMin))}px`;
             block.style.left = blockLeftCss;
             block.style.width = blockWidthCss;
@@ -7930,7 +8051,7 @@
               // past its bottom edge and make it untappable.
               const handle = document.createElement("div");
               handle.className = "cal-plan-resize-handle";
-              handle.style.top = `${minToPx(p.endMin)}px`;
+              handle.style.top = `${dayMinToPx(p.endMin)}px`;
               // 本体(block)の実際の中心に合わせる — バッファがある時は
               // block自体が幹の分だけ右へずれて細くなっているため。
               handle.style.left = `calc(${blockLeftCss} + ${blockWidthCss} / 2)`;
@@ -8033,8 +8154,8 @@
       calendarAutoScrollPending = false;
       requestAnimationFrame(() => {
         const now = new Date();
-        const nowHour = now.getHours() + now.getMinutes() / 60;
-        calendarWeekBody.scrollTop = Math.max(0, (nowHour - 1.5) * CAL_HOUR_H);
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+        calendarWeekBody.scrollTop = Math.max(0, dayMinToPx(nowMin - 90));
       });
     }
 
@@ -8045,13 +8166,13 @@
     if (calendarNowLineEl) {
       const now = new Date();
       const nowMin = now.getHours() * 60 + now.getMinutes();
-      calendarNowLineEl.style.top = `${minToPx(nowMin)}px`;
+      calendarNowLineEl.style.top = `${dayMinToPx(nowMin)}px`;
     }
     const now = Date.now();
     calendarLiveBlocks.forEach(({ el, startMs, dayStart }) => {
       const startMinOfDay = Math.max(0, (startMs - dayStart) / 60000);
       const durMin = Math.max(1, (now - startMs) / 60000);
-      el.style.top = `${minToPx(startMinOfDay)}px`;
+      el.style.top = `${dayMinToPx(startMinOfDay)}px`;
       el.style.height = `${minToPx(durMin)}px`;
     });
   }
@@ -8061,10 +8182,15 @@
   // seeding once at boot, regardless of which page happens to be active then.
   function initCalendarHours(hoursEl) {
     hoursEl.innerHTML = "";
-    for (let h = 0; h < 24; h++) {
+    hoursEl.style.height = `${dayMinToPx(calendarHourRange.endMin)}px`;
+    const firstHour = Math.ceil(calendarHourRange.startMin / 60);
+    // 上限は排他的(例: 終了21:00なら21:00のラベル自体は出さない)— 従来の
+    // 0:00〜24:00固定表示でも24:00のラベルは出していなかったのと揃える。
+    const lastHourExclusive = Math.ceil(calendarHourRange.endMin / 60);
+    for (let h = firstHour; h < lastHourExclusive; h++) {
       const label = document.createElement("div");
       label.className = "cal-hour-label";
-      label.style.top = `${h * CAL_HOUR_H}px`;
+      label.style.top = `${dayMinToPx(h * 60)}px`;
       label.textContent = `${h}:00`;
       hoursEl.appendChild(label);
     }
@@ -8074,9 +8200,10 @@
       const startMin = hour * 60 + minute;
       const endMin = endHour * 60 + endMinute;
       const posMin = placement === "middle" ? (startMin + endMin) / 2 : startMin;
+      if (posMin < calendarHourRange.startMin || posMin > calendarHourRange.endMin) return;
       const label = document.createElement("div");
       label.className = "cal-period-label";
-      label.style.top = `${minToPx(posMin)}px`;
+      label.style.top = `${dayMinToPx(posMin)}px`;
       label.textContent = symbol;
       hoursEl.appendChild(label);
     });

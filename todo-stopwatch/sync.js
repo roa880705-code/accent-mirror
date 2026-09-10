@@ -24,6 +24,7 @@
     "priorityTasks:v1": "todoStopwatch:priorityTasks:v1",
     "timetable:v1": "todoStopwatch:timetable:v1",
     "periodSettings:v1": "todoStopwatch:periodSettings:v1",
+    "calendarHourRange:v1": "todoStopwatch:calendarHourRange:v1",
     "thisWeekTasks:v1": "todoStopwatch:thisWeekTasks:v1",
     "displaySettings:v1": "todoStopwatch:displaySettings:v1",
   };

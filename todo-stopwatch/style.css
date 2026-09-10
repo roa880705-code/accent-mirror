@@ -718,6 +718,12 @@ body {
   padding: 0 2px;
 }
 
+/* 時限行(.period-row)の外、設定ページの独立セクションに単体で置く
+   時間帯セレクトなので、時限行用の左インデントは不要。 */
+#calendarHourRangeRow {
+  padding-left: 0;
+}
+
 .period-row-placement {
   display: flex;
   align-items: center;
