@@ -4252,8 +4252,19 @@ function resampledDeviationForSegments(words, partCount) {
 // モーラ単位の短い<prosody>タグに分割されるようになってからは、Azure側の
 // 補間でさらに弱まりやすい)。
 const PITCH_PERCENT_PER_SEMITONE = (Math.pow(2, 1 / 12) - 1) * 100;
-const PITCH_DEVIATION_PERCENT_CAP = 22;
-const PITCH_SEGMENT_PERCENT_CAP = 30;
+// 旧値22%(≈±3.7半音)は、実測で大きな音高差(例: 目立つ上げ下げ=phrase_movement/
+// zigzag判定の対象になった文で約19.9半音)が検出されても、その約37%程度にまで
+// 圧縮されてしまい、「音の高低差が反映されていない」という実機フィードバックの
+// 原因になっていた。実測される音高差の規模(往復で約20半音程度まで)をそのまま
+// 表現できるよう、片側の上限を60%(≈10半音)まで引き上げる。
+const PITCH_DEVIATION_PERCENT_CAP = 60;
+// formatSignedPercent(baselinePercent + deviationPercent) の既定capとして、両方の
+// 呼び出し箇所(pitchForVoiceSegment, moraPitchCurveForSegment)で暗黙に使われている。
+// PITCH_DEVIATION_PERCENT_CAPだけ引き上げても、この既定capが30のままだと
+// baselinePercentとの合計がここで再度30%に切り詰められ、上の引き上げが無意味に
+// なってしまう。baseline分の余地を残しつつdeviation分をそのまま通せるよう、
+// PITCH_DEVIATION_PERCENT_CAPより大きい値にしておく。
+const PITCH_SEGMENT_PERCENT_CAP = 90;
 
 function parsePercentValue(value) {
   const match = String(value || "").match(/([+-]?\d+(?:\.\d+)?)%/);
