@@ -922,7 +922,7 @@
   const devPasswordUnlockBtn = document.getElementById("devPasswordUnlockBtn");
   const devPasswordError = document.getElementById("devPasswordError");
   const devStatsPanel = document.getElementById("devStatsPanel");
-  const devStatsCount = document.getElementById("devStatsCount");
+  const devStatsSummary = document.getElementById("devStatsSummary");
   const devStatsList = document.getElementById("devStatsList");
   const periodEnabledToggle = document.getElementById("periodEnabledToggle");
   const calendarHourRangeStartHour = document.getElementById("calendarHourRangeStartHour");
@@ -1941,7 +1941,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
-    { date: "2026-09-11", text: "設定ページの一番下に「開発者用」欄を追加しました(パスワードで保護)。アクセス端末数などを確認できます。" },
+    { date: "2026-09-11", text: "設定ページの一番下に「開発者用」欄を追加しました(パスワードで保護)。アクセス端末数、直近7日/30日以内にアクセスした台数、合計編集回数、端末ごとの初回/最終アクセス日時・利用期間・編集回数を確認できます。" },
     { date: "2026-09-11", text: "複数端末でのGoogle同期で、しばらく開いたままにした端末の「最優先」「今日中」タスクが、他の端末で追加した内容を取り込めず古いままになってしまう不具合を修正しました。" },
     { date: "2026-09-10", text: "ログページから「いつか」欄を排除しました。「いつか」タスクの確認・追加・編集は、タスクページ・ウィークリー・デイリー・マンスリーから引き続き行えます。" },
     { date: "2026-09-10", text: "ウィークリー/デイリーの時間軸の右端に、スクロール位置が常に分かる縦スクロールバーを追加しました(タスクページと同じ方式です)。つまみを直接ドラッグしてスクロールすることもできます。" },
@@ -2069,28 +2069,83 @@
     return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   }
 
+  // 経過日数の表示用(相対日数): ミリ秒差を日数に丸めるだけの単純な計算
+  // なので、タイムゾーンをまたぐ端末混在では多少前後する可能性がある —
+  // 開発者向けの目安表示としては十分。
+  function daysBetween(fromIso, toIso) {
+    const from = new Date(fromIso).getTime();
+    const to = toIso ? new Date(toIso).getTime() : Date.now();
+    return Math.max(0, Math.round((to - from) / (24 * 60 * 60 * 1000)));
+  }
+
+  function addDevSummaryStat(label, value) {
+    const stat = document.createElement("div");
+    stat.className = "dev-stats-stat";
+    const valueEl = document.createElement("div");
+    valueEl.className = "dev-stats-stat-value";
+    valueEl.textContent = value;
+    const labelEl = document.createElement("div");
+    labelEl.className = "dev-stats-stat-label";
+    labelEl.textContent = label;
+    stat.append(valueEl, labelEl);
+    devStatsSummary.appendChild(stat);
+  }
+
+  function renderDevStatsMessage(message) {
+    devStatsSummary.innerHTML = "";
+    devStatsList.innerHTML = "";
+    const note = document.createElement("p");
+    note.className = "settings-section-note";
+    note.textContent = message;
+    devStatsSummary.appendChild(note);
+  }
+
   async function unlockDevPanel() {
     devStatsPanel.hidden = false;
     devPasswordGate.hidden = true;
-    devStatsCount.textContent = "読み込み中…";
-    devStatsList.innerHTML = "";
+    renderDevStatsMessage("読み込み中…");
     if (!window.AppSync || !window.AppSync.isConfigured()) {
-      devStatsCount.textContent = "同期機能が設定されていません";
+      renderDevStatsMessage("同期機能が設定されていません");
       return;
     }
     const rows = await window.AppSync.getDeviceStats();
     if (rows === null) {
-      devStatsCount.textContent = "取得に失敗しました";
+      renderDevStatsMessage("取得に失敗しました");
       return;
     }
-    devStatsCount.textContent = `${rows.length}台`;
+    devStatsSummary.innerHTML = "";
+    devStatsList.innerHTML = "";
+    if (!rows.length) {
+      addDevSummaryStat("端末数", "0台");
+      const note = document.createElement("p");
+      note.className = "settings-section-note";
+      note.textContent =
+        "0台のまま変わらない場合、SupabaseのSQL Editorでdevice_statsテーブルへのselectポリシー(schema.sql参照)がまだ有効になっていない可能性があります。";
+      devStatsList.appendChild(note);
+      return;
+    }
+    const now = Date.now();
+    const activeWithin = (ms) => rows.filter((r) => now - new Date(r.last_seen).getTime() <= ms).length;
+    const totalEdits = rows.reduce((sum, r) => sum + (r.edit_count || 0), 0);
+    addDevSummaryStat("端末数", `${rows.length}台`);
+    addDevSummaryStat("直近7日以内", `${activeWithin(7 * 24 * 60 * 60 * 1000)}台`);
+    addDevSummaryStat("直近30日以内", `${activeWithin(30 * 24 * 60 * 60 * 1000)}台`);
+    addDevSummaryStat("合計編集回数", `${totalEdits}回`);
+
     rows.forEach((row) => {
       const rowEl = document.createElement("div");
       rowEl.className = "dev-stats-row";
-      const idEl = document.createElement("span");
+      const idEl = document.createElement("div");
+      idEl.className = "dev-stats-row-id";
       idEl.textContent = row.device_id;
-      const detailEl = document.createElement("span");
-      detailEl.textContent = `最終: ${formatDevTimestamp(row.last_seen)} / 編集${row.edit_count}回`;
+      const detailEl = document.createElement("div");
+      detailEl.className = "dev-stats-row-detail";
+      const lastSeenDaysAgo = daysBetween(row.last_seen, null);
+      const usageSpanDays = daysBetween(row.first_seen, row.last_seen);
+      detailEl.textContent =
+        `初回: ${formatDevTimestamp(row.first_seen)} / 最終: ${formatDevTimestamp(row.last_seen)}` +
+        `(${lastSeenDaysAgo === 0 ? "今日" : `${lastSeenDaysAgo}日前`}) / ` +
+        `利用期間${usageSpanDays}日 / 編集${row.edit_count}回`;
       rowEl.append(idEl, detailEl);
       devStatsList.appendChild(rowEl);
     });

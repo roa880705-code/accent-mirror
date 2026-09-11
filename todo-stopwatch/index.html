@@ -114,8 +114,10 @@
               <p class="settings-section-note dev-password-error" id="devPasswordError" hidden>パスワードが違います。</p>
             </div>
             <div id="devStatsPanel" class="dev-stats-panel" hidden>
-              <p class="settings-section-note">匿名のアクセス端末数(端末ごとのID・初回/最終アクセス日時・編集回数のみで、個人情報は含みません)。</p>
-              <p class="dev-stats-count" id="devStatsCount">-</p>
+              <p class="settings-section-note">
+                このアプリを開いた端末ごとに、ランダムな匿名ID(個人情報ではない文字列)を1つ生成してその端末のブラウザに保存し、それをキーに「初めて開いた日時」「直近に開いた日時」「実際にタスクの追加・編集などの操作をした回数の目安」を記録しています。サインインの有無に関わらず記録され、氏名・メールアドレスなど個人を特定できる情報は一切含みません。あくまで「このアプリがどれくらい・どんな頻度で使われているか」を把握するための匿名の利用統計です。
+              </p>
+              <div id="devStatsSummary" class="dev-stats-summary"></div>
               <div id="devStatsList" class="dev-stats-list"></div>
             </div>
           </details>

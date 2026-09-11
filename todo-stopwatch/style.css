@@ -660,30 +660,61 @@ body {
   width: 100%;
 }
 
-.dev-stats-count {
-  margin: 0;
-  font-size: 1.4rem;
+.dev-stats-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.dev-stats-stat {
+  flex: 1 1 70px;
+  min-width: 70px;
+  padding: 6px 8px;
+  background: var(--panel);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.dev-stats-stat-value {
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--ink);
+}
+
+.dev-stats-stat-label {
+  font-size: 0.6rem;
+  color: var(--muted);
 }
 
 .dev-stats-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 200px;
+  max-height: 260px;
   overflow-y: auto;
 }
 
 .dev-stats-row {
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 0.68rem;
-  color: var(--muted);
-  padding: 4px 6px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
   background: var(--panel);
   border-radius: 6px;
+}
+
+.dev-stats-row-id {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.dev-stats-row-detail {
+  font-size: 0.64rem;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .period-settings-list {
