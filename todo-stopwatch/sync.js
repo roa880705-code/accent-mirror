@@ -376,6 +376,26 @@
         return null;
       }
     },
+    // 開発者用パネルの「テスト書き込み」用: この端末のdevice_idで実際に
+    // upsertを1回試し、成功/失敗(と失敗時の生のエラー内容)をそのまま
+    // 返す。iPadなどコンソールを開きにくい端末でも、原因(RLS・スキーマ
+    // 不一致・ネットワーク等)をその場で切り分けられるようにするため。
+    async testDeviceStatsWrite() {
+      if (!configured || !client) return { ok: false, message: "同期機能が設定されていません" };
+      try {
+        const deviceId = getOrCreateDeviceId();
+        if (!deviceId) return { ok: false, message: "端末IDを生成できませんでした(localStorageが使えない可能性があります)" };
+        const { error } = await client
+          .from("device_stats")
+          .upsert({ device_id: deviceId, last_seen: new Date().toISOString() }, { onConflict: "device_id" });
+        if (error) {
+          return { ok: false, message: `${error.message || error}${error.details ? ` / ${error.details}` : ""}${error.hint ? ` / ヒント: ${error.hint}` : ""}` };
+        }
+        return { ok: true, deviceId };
+      } catch (err) {
+        return { ok: false, message: (err && err.message) || String(err) };
+      }
+    },
     async signIn() {
       if (!client) return;
       // without this, Supabase falls back to the bare origin (no path) as

@@ -924,6 +924,8 @@
   const devStatsPanel = document.getElementById("devStatsPanel");
   const devStatsSummary = document.getElementById("devStatsSummary");
   const devStatsList = document.getElementById("devStatsList");
+  const devTestWriteBtn = document.getElementById("devTestWriteBtn");
+  const devTestWriteResult = document.getElementById("devTestWriteResult");
   const periodEnabledToggle = document.getElementById("periodEnabledToggle");
   const calendarHourRangeStartHour = document.getElementById("calendarHourRangeStartHour");
   const calendarHourRangeStartMinute = document.getElementById("calendarHourRangeStartMinute");
@@ -2164,6 +2166,24 @@
   devPasswordUnlockBtn.addEventListener("click", tryUnlockDevPanel);
   devPasswordInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") tryUnlockDevPanel();
+  });
+
+  // コンソールを開きにくい端末(iPad等)でも、device_statsへの書き込みが
+  // 実際に成功するかその場で確認できるようにするテストボタン。
+  devTestWriteBtn.addEventListener("click", async () => {
+    devTestWriteResult.hidden = false;
+    devTestWriteResult.textContent = "書き込み中…";
+    if (!window.AppSync) {
+      devTestWriteResult.textContent = "同期機能が読み込まれていません";
+      return;
+    }
+    const result = await window.AppSync.testDeviceStatsWrite();
+    if (result.ok) {
+      devTestWriteResult.textContent = `書き込み成功(端末ID: ${result.deviceId})。下の一覧を更新します…`;
+      await unlockDevPanel();
+    } else {
+      devTestWriteResult.textContent = `書き込み失敗: ${result.message}`;
+    }
   });
 
   // --- 設定ページ: 時間割 ---
