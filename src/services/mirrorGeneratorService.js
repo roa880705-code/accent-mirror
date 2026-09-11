@@ -4929,7 +4929,14 @@ function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonan
       conservative,
       linking,
       soundSignature,
-      meaningSource: meaning.source
+      meaningSource: meaning.source,
+      // 実機でのスクショ診断(リリース前の反復改善)で、コード側の閾値・上限を
+      // 都度聞かなくても画面から確認できるようにしておく。
+      pitchCaps: {
+        deviationPercentCap: PITCH_DEVIATION_PERCENT_CAP,
+        segmentPercentCap: PITCH_SEGMENT_PERCENT_CAP,
+        percentPerSemitone: Number(PITCH_PERCENT_PER_SEMITONE.toFixed(2))
+      }
     }
   };
 }

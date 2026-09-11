@@ -1588,11 +1588,68 @@ function buildPitchContourSvg(intonationFeatures, legend = { model: "モデル�
   <div class="pitch-chart-legend"><span class="pitch-legend-model">●</span> ${escapeHtml(legend.model)}　<span class="pitch-legend-user">●</span> ${escapeHtml(legend.user)}</div>`;
 }
 
+// リリース前の反復改善(実機で試す→スクショをClaudeに送る→直す)を支えるための、
+// 内部計算値の一覧表示。文章の「分析まとめ」だけでは、速度・抑揚の分類が
+// 内部で矛盾していても(例: articulation WPMが自然域を超えているのに
+// 「自然域」とラベル表示される、といったバグ)、生の数値を見比べないと
+// 気付きにくい。<details>の中に隠さず常時表示し、1枚のスクリーンショット/PDFで
+// まとめて渡せるようにする。
+function debugRow(label, value) {
+  return `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`;
+}
+
+function renderMirrorDebugTable(mirror) {
+  const el = $("mirrorDebugTable");
+  if (!el) return;
+  if (!mirror) {
+    el.textContent = "まだありません。";
+    return;
+  }
+
+  const f = mirror.speechFeatures || {};
+  const plan = mirror.voiceScript?.transferPlan || {};
+  const confidence = mirror.confidence || {};
+  const expressiveness = mirror.expressiveness || {};
+  const caps = mirror.debug?.pitchCaps || {};
+  const contour = f.intonationFeatures?.contour || {};
+
+  const rows = [
+    debugRow("全体WPM / articulation WPM", `${f.wpm ?? "--"} / ${f.articulationWpm ?? "--"}`),
+    debugRow("速度分類(全体) level/label", `${f.speedLevel ?? "--"} / ${f.speedLabel ?? "--"}`),
+    debugRow("速度分類(articulation) level/label", `${f.articulationSpeedLevel ?? "--"} / ${f.articulationSpeedLabel ?? "--"}`),
+    debugRow("速度分類(ミラー反映用) level/label", `${f.voiceSpeedLevel ?? "--"} / ${f.voiceSpeedLabel ?? "--"}`),
+    debugRow("抑揚: 判定方式(basis)", f.intonationFeatures?.basis ?? "--"),
+    debugRow("抑揚: intonationStatus", plan.intonationStatus ?? f.intonationStatus ?? "--"),
+    debugRow("抑揚: 想定される文末の動き(expected)", plan.intonationExpected ?? "--"),
+    debugRow("抑揚: 音域差(半音) / 方向転換回数", `${contour.rangeSemitones ?? "--"} / ${contour.directionChanges ?? "--"}`),
+    debugRow("抑揚: パターン判定(pattern)", contour.pattern ?? "--"),
+    debugRow("子音の弱さ level/label", `${f.consonantWeaknessLevel ?? "--"} / ${f.consonantWeaknessLabel ?? "--"}`),
+    debugRow("こもり(muffled) / Could見落とし候補", `${mirror.debug?.muffled ?? "--"} / ${mirror.debug?.couldBlindSpot ?? "--"}`),
+    debugRow("区切り発音(segmentedDelivery)", plan.hasSegmentedDelivery ? "あり" : "なし"),
+    debugRow("表現力(expressiveness) level / styleDegree", `${expressiveness.level ?? "--"} / ${expressiveness.styleDegree ?? "--"}`),
+    debugRow("感情スケール(expressivenessScale)", plan.expressivenessScale ?? "--"),
+    debugRow("信頼度(confidence)", confidence.level ?? "--"),
+    debugRow("信頼度の根拠", (confidence.evidence || []).join(" / ") || "--"),
+    debugRow("ピッチ上限 deviation/segment/%per半音", `${caps.deviationPercentCap ?? "--"}% / ${caps.segmentPercentCap ?? "--"}% / ${caps.percentPerSemitone ?? "--"}%`)
+  ].join("");
+
+  const segmentRows = (mirror.voiceScript?.segments || [])
+    .map((seg) => `<tr><td>${escapeHtml(seg.role || "")}</td><td>${escapeHtml(seg.text || "")}</td><td>${escapeHtml(seg.rate || "")}</td><td>${escapeHtml(seg.pitch || "")}</td><td>${seg.pitchCurve ? `あり(${seg.pitchCurve.length}モーラ)` : "なし"}</td></tr>`)
+    .join("");
+
+  el.innerHTML = `
+    <table class="debug-table"><tbody>${rows}</tbody></table>
+    <div class="minor" style="margin-top:10px">セグメントごとの実際の適用値</div>
+    <table class="debug-table"><thead><tr><th>role</th><th>text</th><th>rate</th><th>pitch</th><th>pitchCurve</th></tr></thead><tbody>${segmentRows || '<tr><td colspan="5">セグメントなし</td></tr>'}</tbody></table>
+  `;
+}
+
 function renderMirror(mirror) {
   if (!mirror) {
     $("mirrorVoiceText").textContent = "まだありません。";
     $("pitchContourChart").textContent = "まだありません。";
     $("mirrorAnalysisSummary").textContent = "まだありません。";
+    renderMirrorDebugTable(null);
     $("mirrorVoiceStatus").textContent = "ミラー音声はまだありません。";
     $("mirrorVoicePlayback").className = "audio hidden";
     $("mirrorVoicePlayback").removeAttribute("src");
@@ -1613,6 +1670,7 @@ function renderMirror(mirror) {
     ? `<div class="notice"><strong>自由認識を優先中</strong>: 選択文と違う英文として聞こえたため、ミラー音声は自由認識された意味を優先します。下の分析は診断参考で、ミラー音声の直接材料ではありません。</div>`
     : "";
   $("mirrorAnalysisSummary").innerHTML = (freeRecognitionNote || "") + buildMirrorAnalysisSummary(mirror);
+  renderMirrorDebugTable(mirror);
   $("mirrorVoiceStatus").textContent = mirror.confidence?.level === "high"
     ? "ミラー音声を生成できます。"
     : "ミラー音声を仮説として生成できます。確信度が低い場合は、聞こえ方の候補として確認してください。";
