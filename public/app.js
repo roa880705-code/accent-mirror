@@ -1644,12 +1644,49 @@ function renderMirrorDebugTable(mirror) {
   `;
 }
 
+// 「録音→診断」を何度も試してスクショで送る反復改善向けのUI。スコアや
+// グラフではなく、検出された癖のうち影響が大きい上位5件だけを平易な文章で
+// 示し、1件ごとに人間が合っているかどうかを評価できるようにする。
+const QUIRK_EVAL_OPTIONS = [
+  { value: "correct", label: "合っている" },
+  { value: "partial", label: "方向性は合っているが程度が違う" },
+  { value: "wrong", label: "間違っている" }
+];
+let topQuirkEvaluations = {};
+
+function renderTopQuirks(mirror) {
+  const el = $("topQuirksList");
+  if (!el) return;
+  if (!mirror) {
+    el.textContent = "まだ診断されていません。";
+    return;
+  }
+  const quirks = Array.isArray(mirror.topQuirks) ? mirror.topQuirks : [];
+  if (!quirks.length) {
+    el.textContent = "強い癖は検出されませんでした。";
+    return;
+  }
+
+  el.innerHTML = quirks.map((quirk, index) => {
+    const selected = topQuirkEvaluations[quirk.id];
+    const buttons = QUIRK_EVAL_OPTIONS.map((option) => (
+      `<button type="button" class="quirk-eval-button${selected === option.value ? " selected" : ""}" data-eval="${option.value}" data-quirk-id="${escapeHtml(quirk.id)}">${escapeHtml(option.label)}</button>`
+    )).join("");
+    return `<div class="quirk-item">
+      <div class="quirk-item-text"><span class="quirk-item-index">${index + 1}</span>${escapeHtml(quirk.explanation)}</div>
+      <div class="quirk-eval-row">${buttons}</div>
+    </div>`;
+  }).join("");
+}
+
 function renderMirror(mirror) {
   if (!mirror) {
     $("mirrorVoiceText").textContent = "まだありません。";
     $("pitchContourChart").textContent = "まだありません。";
     $("mirrorAnalysisSummary").textContent = "まだありません。";
     renderMirrorDebugTable(null);
+    topQuirkEvaluations = {};
+    renderTopQuirks(null);
     $("mirrorVoiceStatus").textContent = "ミラー音声はまだありません。";
     $("mirrorVoicePlayback").className = "audio hidden";
     $("mirrorVoicePlayback").removeAttribute("src");
@@ -1671,6 +1708,8 @@ function renderMirror(mirror) {
     : "";
   $("mirrorAnalysisSummary").innerHTML = (freeRecognitionNote || "") + buildMirrorAnalysisSummary(mirror);
   renderMirrorDebugTable(mirror);
+  topQuirkEvaluations = {};
+  renderTopQuirks(mirror);
   $("mirrorVoiceStatus").textContent = mirror.confidence?.level === "high"
     ? "ミラー音声を生成できます。"
     : "ミラー音声を仮説として生成できます。確信度が低い場合は、聞こえ方の候補として確認してください。";
@@ -1907,6 +1946,12 @@ $("practiceModeTabs")?.querySelectorAll(".practice-mode-tab").forEach((tab) => {
   tab.onclick = () => setPracticeViewMode(tab.dataset.mode);
 });
 $("backToHomeButton").onclick = showHomeScreen;
+$("topQuirksList")?.addEventListener("click", (event) => {
+  const button = event.target.closest(".quirk-eval-button");
+  if (!button) return;
+  topQuirkEvaluations[button.dataset.quirkId] = button.dataset.eval;
+  renderTopQuirks(latestAssessment?.mirror || null);
+});
 $("recordLocalButton").onclick = localRecord;
 $("modelVoiceButton").onclick = playModelVoice;
 $("azureButton").onclick = azureDiagnose;

@@ -3140,6 +3140,59 @@ function buildMirrorLocalEvents({ meaning, words, speechFeatures, soundSignature
   };
 }
 
+// mirrorAction は「〜に反映する。」のような指示文として書かれているため、
+// 実際にその反映を行った結果を説明する完了文(「〜反映しています。」)に変換する。
+function mirrorActionAsCompletedStatement(mirrorAction) {
+  const text = String(mirrorAction || "").trim();
+  if (!text) return "反映しています。";
+  if (text.endsWith("反映する。")) return `${text.slice(0, -3)}反映しています。`;
+  if (text.endsWith("する。")) return `${text.slice(0, -3)}しています。`;
+  if (text.endsWith("。")) return text;
+  return `${text}という形で反映しています。`;
+}
+
+// 録音の中で検出された癖のうち、severity が高い上位5件だけを選び、
+// 「英語側でどう聞こえたか」→「日本語ミラーのどの部分をどう変えたか」を
+// 1文にまとめた説明文を作る。buildMirrorLocalEvents が持つ englishEvidence
+// (検出根拠)と mirrorAction(反映内容)は元々イベントごとに個別に書かれた
+// 具体的な日本語文のため、新たに別の定型文マップを作るのではなく、これらを
+// そのまま組み合わせて説明文にする。
+function buildTopQuirkExplanations(mirrorLocalEvents, voiceScript) {
+  const segments = Array.isArray(voiceScript?.segments) ? voiceScript.segments : [];
+  const events = (mirrorLocalEvents?.events || [])
+    .filter((event) => !event.global && event.englishEvidence)
+    .slice()
+    .sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
+
+  const seen = new Set();
+  const top = [];
+  for (const event of events) {
+    const dedupeKey = `${event.issueType}:${String(event.word || "global").toLowerCase()}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    top.push(event);
+    if (top.length >= 5) break;
+  }
+
+  return top.map((event, index) => {
+    const segment = segments.find((seg) => roleMatchesTarget(seg.role, event.targetRoles || []));
+    const japaneseSegmentText = segment?.text || "";
+    const locationLabel = event.word ? `"${event.word}"` : "文全体";
+    const actionSentence = mirrorActionAsCompletedStatement(event.mirrorAction);
+    const explanation = japaneseSegmentText
+      ? `${locationLabel}の発音: ${event.englishEvidence} そのため、日本語ミラーの「${japaneseSegmentText}」の部分で${actionSentence}`
+      : `${locationLabel}の発音: ${event.englishEvidence} そのため、日本語ミラー全体で${actionSentence}`;
+    return {
+      id: event.id || `quirk-${index + 1}`,
+      issueType: event.issueType,
+      word: event.word || null,
+      severity: event.severity,
+      japaneseSegmentText,
+      explanation
+    };
+  });
+}
+
 function maxTimelinePauseMs(mirrorTimeline) {
   const pauses = mirrorTimeline?.japaneseMirrorTimeline?.map((item) => Number(item.pauseAfterMs || 0)) || [];
   return pauses.length ? Math.max(...pauses) : 0;
@@ -4910,6 +4963,7 @@ function generateJapaneseMirror({ contrastSet, wordDiagnostics, scores, consonan
     voiceScript,
     mirrorTimeline,
     mirrorLocalEvents,
+    topQuirks: buildTopQuirkExplanations(mirrorLocalEvents, voiceScript),
     soundSignature,
     deviationModel,
     speechFeatures,

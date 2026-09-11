@@ -33,6 +33,17 @@ button{width:100%;box-sizing:border-box;border:none;border-radius:12px;padding:1
 .judgment{font-size:26px;font-weight:900;line-height:1.6;background:#fff2c7;border-radius:14px;padding:18px;margin-top:12px}
 .mirror-output{font-size:34px;font-weight:950;line-height:1.5;background:#eef7ff;border-radius:14px;padding:18px;margin:10px 0 8px}
 .debug-table{font-size:12.5px;margin-top:8px}.debug-table th{width:44%;font-weight:800}.debug-table td{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-word}
+.top-quirks-list{display:flex;flex-direction:column;gap:14px;margin-top:10px}
+.quirk-item{background:#f8f9fc;border-radius:14px;padding:16px}
+.quirk-item-index{display:inline-block;background:#202124;color:#fff;font-weight:900;font-size:13px;border-radius:999px;width:24px;height:24px;line-height:24px;text-align:center;margin-right:8px}
+.quirk-item-text{font-size:16px;line-height:1.7;font-weight:700}
+.quirk-eval-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.quirk-eval-button{flex:1 1 auto;min-width:110px;border:2px solid #d7dbe6;background:#fff;border-radius:999px;padding:9px 14px;font-size:13px;font-weight:800;color:#333;cursor:pointer}
+.quirk-eval-button.selected{border-color:#202124;background:#202124;color:#fff}
+.quirk-eval-button[data-eval="correct"].selected{border-color:#116b32;background:#116b32}
+.quirk-eval-button[data-eval="partial"].selected{border-color:#805700;background:#805700}
+.quirk-eval-button[data-eval="wrong"].selected{border-color:#9b1c14;background:#9b1c14}
+.inline-validation-item{display:none}
 table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}th,td{padding:10px;border-bottom:1px solid #e5e7ef;text-align:left}th{background:#f8f9fc;color:#555}.score-low{color:#b42318;font-weight:900}.score-mid{color:#9a6700;font-weight:900}.score-high{color:#116b32;font-weight:900}
 .phoneme-card{background:#f8f9fc;border-radius:14px;padding:14px;margin-top:12px}.phoneme-title{font-weight:900;font-size:18px}.phone-row{display:grid;grid-template-columns:90px 1fr 70px;gap:10px;align-items:center;margin:8px 0}.bar{height:12px;background:#e3e6ee;border-radius:999px;overflow:hidden}.bar>div{height:100%;background:#202124;border-radius:999px}
 .muffle-grid{display:grid;grid-template-columns:1fr;gap:12px}@media(min-width:760px){.muffle-grid{grid-template-columns:repeat(4,1fr)}}.big-metric{background:#f8f9fc;border-radius:16px;padding:18px;text-align:center}.big-metric span{display:block;color:#666;font-size:13px}.big-metric strong{display:block;font-size:42px}
