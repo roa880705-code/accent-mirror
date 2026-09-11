@@ -618,6 +618,74 @@ body {
   color: var(--muted);
 }
 
+/* --- 設定ページ: 開発者用(パスワードでロックされたアクセス端末数の確認) --- */
+
+.dev-password-gate {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.dev-password-row {
+  display: flex;
+  gap: 6px;
+}
+
+.dev-password-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--card-bg);
+  border: 1px solid var(--panel-line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.dev-password-row input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.dev-password-error {
+  color: var(--danger);
+}
+
+.dev-stats-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.dev-stats-count {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.dev-stats-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.dev-stats-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.68rem;
+  color: var(--muted);
+  padding: 4px 6px;
+  background: var(--panel);
+  border-radius: 6px;
+}
+
 .period-settings-list {
   display: flex;
   flex-direction: column;

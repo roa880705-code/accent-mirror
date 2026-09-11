@@ -57,12 +57,10 @@ create policy "page_visits_insert_anyone" on public.page_visits
 -- first/last seen (join against page_visits' device_id + date to see how
 -- many distinct days a device has come back, i.e. "continuing users") and
 -- a rough count of edit actions (edit_count, pushed throttled from
--- script.js's captureUndoSnapshot() via AppSync.recordEdit()). As with
--- page_visits, no select policy exists so only the project owner
--- (dashboard/SQL editor, service role) can read it. Note the update
--- policy has no ownership check (anonymous ids can't be authenticated),
--- so this is an honor-system counter, not tamper-proof — acceptable for a
--- rough usage signal, not for anything security-sensitive.
+-- script.js's captureUndoSnapshot() via AppSync.recordEdit()). Note the
+-- update policy has no ownership check (anonymous ids can't be
+-- authenticated), so this is an honor-system counter, not tamper-proof —
+-- acceptable for a rough usage signal, not for anything security-sensitive.
 create table if not exists public.device_stats (
   device_id text primary key,
   first_seen timestamptz not null default now(),
@@ -77,3 +75,15 @@ create policy "device_stats_insert_anyone" on public.device_stats
 
 create policy "device_stats_update_anyone" on public.device_stats
   for update using (true) with check (true);
+
+-- 設定ページの「開発者用」パネル(sync.jsのAppSync.getDeviceStats)が
+-- アクセス端末数を表示するために読み取る。ここに入っているのは端末ID
+-- (匿名の乱数)・初回/最終アクセス日時・編集回数だけで個人情報は含ま
+-- ないため、匿名キーからの読み取りを許可している。ただし匿名キーは
+-- フロントエンドのソースに埋め込まれ誰でも読めるため、この方針は
+-- 「非公開だが機密ではない集計値」という前提の上に成り立っている点に
+-- 注意(page_visitsは1件ごとの生ログでノイズが多いためselectを許可
+-- しておらず、プロジェクトオーナーがダッシュボード/SQL Editor経由で
+-- 見る運用のまま)。
+create policy "device_stats_select_anyone" on public.device_stats
+  for select using (true);

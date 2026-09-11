@@ -358,6 +358,24 @@
     // 「編集した数」カウンター用 — captureUndoSnapshot()から呼ばれる。
     // サインインの有無を問わず有効(configuredであれば動く)。
     recordEdit,
+    // 設定ページ「開発者用」パネル用: 匿名のdevice_statsを全件取得する。
+    // device_stats自体は匿名(auth不要)のテーブルなので、サインインして
+    // いなくても(client自体さえ生成されていれば)動く。個人情報を含まない
+    // 集計値のみを返す想定。
+    async getDeviceStats() {
+      if (!configured || !client) return null;
+      try {
+        const { data, error } = await client
+          .from("device_stats")
+          .select("device_id, first_seen, last_seen, edit_count")
+          .order("last_seen", { ascending: false });
+        if (error) throw error;
+        return data || [];
+      } catch (err) {
+        log("device stats fetch failed", err);
+        return null;
+      }
+    },
     async signIn() {
       if (!client) return;
       // without this, Supabase falls back to the bare origin (no path) as

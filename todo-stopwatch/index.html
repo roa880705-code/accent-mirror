@@ -104,6 +104,21 @@
             <summary class="settings-section-title">よくある質問</summary>
             <div id="settingsFaqList" class="settings-faq-list"></div>
           </details>
+          <details class="settings-section">
+            <summary class="settings-section-title">開発者用</summary>
+            <div id="devPasswordGate" class="dev-password-gate">
+              <div class="dev-password-row">
+                <input type="password" id="devPasswordInput" placeholder="パスワード" autocomplete="off">
+                <button type="button" id="devPasswordUnlockBtn" class="btn btn-modal-ok">開く</button>
+              </div>
+              <p class="settings-section-note dev-password-error" id="devPasswordError" hidden>パスワードが違います。</p>
+            </div>
+            <div id="devStatsPanel" class="dev-stats-panel" hidden>
+              <p class="settings-section-note">匿名のアクセス端末数(端末ごとのID・初回/最終アクセス日時・編集回数のみで、個人情報は含みません)。</p>
+              <p class="dev-stats-count" id="devStatsCount">-</p>
+              <div id="devStatsList" class="dev-stats-list"></div>
+            </div>
+          </details>
         </div>
       </section>
       <section class="page">

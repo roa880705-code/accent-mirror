@@ -917,6 +917,13 @@
   const settingsSyncBadge = document.getElementById("settingsSyncBadge");
   const settingsAnnouncementsList = document.getElementById("settingsAnnouncementsList");
   const settingsFaqList = document.getElementById("settingsFaqList");
+  const devPasswordGate = document.getElementById("devPasswordGate");
+  const devPasswordInput = document.getElementById("devPasswordInput");
+  const devPasswordUnlockBtn = document.getElementById("devPasswordUnlockBtn");
+  const devPasswordError = document.getElementById("devPasswordError");
+  const devStatsPanel = document.getElementById("devStatsPanel");
+  const devStatsCount = document.getElementById("devStatsCount");
+  const devStatsList = document.getElementById("devStatsList");
   const periodEnabledToggle = document.getElementById("periodEnabledToggle");
   const calendarHourRangeStartHour = document.getElementById("calendarHourRangeStartHour");
   const calendarHourRangeStartMinute = document.getElementById("calendarHourRangeStartMinute");
@@ -1934,6 +1941,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-11", text: "設定ページの一番下に「開発者用」欄を追加しました(パスワードで保護)。アクセス端末数などを確認できます。" },
     { date: "2026-09-11", text: "複数端末でのGoogle同期で、しばらく開いたままにした端末の「最優先」「今日中」タスクが、他の端末で追加した内容を取り込めず古いままになってしまう不具合を修正しました。" },
     { date: "2026-09-10", text: "ログページから「いつか」欄を排除しました。「いつか」タスクの確認・追加・編集は、タスクページ・ウィークリー・デイリー・マンスリーから引き続き行えます。" },
     { date: "2026-09-10", text: "ウィークリー/デイリーの時間軸の右端に、スクロール位置が常に分かる縦スクロールバーを追加しました(タスクページと同じ方式です)。つまみを直接ドラッグしてスクロールすることもできます。" },
@@ -2046,6 +2054,62 @@
     });
   }
   renderSettingsFaq();
+
+  // --- 設定ページ: 開発者用(アクセス端末数の確認) ---
+  // ブラウザ内で完結する以上、このパスワードは「うっかり開かないための
+  // 目隠し」でしかなく、ソースを見れば誰でも分かる(本物のセキュリティ
+  // ではない)。実データ自体もdevice_stats(匿名・個人情報なし)への
+  // select許可(schema.sql参照)で取得しているため、匿名キーを直接
+  // 叩けば同じ内容は技術的には誰でも読める。
+  const DEV_PANEL_PASSWORD = "Eito880609";
+
+  function formatDevTimestamp(iso) {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  }
+
+  async function unlockDevPanel() {
+    devStatsPanel.hidden = false;
+    devPasswordGate.hidden = true;
+    devStatsCount.textContent = "読み込み中…";
+    devStatsList.innerHTML = "";
+    if (!window.AppSync || !window.AppSync.isConfigured()) {
+      devStatsCount.textContent = "同期機能が設定されていません";
+      return;
+    }
+    const rows = await window.AppSync.getDeviceStats();
+    if (rows === null) {
+      devStatsCount.textContent = "取得に失敗しました";
+      return;
+    }
+    devStatsCount.textContent = `${rows.length}台`;
+    rows.forEach((row) => {
+      const rowEl = document.createElement("div");
+      rowEl.className = "dev-stats-row";
+      const idEl = document.createElement("span");
+      idEl.textContent = row.device_id;
+      const detailEl = document.createElement("span");
+      detailEl.textContent = `最終: ${formatDevTimestamp(row.last_seen)} / 編集${row.edit_count}回`;
+      rowEl.append(idEl, detailEl);
+      devStatsList.appendChild(rowEl);
+    });
+  }
+
+  function tryUnlockDevPanel() {
+    if (devPasswordInput.value !== DEV_PANEL_PASSWORD) {
+      devPasswordError.hidden = false;
+      devPasswordInput.value = "";
+      return;
+    }
+    devPasswordError.hidden = true;
+    unlockDevPanel();
+  }
+
+  devPasswordUnlockBtn.addEventListener("click", tryUnlockDevPanel);
+  devPasswordInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") tryUnlockDevPanel();
+  });
 
   // --- 設定ページ: 時間割 ---
 
