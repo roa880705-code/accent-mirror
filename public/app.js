@@ -1656,12 +1656,20 @@ let topQuirkEvaluations = {};
 
 function renderTopQuirks(mirror) {
   const el = $("topQuirksList");
+  const heading = $("topQuirksHeading");
   if (!el) return;
   if (!mirror) {
+    if (heading) heading.textContent = "検出された癖";
     el.textContent = "まだ診断されていません。";
     return;
   }
   const quirks = Array.isArray(mirror.topQuirks) ? mirror.topQuirks : [];
+  if (heading) {
+    // 表示件数は録音内で実際に検出された癖の数に応じて変わる(最大5件)。
+    // 見出しに固定で「上位5件」と書くと、検出数が少ない録音のときに
+    // 「1件しか出ない=不具合では」と誤解されるため、実際の件数を反映する。
+    heading.textContent = quirks.length ? `検出された癖（${quirks.length}件）` : "検出された癖";
+  }
   if (!quirks.length) {
     el.textContent = "強い癖は検出されませんでした。";
     return;
