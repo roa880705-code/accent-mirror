@@ -87,6 +87,9 @@
   let session = null;
   const pending = {}; // syncKey -> latest value waiting to be pushed
   const timers = {}; // syncKey -> pending setTimeout id
+  // markDirty(syncKey, value)へ最後に渡した値のJSON文字列 — 中身が前回と
+  // 同一なら「編集」として扱わない(下記参照)ためのキャッシュ。
+  const lastMarkedJson = {};
 
   function log(...args) {
     console.log("[AppSync]", ...args);
@@ -187,14 +190,21 @@
       Object.entries(LOCAL_KEY_MAP).forEach(([syncKey, localKey]) => {
         const remoteHasKey = Object.prototype.hasOwnProperty.call(remote, syncKey);
         if (remoteHasKey && !hasUnsyncedLocalEdit(syncKey)) {
-          localStorage.setItem(localKey, JSON.stringify(remote[syncKey]));
+          const json = JSON.stringify(remote[syncKey]);
+          localStorage.setItem(localKey, json);
           markSynced(syncKey, Date.now());
+          // この値を「直近でmarkDirtyに渡された値」として覚えておく —
+          // 直後に始まる毎秒の自動保存(script.jsのsetInterval)が同じ値で
+          // markDirtyを呼んでも「編集扱い」にならないようにするため
+          // (下のmarkDirty参照)。
+          lastMarkedJson[syncKey] = json;
         } else {
           const raw = localStorage.getItem(localKey);
           if (raw !== null) {
             try {
               const editedAtSnapshot = (loadMeta()[syncKey] || {}).editedAt;
               pushes.push(upsertKey(syncKey, JSON.parse(raw), editedAtSnapshot));
+              lastMarkedJson[syncKey] = raw;
             } catch (err) {
               log("seed parse failed for", syncKey, err);
             }
@@ -322,6 +332,25 @@
     // a no-op when sync isn't configured or no one is signed in.
     markDirty(syncKey, value) {
       if (!configured || !session) return;
+      // script.js は実行中タイマーの有無に関わらず毎秒1回save*()を呼ぶ
+      // (クラッシュ時の保険)ため、ここで中身が前回と全く同じ(=本当は
+      // 何も変わっていない)呼び出しを弾かないと、「編集した」印
+      // (editedAt)が実質ずっと更新され続けてしまう。その状態だと、次に
+      // この端末を開いた時にinitialSync()が「まだ端末側の編集がpushし
+      // 切れていない」と誤認してクラウド側の最新値を取り込まず、代わりに
+      // この端末の(他の端末での更新を知らない)古いローカル値でクラウドを
+      // 上書きしてしまい、結果的に別端末で追加したはずの最優先/今日中
+      // タスクなどが同期されず消えたように見える不具合の原因だった。
+      let json;
+      try {
+        json = JSON.stringify(value);
+      } catch {
+        json = undefined; // couldn't stringify — fall through and mark dirty as before
+      }
+      if (json !== undefined) {
+        if (lastMarkedJson[syncKey] === json) return; // 前回と同一 — 実質無変更
+        lastMarkedJson[syncKey] = json;
+      }
       markEdited(syncKey);
       pending[syncKey] = value;
       schedulePush(syncKey);
