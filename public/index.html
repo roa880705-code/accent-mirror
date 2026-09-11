@@ -156,6 +156,19 @@
 <div id="topQuirksList" class="top-quirks-list">まだ診断されていません。</div>
 </section>
 
+<section class="card">
+<h2>詳細データ（調査用）</h2>
+<div class="minor">上の説明に違和感がある場合は、ここを開いてスクリーンショットに含めてください。</div>
+<details>
+<summary>詳細診断データ（速度・抑揚・信頼度などの内部計算値）</summary>
+<div id="mirrorDebugTable">まだありません。</div>
+</details>
+<details>
+<summary>Azure Raw JSON</summary>
+<pre id="rawJson">まだありません</pre>
+</details>
+</section>
+
 <section class="card hidden">
 <h2>4. 文全体のスコア</h2>
 <div class="signal-grid">
@@ -184,11 +197,6 @@
 <b>分析まとめ</b>
 <div class="minor">単語・音ごとに、どこが弱く、日本語ミラーへどう反映したかを文章でまとめています。</div>
 <div id="mirrorAnalysisSummary">まだありません。</div>
-</div>
-<div class="panel">
-<b>詳細診断データ（開発者向け・スクショ用）</b>
-<div class="minor">速度・抑揚・表現力・信頼度の生の計算値を一覧にしています。スクリーンショットで送る際、文章での分析まとめだけでは分からない内部の数値・分類のズレを確認できます。</div>
-<div id="mirrorDebugTable">まだありません。</div>
 </div>
 </section>
 
@@ -243,8 +251,6 @@
 <div class="panel"><b>おすすめ</b><div id="sessionRecommendation">録音して診断すると、attempt間の差分がここに出ます。</div></div>
 <table id="attemptTable"><thead><tr><th>#</th><th>セット</th><th>正確さ</th><th>抑揚</th><th>子音最小</th><th>見落とし候補</th><th>ミラー</th></tr></thead><tbody></tbody></table>
 </section>
-
-<section class="card hidden"><details><summary>開発用：Azure Raw JSON</summary><pre id="rawJson">まだありません</pre></details></section>
 <footer>v0.12.0はミラータイムラインから音声スクリプトを生成します。検証ポートは3003です。</footer>
 </main>
 <script src="app.js"></script>
