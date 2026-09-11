@@ -2134,12 +2134,23 @@
     addDevSummaryStat("直近30日以内", `${activeWithin(30 * 24 * 60 * 60 * 1000)}台`);
     addDevSummaryStat("合計編集回数", `${totalEdits}回`);
 
+    // 今まさにこのページを見ている端末自身のID(sync.jsが生成・保存する
+    // ものと同じキー)。一覧の中でどれが自分かひと目で分かるよう印を付ける。
+    let thisDeviceId = null;
+    try {
+      thisDeviceId = localStorage.getItem("todoStopwatch:deviceId:v1");
+    } catch (e) {
+      // localStorageが使えない環境では印を諦める(致命的ではない)
+    }
+
     rows.forEach((row) => {
+      const isThisDevice = thisDeviceId && row.device_id === thisDeviceId;
       const rowEl = document.createElement("div");
       rowEl.className = "dev-stats-row";
+      rowEl.classList.toggle("dev-stats-row-self", isThisDevice);
       const idEl = document.createElement("div");
       idEl.className = "dev-stats-row-id";
-      idEl.textContent = row.device_id;
+      idEl.textContent = isThisDevice ? `${row.device_id}(この端末)` : row.device_id;
       const detailEl = document.createElement("div");
       detailEl.className = "dev-stats-row-detail";
       const lastSeenDaysAgo = daysBetween(row.last_seen, null);

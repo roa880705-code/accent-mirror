@@ -704,11 +704,21 @@ body {
   border-radius: 6px;
 }
 
+/* 今まさにこのページを見ている端末自身の行を目立たせる。 */
+.dev-stats-row-self {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+}
+
 .dev-stats-row-id {
   font-size: 0.68rem;
   font-weight: 700;
   color: var(--ink);
   word-break: break-all;
+}
+
+.dev-stats-row-self .dev-stats-row-id {
+  color: var(--accent);
 }
 
 .dev-stats-row-detail {
