@@ -298,6 +298,55 @@
     }
   }
 
+  // 入力中(INPUT/TEXTAREA/contentEditableにフォーカスがある)場合は、たとえ
+  // 他端末からの更新を検知しても今リロードすると入力中の内容が消えてしまう
+  // ため、このtickではリロードを見送り次回に回す。
+  function isUserTyping() {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || !!el.isContentEditable;
+  }
+
+  // 「重い」完全リアルタイム同期(Supabase Realtimeでの購読・差分マージ)
+  // までは実装せず、軽量な「一定間隔+タブ復帰時にバックグラウンドで
+  // クラウド側を覗きに行き、変化があれば(サインイン直後と同じ)
+  // initialSync()+リロードで丸ごと反映する」方式。既存のinitialSync()の
+  // 「未pushのローカル編集があるキーは触らない」判定をそのまま流用する
+  // ため、他端末の更新を取りこぼさずに済み、かつ自分がまさに編集中の
+  // データを誤って上書きすることもない。
+  const BACKGROUND_SYNC_CHECK_MS = 45000;
+  let backgroundCheckInFlight = false;
+
+  async function checkForRemoteUpdates() {
+    if (!configured || !session) return;
+    if (syncInFlight || backgroundCheckInFlight) return;
+    backgroundCheckInFlight = true;
+    try {
+      const remote = await pullAll();
+      let changed = false;
+      Object.entries(LOCAL_KEY_MAP).forEach(([syncKey, localKey]) => {
+        if (changed) return;
+        if (!Object.prototype.hasOwnProperty.call(remote, syncKey)) return;
+        if (hasUnsyncedLocalEdit(syncKey)) return; // このタブでの未push編集を優先
+        const remoteJson = JSON.stringify(remote[syncKey]);
+        if (remoteJson !== localStorage.getItem(localKey)) changed = true;
+      });
+      if (!changed) return;
+      if (isUserTyping()) return; // 次のtick/タブ復帰時に再チェック
+      // ここで initialSync() を呼んでから reload しない: await を挟むと、
+      // その間に script.js の毎秒自動保存(このタブに残っている古い
+      // メモリ上のstateをそのままlocalStorageへ書き戻す処理)が割り込み、
+      // 今まさに書いたはずの最新値を古い値で上書きしてしまう競合が起き
+      // うる。reload()自体は新しいページの起動シーケンス
+      // (AppSyncReady → initialSync())で改めて最新値を取り込むので、
+      // ここでは即座にreloadするだけでよい。
+      location.reload();
+    } finally {
+      backgroundCheckInFlight = false;
+    }
+  }
+
   async function init() {
     if (!configured) return;
     client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -306,6 +355,7 @@
     const { data } = await client.auth.getSession();
     session = data.session;
     if (session) await initialSync();
+    setInterval(checkForRemoteUpdates, BACKGROUND_SYNC_CHECK_MS);
 
     client.auth.onAuthStateChange(async (_event, newSession) => {
       const wasSignedIn = !!session;
@@ -414,7 +464,13 @@
   };
 
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") flushAll();
+    if (document.visibilityState === "hidden") {
+      flushAll();
+    } else if (document.visibilityState === "visible") {
+      // タブに戻ってきたタイミングで、次の定期チェックを待たずに
+      // すぐ他端末の更新を確認する。
+      checkForRemoteUpdates();
+    }
   });
   window.addEventListener("beforeunload", flushAll);
 })();
