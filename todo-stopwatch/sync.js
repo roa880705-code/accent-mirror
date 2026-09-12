@@ -90,6 +90,12 @@
   // markDirty(syncKey, value)へ最後に渡した値のJSON文字列 — 中身が前回と
   // 同一なら「編集」として扱わない(下記参照)ためのキャッシュ。
   const lastMarkedJson = {};
+  // syncKey -> 現在サーバーへ送信中(通信待ち)のpushのPromise。
+  // checkForRemoteUpdates()がこのタブ自身の未完了のpushと競合して
+  // pull(読み取り)してしまう(=まだ書き込みが確定していない古い値を
+  // 誤って正としてしまう)のを避けるためのガード(下のawaitPendingPushes
+  // 参照)。
+  const inFlightPushes = {};
 
   function log(...args) {
     console.log("[AppSync]", ...args);
@@ -119,7 +125,13 @@
     const editedAtSnapshot = (loadMeta()[syncKey] || {}).editedAt;
     delete pending[syncKey];
     delete timers[syncKey];
-    await upsertKey(syncKey, value, editedAtSnapshot);
+    const promise = upsertKey(syncKey, value, editedAtSnapshot);
+    inFlightPushes[syncKey] = promise;
+    try {
+      await promise;
+    } finally {
+      if (inFlightPushes[syncKey] === promise) delete inFlightPushes[syncKey];
+    }
   }
 
   function schedulePush(syncKey) {
@@ -139,6 +151,24 @@
       clearTimeout(editPushTimer);
       pushEditCount();
     }
+  }
+
+  // 保留中(間引き待ち)のpushをすぐに発火させ、さらに現在通信中のpushも
+  // 含めて、このタブが抱えるpushが全て決着する(成功/失敗が確定する)まで
+  // 待つ。checkForRemoteUpdates()がこの直後にpull(読み取り)することで、
+  // 「ついさっき自分がpushした内容が、まだサーバー側で読み取り可能に
+  // なっていないタイミングでたまたま読みに行ってしまい、古い値を正だと
+  // 誤認してこのタブ自身の編集を上書きしてしまう」競合を避けるための
+  // もの(flushAllは発火させるだけで完了を待たないため、ここは別関数)。
+  async function awaitPendingPushes() {
+    Object.keys(pending).forEach((syncKey) => {
+      if (timers[syncKey]) {
+        clearTimeout(timers[syncKey]);
+        delete timers[syncKey];
+      }
+      pushKey(syncKey);
+    });
+    await Promise.all(Object.values(inFlightPushes));
   }
 
   async function pullAll() {
@@ -318,21 +348,36 @@
   const BACKGROUND_SYNC_CHECK_MS = 45000;
   let backgroundCheckInFlight = false;
 
+  // pull結果とlocalStorageを比較し、(このタブ未pushの編集があるキーを
+  // 除いて)実際に食い違いがあるかどうかを返す。
+  async function remoteDiffersFromLocal() {
+    const remote = await pullAll();
+    let changed = false;
+    Object.entries(LOCAL_KEY_MAP).forEach(([syncKey, localKey]) => {
+      if (changed) return;
+      if (!Object.prototype.hasOwnProperty.call(remote, syncKey)) return;
+      if (hasUnsyncedLocalEdit(syncKey)) return; // このタブでの未push編集を優先
+      const remoteJson = JSON.stringify(remote[syncKey]);
+      if (remoteJson !== localStorage.getItem(localKey)) changed = true;
+    });
+    return changed;
+  }
+
   async function checkForRemoteUpdates() {
     if (!configured || !session) return;
     if (syncInFlight || backgroundCheckInFlight) return;
     backgroundCheckInFlight = true;
     try {
-      const remote = await pullAll();
-      let changed = false;
-      Object.entries(LOCAL_KEY_MAP).forEach(([syncKey, localKey]) => {
-        if (changed) return;
-        if (!Object.prototype.hasOwnProperty.call(remote, syncKey)) return;
-        if (hasUnsyncedLocalEdit(syncKey)) return; // このタブでの未push編集を優先
-        const remoteJson = JSON.stringify(remote[syncKey]);
-        if (remoteJson !== localStorage.getItem(localKey)) changed = true;
-      });
-      if (!changed) return;
+      await awaitPendingPushes();
+      if (!(await remoteDiffersFromLocal())) return;
+      // ここで一度差分ありと出ても即リロードしない: 直前のawaitPendingPushes
+      // でこのタブのpushは確実に完了させているとはいえ、pull自体が読み取り
+      // 用の別リクエストである以上、サーバー側の反映タイミング次第で
+      // ごく短い間だけ実際より古い値を読んでしまう可能性を完全には排除
+      // できない。少し間を置いてもう一度確認し、2回とも差分ありの場合に
+      // 限ってリロードすることで、そうした瞬間的なズレによる誤反応を防ぐ。
+      await new Promise((r) => setTimeout(r, 1500));
+      if (!(await remoteDiffersFromLocal())) return;
       if (isUserTyping()) return; // 次のtick/タブ復帰時に再チェック
       // ここで initialSync() を呼んでから reload しない: await を挟むと、
       // その間に script.js の毎秒自動保存(このタブに残っている古い
