@@ -104,6 +104,31 @@
   async function upsertKey(syncKey, value, editedAtSnapshot) {
     if (!client || !session || value === undefined) return;
     try {
+      // pushする前に、サーバー側に既にこのpush(editedAtSnapshot時点の
+      // 編集)より新しい内容が無いか確認する。タブがスリープ/バックグラウ
+      // ンドで長時間止まっていた場合など、起きた時点で(スリープ前の)
+      // 古い編集がそのままpushされてしまうと、その間に他端末が日付
+      // ロールオーバー等で正しく進めていた新しい内容を、この古い内容で
+      // 踏み潰してしまう(結果、いつかタスクの復元がやり直されて重複
+      // したり、その後に他端末が追加した最優先/今日中タスクが消えて
+      // 見えたりする)事故を防ぐため。
+      if (editedAtSnapshot != null) {
+        const existing = (await fetchAllRows())[syncKey];
+        if (existing && new Date(existing.updated_at).getTime() > editedAtSnapshot) {
+          // サーバー側の方が新しい — この古い内容では上書きせず、
+          // 代わりにサーバー側を取り込んで諦める(次のリロードで反映)。
+          const localKey = LOCAL_KEY_MAP[syncKey];
+          if (localKey) {
+            const json = JSON.stringify(existing.value);
+            localStorage.setItem(localKey, json);
+            lastMarkedJson[syncKey] = json;
+          }
+          markSynced(syncKey, Date.now());
+          log("push superseded by newer server value for", syncKey, "— adopted server value");
+          location.reload();
+          return;
+        }
+      }
       // supabase-js resolves this even on a server-side rejection (e.g. an
       // RLS policy violation) rather than throwing — the failure only shows
       // up in the returned `error`, never as a caught exception.
@@ -171,14 +196,30 @@
     await Promise.all(Object.values(inFlightPushes));
   }
 
+  // key -> {value, updated_at} for every synced row this account has. Both
+  // pullAll() (key/value only, for the existing pull-and-compare callers)
+  // and upsertKey()'s staleness check (which additionally needs updated_at)
+  // share this single query shape instead of each filtering by key
+  // server-side, so both keep working against the same simple
+  // select().eq("user_id", …) mock used throughout the test suite.
+  async function fetchAllRows() {
+    if (!client || !session) return {};
+    const { data, error } = await client.from("app_data").select("key, value, updated_at").eq("user_id", session.user.id);
+    if (error) throw error;
+    const out = {};
+    (data || []).forEach((row) => {
+      out[row.key] = { value: row.value, updated_at: row.updated_at };
+    });
+    return out;
+  }
+
   async function pullAll() {
     if (!client || !session) return {};
     try {
-      const { data, error } = await client.from("app_data").select("key, value").eq("user_id", session.user.id);
-      if (error) throw error;
+      const rows = await fetchAllRows();
       const out = {};
-      (data || []).forEach((row) => {
-        out[row.key] = row.value;
+      Object.entries(rows).forEach(([key, row]) => {
+        out[key] = row.value;
       });
       return out;
     } catch (err) {
