@@ -1960,6 +1960,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-15", text: "タスクページの最優先/今日中欄から＋ボタンを削除しました(追加はウィークリー/デイリーの＋から引き続き行えます)。また、子タスクを持たない単独のタスク(最優先/今日中の大半など)では「親」「子」「孫」「ひ孫」の列見出しを出さず、チップだけのシンプルな行にしました(実際に子孫を持つタスクでは引き続き見出し付きで表示されます)。" },
     { date: "2026-09-15", text: "「今週中」タスクも、未完了のまま週をまたいだら(日曜日から月曜日になるタイミングで)自動的に今週の欄へ引き継がれるようにしました(「最優先」「今日中」の日またぎ引き継ぎと同じ考え方です)。これまでは引き継ぎが無く、週が変わると前の週に残ったまま画面に出てこなくなっていました。今回、これまで気づかないうちに古い週に取り残されていたタスクも、まとめて今週の欄へ救い出されます。" },
     { date: "2026-09-14", text: "端末がスリープ/バックグラウンドから復帰した際、その間に他端末が日付をまたいで正しく進めていた内容(いつかタスクの復元、最優先/今日中タスクの引き継ぎなど)を、スリープ前の古い内容で誤って上書きしてしまうことがある不具合を修正しました。これが原因で、いつかタスクが重複したり、最優先/今日中タスクが日をまたいで引き継がれていないように見えることがありました。" },
     { date: "2026-09-12", text: "他の端末で追加・変更した内容を、タブを開いたままにしていても数十秒ごと・タブに戻ってきたタイミングで自動的に取り込むようにしました(入力中の場合は邪魔しないよう見送ります)。以前は同じタブを開きっぱなしのままだと、再読み込みするまで他端末の更新が反映されませんでした。" },
@@ -6030,12 +6031,8 @@
   }
 
   // 最優先/今日中(その日限定・子を持たないフラットなタスク)1欄分。
-  // emptyOkの日(=今日)だけは中身が空でも必ずリスト+＋ボタンを出す —
-  // 見出しを出さないぶん、＋ボタン自体が「ここに追加できる」という唯一の
-  // 手がかりになるため。それ以外の日は、何か表示するものがある時だけ
-  // リストごと(＋ボタンも含めて)現れる。
-  function appendTasklistFlatCluster(container, dateStr, items, { emptyOk, ariaAddLabel, onAdd, fallbackLabel }) {
-    if (!items.length && !emptyOk) return;
+  function appendTasklistFlatCluster(container, dateStr, items, { fallbackLabel }) {
+    if (!items.length) return;
     const list = createTasklistList();
     items.forEach((item) => {
       // 最優先/今日中は子タスクを持ち得ないが、常に子を持たない「親
@@ -6068,7 +6065,6 @@
       wrapper.appendChild(grid);
       list.appendChild(wrapper);
     });
-    appendTasklistAddBtn(list, ariaAddLabel, onAdd);
     container.appendChild(list);
   }
 
@@ -6103,25 +6099,33 @@
       });
     }
     walk(rootTask, 0);
+    // 子孫を1つも持たない(最優先/今日中の大半のような単独タスク)場合は
+    // 親/子/孫/ひ孫の列見出しを出さず、チップ1つだけのシンプルな行にする
+    // — ページ全体でこの見出しが行ごとに繰り返され、くどく感じるという
+    // フィードバックを受けての対応。実際に子孫を持つ家族では、深さを
+    // 示すため引き続き見出し付きの4列で表示する。
+    const hasDescendants = levels.slice(1).some((lvl) => lvl.length > 0);
+    const visibleLevels = hasDescendants ? levels : levels.slice(0, 1);
 
     const grid = document.createElement("div");
     grid.className = "tasklist-family-tree";
-    // 中身の有無に関わらず親/子/孫/ひ孫の4列を常に作る — 縦線と見出しで
-    // 「どの列が何段目か」をどの家族(樹形図)でも同じ位置関係で示すため。
-    levels.forEach((tasksAtDepth, depth) => {
+    if (!hasDescendants) grid.classList.add("tasklist-family-tree-flat");
+    visibleLevels.forEach((tasksAtDepth, depth) => {
       const col = document.createElement("div");
       col.className = "tasklist-family-tree-col";
       // 連結線(someday-branch-line)がこの後gridへ直接追加されるため、
       // CSSの:last-childでは(4列目の後にも兄弟要素が増えて)最後の列を
       // 正しく判定できない — depthで直接判定するクラスを付ける。
-      if (depth === levels.length - 1) col.classList.add("tasklist-family-tree-col-last");
+      if (depth === visibleLevels.length - 1) col.classList.add("tasklist-family-tree-col-last");
       col.style.gridColumn = String(depth + 1);
       col.style.gridRow = "1";
 
-      const label = document.createElement("div");
-      label.className = "tasklist-family-tree-col-label";
-      label.textContent = TASKLIST_TREE_DEPTH_LABELS[depth] || "";
-      col.appendChild(label);
+      if (hasDescendants) {
+        const label = document.createElement("div");
+        label.className = "tasklist-family-tree-col-label";
+        label.textContent = TASKLIST_TREE_DEPTH_LABELS[depth] || "";
+        col.appendChild(label);
+      }
 
       const cell = document.createElement("div");
       cell.className = "someday-tree-cell tasklist-family-tree-cell";
@@ -6178,17 +6182,10 @@
   }
 
   // その日1日ぶんの行(最優先→スケジュール内(子タスクを持つ予定、時刻順)
-  // →今日中)を、渡されたcontainerへ直接積む。isToday(=state.dayと一致)
-  // の日だけ、最優先/今日中の＋ボタンを(中身が空でも)必ず出す — タスク
-  // ページから今日の分を新規に追加できる唯一の入り口のため。
-  function appendTasklistDayRows(container, dateStr, isToday) {
+  // →今日中)を、渡されたcontainerへ直接積む。
+  function appendTasklistDayRows(container, dateStr) {
     const priorityTasks = itemsArrayForDate(dateStr).filter((it) => it.priority && !it.completed);
-    appendTasklistFlatCluster(container, dateStr, priorityTasks, {
-      emptyOk: isToday,
-      ariaAddLabel: "最優先タスクを追加",
-      onAdd: () => addPriorityTaskForDate(dateStr),
-      fallbackLabel: "最優先タスク",
-    });
+    appendTasklistFlatCluster(container, dateStr, priorityTasks, { fallbackLabel: "最優先タスク" });
 
     plansForDate(dateStr)
       .filter((p) => p.children && p.children.length)
@@ -6196,12 +6193,7 @@
       .forEach((plan) => container.appendChild(buildTasklistPlanFamilyTree(plan, dateStr)));
 
     const todayTasks = itemsArrayForDate(dateStr).filter((it) => !it.planId && !it.priority && !it.completed);
-    appendTasklistFlatCluster(container, dateStr, todayTasks, {
-      emptyOk: isToday,
-      ariaAddLabel: "今日中タスクを追加",
-      onAdd: () => addUnscheduledTask(dateStr),
-      fallbackLabel: "今日中タスク",
-    });
+    appendTasklistFlatCluster(container, dateStr, todayTasks, { fallbackLabel: "今日中タスク" });
   }
 
   // 今週中(その週限定・子を持ち得るタスク)1件ぶんの樹形図を、長押し
@@ -6349,7 +6341,7 @@
       const startDay = isCurrentWeek ? state.day : weekStart;
       const weekEnd = addDaysStr(weekStart, 6);
       for (let dateStr = startDay; dateStr <= weekEnd; dateStr = addDaysStr(dateStr, 1)) {
-        appendTasklistDayRows(tasklistUnifiedList, dateStr, dateStr === state.day);
+        appendTasklistDayRows(tasklistUnifiedList, dateStr);
       }
       appendTasklistThisWeekCluster(tasklistUnifiedList, weekStart, isCurrentWeek);
     });

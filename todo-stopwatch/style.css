@@ -2904,6 +2904,13 @@ body {
   align-items: stretch;
 }
 
+/* 子孫を持たない単独タスク(最優先/今日中の大半)は列見出しごと省き、
+   1列だけのシンプルな行になる(buildTasklistTreeGrid参照)ので、4等分
+   ではなく親チップが行幅いっぱいを使えるようにする。 */
+.tasklist-family-tree.tasklist-family-tree-flat {
+  grid-template-columns: 1fr;
+}
+
 /* 親/子/孫/ひ孫の1列分(見出し+チップ)をまとめる入れ物。列同士の境目に
    縦線を引いて区分けする(1番右のひ孫列だけは右隣が無いので線を引かない)。 */
 .tasklist-family-tree-col {
