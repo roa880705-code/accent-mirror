@@ -2083,7 +2083,7 @@
   // ではない)。実データ自体もdevice_stats(匿名・個人情報なし)への
   // select許可(schema.sql参照)で取得しているため、匿名キーを直接
   // 叩けば同じ内容は技術的には誰でも読める。
-  const DEV_PANEL_PASSWORD = "Eito880609";
+  const DEV_PANEL_PASSWORD = "8888";
 
   function formatDevTimestamp(iso) {
     if (!iso) return "-";
