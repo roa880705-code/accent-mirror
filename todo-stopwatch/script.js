@@ -1960,7 +1960,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
-    { date: "2026-09-15", text: "タスクページの最優先/今日中欄から＋ボタンを削除しました(追加はウィークリー/デイリーの＋から引き続き行えます)。また、子タスクを持たない単独のタスク(最優先/今日中の大半など)では「親」「子」「孫」「ひ孫」の列見出しを出さず、チップだけのシンプルな行にしました(実際に子孫を持つタスクでは引き続き見出し付きで表示されます)。" },
+    { date: "2026-09-15", text: "タスクページの最優先/今日中欄から＋ボタンを削除しました(追加はウィークリー/デイリーの＋から引き続き行えます)。" },
     { date: "2026-09-15", text: "「今週中」タスクも、未完了のまま週をまたいだら(日曜日から月曜日になるタイミングで)自動的に今週の欄へ引き継がれるようにしました(「最優先」「今日中」の日またぎ引き継ぎと同じ考え方です)。これまでは引き継ぎが無く、週が変わると前の週に残ったまま画面に出てこなくなっていました。今回、これまで気づかないうちに古い週に取り残されていたタスクも、まとめて今週の欄へ救い出されます。" },
     { date: "2026-09-14", text: "端末がスリープ/バックグラウンドから復帰した際、その間に他端末が日付をまたいで正しく進めていた内容(いつかタスクの復元、最優先/今日中タスクの引き継ぎなど)を、スリープ前の古い内容で誤って上書きしてしまうことがある不具合を修正しました。これが原因で、いつかタスクが重複したり、最優先/今日中タスクが日をまたいで引き継がれていないように見えることがありました。" },
     { date: "2026-09-12", text: "他の端末で追加・変更した内容を、タブを開いたままにしていても数十秒ごと・タブに戻ってきたタイミングで自動的に取り込むようにしました(入力中の場合は邪魔しないよう見送ります)。以前は同じタブを開きっぱなしのままだと、再読み込みするまで他端末の更新が反映されませんでした。" },
@@ -6099,33 +6099,25 @@
       });
     }
     walk(rootTask, 0);
-    // 子孫を1つも持たない(最優先/今日中の大半のような単独タスク)場合は
-    // 親/子/孫/ひ孫の列見出しを出さず、チップ1つだけのシンプルな行にする
-    // — ページ全体でこの見出しが行ごとに繰り返され、くどく感じるという
-    // フィードバックを受けての対応。実際に子孫を持つ家族では、深さを
-    // 示すため引き続き見出し付きの4列で表示する。
-    const hasDescendants = levels.slice(1).some((lvl) => lvl.length > 0);
-    const visibleLevels = hasDescendants ? levels : levels.slice(0, 1);
 
     const grid = document.createElement("div");
     grid.className = "tasklist-family-tree";
-    if (!hasDescendants) grid.classList.add("tasklist-family-tree-flat");
-    visibleLevels.forEach((tasksAtDepth, depth) => {
+    // 中身の有無に関わらず親/子/孫/ひ孫の4列を常に作る — 縦線と見出しで
+    // 「どの列が何段目か」をどの家族(樹形図)でも同じ位置関係で示すため。
+    levels.forEach((tasksAtDepth, depth) => {
       const col = document.createElement("div");
       col.className = "tasklist-family-tree-col";
       // 連結線(someday-branch-line)がこの後gridへ直接追加されるため、
       // CSSの:last-childでは(4列目の後にも兄弟要素が増えて)最後の列を
       // 正しく判定できない — depthで直接判定するクラスを付ける。
-      if (depth === visibleLevels.length - 1) col.classList.add("tasklist-family-tree-col-last");
+      if (depth === levels.length - 1) col.classList.add("tasklist-family-tree-col-last");
       col.style.gridColumn = String(depth + 1);
       col.style.gridRow = "1";
 
-      if (hasDescendants) {
-        const label = document.createElement("div");
-        label.className = "tasklist-family-tree-col-label";
-        label.textContent = TASKLIST_TREE_DEPTH_LABELS[depth] || "";
-        col.appendChild(label);
-      }
+      const label = document.createElement("div");
+      label.className = "tasklist-family-tree-col-label";
+      label.textContent = TASKLIST_TREE_DEPTH_LABELS[depth] || "";
+      col.appendChild(label);
 
       const cell = document.createElement("div");
       cell.className = "someday-tree-cell tasklist-family-tree-cell";
