@@ -836,6 +836,9 @@
   function rolloverIfNeeded() {
     const today = todayStr();
     if (state.day === today) return false;
+    // 今週中の引き継ぎ(下記)用に、state.dayを上書きする前の「直前に
+    // 開いていた週」を覚えておく。
+    const oldDayWeekStart = mondayOfWeek(state.day);
 
     const wasFollowingToday = viewingDate === state.day;
     // ウィークリー/デイリーの表示アンカーも、まだ(ロールオーバー前の)今日を
@@ -901,21 +904,22 @@
     saveState();
 
     // 今週中(=完了/削除されずthisWeekTasksに残っている=未完了のタスク)
-    // も、最優先/今日中と同じように週をまたいだら今週の欄へ引き継ぐ。
-    // 今週より前の週に残っている分はまとめて今週へ移す — この引き継ぎ
-    // 自体がこれまで存在しなかったため、気づかないまま古い週に取り
-    // 残されていた分もこの機会に一緒に救い出す。
+    // も、最優先/今日中と同じ「1歩ずつ」引き継ぐ考え方で、直前に開いて
+    // いた週(oldDayWeekStart)に残っている分だけを今週へ引き継ぐ。以前は
+    // 今週より前のどの週の残骸でもまとめて引き継いでいたが、複数端末
+    // での同時編集のずれで、実際には完了/削除済みのはずのタスクが
+    // たまたま古い週に残ってしまっていた場合、それも一緒に呼び戻して
+    // しまう(=消したはずのタスクが復活して見える)ことがあったため、
+    // 直前の1週間分だけに絞る。
     const todayWeekStart = mondayOfWeek(today);
-    let thisWeekChanged = false;
-    Object.keys(thisWeekTasks).forEach((ws) => {
-      if (ws >= todayWeekStart) return;
-      const leftover = thisWeekTasks[ws];
-      if (!leftover || !leftover.length) return;
-      ensureItemsArrayForWeek(todayWeekStart).push(...leftover);
-      delete thisWeekTasks[ws];
-      thisWeekChanged = true;
-    });
-    if (thisWeekChanged) saveThisWeekTasks();
+    if (oldDayWeekStart !== todayWeekStart) {
+      const leftover = thisWeekTasks[oldDayWeekStart];
+      if (leftover && leftover.length) {
+        ensureItemsArrayForWeek(todayWeekStart).push(...leftover);
+        delete thisWeekTasks[oldDayWeekStart];
+        saveThisWeekTasks();
+      }
+    }
 
     if (wasFollowingToday) viewingDate = today;
     if (dailyWasFollowingToday) dailyWeekAnchor = today;
@@ -1961,7 +1965,7 @@
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
     { date: "2026-09-15", text: "タスクページの最優先/今日中欄から＋ボタンを削除しました(追加はウィークリー/デイリーの＋から引き続き行えます)。" },
-    { date: "2026-09-15", text: "「今週中」タスクも、未完了のまま週をまたいだら(日曜日から月曜日になるタイミングで)自動的に今週の欄へ引き継がれるようにしました(「最優先」「今日中」の日またぎ引き継ぎと同じ考え方です)。これまでは引き継ぎが無く、週が変わると前の週に残ったまま画面に出てこなくなっていました。今回、これまで気づかないうちに古い週に取り残されていたタスクも、まとめて今週の欄へ救い出されます。" },
+    { date: "2026-09-15", text: "「今週中」タスクも、未完了のまま週をまたいだら(日曜日から月曜日になるタイミングで)直前の週の分だけ自動的に今週の欄へ引き継がれるようにしました(「最優先」「今日中」の日またぎ引き継ぎと同じ考え方です)。これまでは引き継ぎが無く、週が変わると前の週に残ったまま画面に出てこなくなっていました。" },
     { date: "2026-09-14", text: "端末がスリープ/バックグラウンドから復帰した際、その間に他端末が日付をまたいで正しく進めていた内容(いつかタスクの復元、最優先/今日中タスクの引き継ぎなど)を、スリープ前の古い内容で誤って上書きしてしまうことがある不具合を修正しました。これが原因で、いつかタスクが重複したり、最優先/今日中タスクが日をまたいで引き継がれていないように見えることがありました。" },
     { date: "2026-09-12", text: "他の端末で追加・変更した内容を、タブを開いたままにしていても数十秒ごと・タブに戻ってきたタイミングで自動的に取り込むようにしました(入力中の場合は邪魔しないよう見送ります)。以前は同じタブを開きっぱなしのままだと、再読み込みするまで他端末の更新が反映されませんでした。" },
     { date: "2026-09-11", text: "設定ページの一番下に「開発者用」欄を追加しました(パスワードで保護)。アクセス端末数、直近7日/30日以内にアクセスした台数、合計編集回数、端末ごとの初回/最終アクセス日時・利用期間・編集回数を確認できます。" },
