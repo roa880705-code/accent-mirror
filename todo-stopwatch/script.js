@@ -32,6 +32,12 @@
   // (中身の移動機能自体は非表示時も裏で維持される — タスクページなど別の
   // 場所から引き続き操作できる)。
   const DISPLAY_SETTINGS_KEY = "todoStopwatch:displaySettings:v1";
+  // 直近開いていたタブ(設定/タスク/月/週/日/ログ)。他端末の更新を
+  // 取り込むための自動リロード(sync.jsのcheckForRemoteUpdates、約45秒
+  // ごと)のたびに、このタブへ戻す — 他端末の内容と紐づく話ではなく
+  // 「今この端末でどのタブを見ていたか」というこの端末だけのUI状態
+  // なので、あえてクラウド同期はしない(LOCAL_KEY_MAPに載せない)。
+  const LAST_PAGE_KEY = "todoStopwatch:lastPage:v1";
   const MAX_HISTORY = 60;
   const MAX_COUNT = 40;
   const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
@@ -1964,6 +1970,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-16", text: "他端末の更新を取り込むための自動リロード(約45秒おき)のたびにデイリーへ戻ってしまっていた不具合を修正し、直近開いていたタブ(設定/タスク/月/週/日/ログのいずれでも)をそのまま維持するようにしました。" },
     { date: "2026-09-16", text: "ウィークリー/デイリーで「今週中」または「いつか」のタスクを展開(ドリルダウン表示)している時に、別のタスク(最優先/今日中/今週中/いつかのいずれでも)をタップしたら、まず展開していたものが自動的にたたまれるようにしました。以前は展開したまま無関係な編集画面が開いてしまうことがありました。" },
     { date: "2026-09-15", text: "タスクページの最優先/今日中欄から＋ボタンを削除しました(追加はウィークリー/デイリーの＋から引き続き行えます)。" },
     { date: "2026-09-15", text: "「今週中」タスクも、未完了のまま週をまたいだら(日曜日から月曜日になるタイミングで)直前の週の分だけ自動的に今週の欄へ引き継がれるようにしました(「最優先」「今日中」の日またぎ引き継ぎと同じ考え方です)。これまでは引き継ぎが無く、週が変わると前の週に残ったまま画面に出てこなくなっていました。" },
@@ -9096,6 +9103,13 @@
   function goToPage(i) {
     pagesTrack.style.transform = `translateX(-${i * 100}%)`;
     setActiveTab(i);
+    localStorage.setItem(LAST_PAGE_KEY, String(i));
+  }
+
+  function loadLastPage() {
+    const raw = localStorage.getItem(LAST_PAGE_KEY);
+    const i = raw === null ? NaN : Number(raw);
+    return Number.isInteger(i) && i >= SETTINGS_PAGE && i <= TASK_PAGE ? i : DAILY_PAGE;
   }
 
   tabBtns.forEach((btn, i) =>
@@ -9280,7 +9294,7 @@
   buildRows();
   render();
   renderHistory();
-  goToPage(DAILY_PAGE); // default to デイリー on launch
+  goToPage(loadLastPage()); // 直近開いていたタブを復元(初回はデイリー)
 
   setInterval(() => {
     const rolled = rolloverIfNeeded();
