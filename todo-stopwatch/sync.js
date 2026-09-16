@@ -29,6 +29,39 @@
     "displaySettings:v1": "todoStopwatch:displaySettings:v1",
   };
 
+  // briefingMemo/dailyNotesは{日付: 自由記述テキスト}という形の自由記述
+  // メモなので、他の(配列/構造化オブジェクトの)キーと違い「後から来た方が
+  // 丸ごと勝つ」上書きだと、複数端末でほぼ同時に書き込んだ時に片方の内容が
+  // 跡形もなく消えてしまう(配列のキーのように「要素の追加」ではなく、
+  // テキスト全体の置き換えなので、より起きやすく、かつ気づきにくい)。
+  // この2つだけは、pull/pushの両方で「サーバー側の内容と食い違うのに、
+  // どちらの内容にも相手には無い分がある」と分かったら、黙って一方を
+  // 消さず、区切り線付きで両方その日欄に残す(mergeTextObjects参照)。
+  const MERGEABLE_TEXT_KEYS = ["briefingMemo:v1", "dailyNotes:v1"];
+  const MERGE_DIVIDER = "\n\n----- 他端末の内容 -----\n\n";
+
+  // localObj/remoteObjはどちらも{日付文字列: テキスト}。日付ごとに比較し、
+  // 一方が他方を包含していれば(=既にマージ済み、または片方が空)そのまま
+  // 採用、互いに独自の内容を持っていれば区切り線でつないで両方残す。
+  function mergeTextObjects(localObj, remoteObj) {
+    const merged = { ...(remoteObj && typeof remoteObj === "object" ? remoteObj : {}) };
+    const dates = new Set([
+      ...Object.keys(localObj && typeof localObj === "object" ? localObj : {}),
+      ...Object.keys(remoteObj && typeof remoteObj === "object" ? remoteObj : {}),
+    ]);
+    dates.forEach((d) => {
+      const localText = (localObj && localObj[d]) || "";
+      const remoteText = (remoteObj && remoteObj[d]) || "";
+      if (!localText || localText === remoteText || remoteText.includes(localText)) return; // remoteのままでよい
+      if (!remoteText || localText.includes(remoteText)) {
+        merged[d] = localText;
+        return;
+      }
+      merged[d] = `${localText}${MERGE_DIVIDER}${remoteText}`;
+    });
+    return merged;
+  }
+
   // A running timer calls its save function once a second regardless of
   // whether anything actually changed (see script.js's tick interval) — so
   // pushes are throttled to at most one per key per PUSH_THROTTLE_MS,
@@ -104,6 +137,7 @@
   async function upsertKey(syncKey, value, editedAtSnapshot) {
     if (!client || !session || value === undefined) return;
     try {
+      const isMergeable = MERGEABLE_TEXT_KEYS.includes(syncKey);
       // pushする前に、サーバー側に既にこのpush(editedAtSnapshot時点の
       // 編集)より新しい内容が無いか確認する。タブがスリープ/バックグラウ
       // ンドで長時間止まっていた場合など、起きた時点で(スリープ前の)
@@ -112,22 +146,39 @@
       // 踏み潰してしまう(結果、いつかタスクの復元がやり直されて重複
       // したり、その後に他端末が追加した最優先/今日中タスクが消えて
       // 見えたりする)事故を防ぐため。
-      if (editedAtSnapshot != null) {
-        const existing = (await fetchAllRows())[syncKey];
-        if (existing && new Date(existing.updated_at).getTime() > editedAtSnapshot) {
-          // サーバー側の方が新しい — この古い内容では上書きせず、
-          // 代わりにサーバー側を取り込んで諦める(次のリロードで反映)。
+      // メモ系(isMergeable)は下で常にサーバー側の内容とマージしてから
+      // pushするので、この「古いので諦める」判定自体が不要(マージが
+      // 既に安全な統合結果を作る)。
+      const existing = editedAtSnapshot != null || isMergeable ? (await fetchAllRows())[syncKey] : null;
+      if (isMergeable && existing && value && typeof value === "object") {
+        // 複数端末がほぼ同時にメモ欄へ書き込んだ場合、後からpushした方が
+        // サーバー側を丸ごと上書きして先に書いた方の内容が跡形もなく
+        // 消えてしまっていた不具合の対策。サーバー側の最新内容と食い違う
+        // 日付があれば、黙ってどちらかを消さず、区切り線付きで両方その日
+        // 欄に残す(mergeTextObjects参照)。
+        const merged = mergeTextObjects(value, existing.value);
+        if (JSON.stringify(merged) !== JSON.stringify(value)) {
+          value = merged;
           const localKey = LOCAL_KEY_MAP[syncKey];
           if (localKey) {
-            const json = JSON.stringify(existing.value);
+            const json = JSON.stringify(value);
             localStorage.setItem(localKey, json);
             lastMarkedJson[syncKey] = json;
           }
-          markSynced(syncKey, Date.now());
-          log("push superseded by newer server value for", syncKey, "— adopted server value");
-          location.reload();
-          return;
         }
+      } else if (editedAtSnapshot != null && existing && new Date(existing.updated_at).getTime() > editedAtSnapshot) {
+        // サーバー側の方が新しい — この古い内容では上書きせず、
+        // 代わりにサーバー側を取り込んで諦める(次のリロードで反映)。
+        const localKey = LOCAL_KEY_MAP[syncKey];
+        if (localKey) {
+          const json = JSON.stringify(existing.value);
+          localStorage.setItem(localKey, json);
+          lastMarkedJson[syncKey] = json;
+        }
+        markSynced(syncKey, Date.now());
+        log("push superseded by newer server value for", syncKey, "— adopted server value");
+        location.reload();
+        return;
       }
       // supabase-js resolves this even on a server-side rejection (e.g. an
       // RLS policy violation) rather than throwing — the failure only shows
@@ -261,7 +312,30 @@
       Object.entries(LOCAL_KEY_MAP).forEach(([syncKey, localKey]) => {
         const remoteHasKey = Object.prototype.hasOwnProperty.call(remote, syncKey);
         if (remoteHasKey && !hasUnsyncedLocalEdit(syncKey)) {
-          const json = JSON.stringify(remote[syncKey]);
+          let valueToStore = remote[syncKey];
+          // このタブ自身は「未pushの編集」を抱えていない(=最後に自分が
+          // 見た内容は既にサーバーへ届いている)はずなのに、それでも今の
+          // ローカルの内容がサーバー側と食い違うなら、その差はほぼ確実に
+          // 他端末が自分のpushより後に上書きしたことによるもの。メモ系
+          // だけは、ここで黙ってサーバー側の内容で丸ごと上書きせず、双方に
+          // 相手には無い内容があれば区切り線付きで残す(この後さらに
+          // schedulePushで他端末側にも伝える)。
+          if (MERGEABLE_TEXT_KEYS.includes(syncKey)) {
+            let localObj = null;
+            try {
+              const raw = localStorage.getItem(localKey);
+              localObj = raw ? JSON.parse(raw) : null;
+            } catch (err) {
+              localObj = null;
+            }
+            if (localObj && typeof localObj === "object") {
+              const merged = mergeTextObjects(localObj, remote[syncKey]);
+              if (JSON.stringify(merged) !== JSON.stringify(remote[syncKey])) {
+                valueToStore = merged;
+              }
+            }
+          }
+          const json = JSON.stringify(valueToStore);
           localStorage.setItem(localKey, json);
           markSynced(syncKey, Date.now());
           // この値を「直近でmarkDirtyに渡された値」として覚えておく —
@@ -269,6 +343,12 @@
           // markDirtyを呼んでも「編集扱い」にならないようにするため
           // (下のmarkDirty参照)。
           lastMarkedJson[syncKey] = json;
+          if (valueToStore !== remote[syncKey]) {
+            // マージした内容を他端末にも伝わるようpushし直す。
+            markEdited(syncKey);
+            pending[syncKey] = valueToStore;
+            schedulePush(syncKey);
+          }
         } else {
           const raw = localStorage.getItem(localKey);
           if (raw !== null) {
