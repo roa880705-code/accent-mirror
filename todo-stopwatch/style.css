@@ -3766,3 +3766,77 @@ body {
   font-size: 0.62rem;
   padding: 4px 5px;
 }
+
+/* マンスリー: 月曜始まりの週×7列のカレンダーグリッド(A4横向き前提)。
+   画面版と違い高さを固定しない(印刷は改ページで自然に収まる)ので、
+   その日の予定/日付タイトルをすべてそのまま列挙する。 */
+.print-month-weekday-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 2px;
+}
+
+.print-month-weekday-row span {
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #555;
+}
+
+.print-month-weekday-row .print-month-saturday {
+  color: #2a5c8a;
+}
+
+.print-month-weekday-row .print-month-sunday {
+  color: #a03030;
+}
+
+.print-month-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.print-month-week-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.print-month-cell {
+  min-height: 60px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 3px 4px;
+  break-inside: avoid;
+}
+
+.print-month-cell.other-month {
+  opacity: 0.45;
+}
+
+.print-month-date {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.print-month-cell.saturday .print-month-date {
+  color: #2a5c8a;
+}
+
+.print-month-cell.sunday .print-month-date {
+  color: #a03030;
+}
+
+.print-month-title {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #141413;
+}
+
+.print-month-event {
+  font-size: 0.58rem;
+  line-height: 1.4;
+  color: #333;
+}

@@ -153,9 +153,14 @@
       <section class="page">
         <div class="monthly-calendar" id="monthlyCalendar">
           <div class="calendar-header">
-            <button id="monthlyPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の月">&#8249;</button>
-            <span id="monthlyLabel" class="calendar-month-label"></span>
-            <button id="monthlyNextBtn" class="calendar-nav-btn" type="button" aria-label="次の月">&#8250;</button>
+            <div class="calendar-header-nav">
+              <button id="monthlyPrevBtn" class="calendar-nav-btn" type="button" aria-label="前の月">&#8249;</button>
+              <span id="monthlyLabel" class="calendar-month-label"></span>
+              <button id="monthlyNextBtn" class="calendar-nav-btn" type="button" aria-label="次の月">&#8250;</button>
+            </div>
+            <div class="calendar-header-toggles">
+              <button type="button" class="timetable-toggle-btn print-toggle-btn" id="monthlyPrintBtn" title="この月をA4横向きで印刷">印刷</button>
+            </div>
           </div>
           <div class="monthly-weekday-row" id="monthlyWeekdayRow"></div>
           <div class="monthly-weeks-scroll" id="monthlyWeeksScroll">

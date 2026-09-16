@@ -984,6 +984,7 @@
   const calendarTimetableToggleBtn = document.getElementById("calendarTimetableToggleBtn");
   const weeklyPrintBtn = document.getElementById("weeklyPrintBtn");
   const dailyPrintBtn = document.getElementById("dailyPrintBtn");
+  const monthlyPrintBtn = document.getElementById("monthlyPrintBtn");
   const printArea = document.getElementById("printArea");
   const printPageStyle = document.getElementById("printPageStyle");
   const appHeaderEl = document.querySelector(".app-header");
@@ -1978,7 +1979,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
-    { date: "2026-09-16", text: "ウィークリー/デイリーに「印刷」ボタンを追加しました。画面のグリッドをそのまま印刷するのではなく、予定(時刻順)・最優先/今日中/今週中/いつか・メモを読みやすいリスト形式に組み直したA4サイズの印刷用レイアウトを作ります(デイリーは縦向き、ウィークリーは横向き)。紙のプランナーとして使う、バックアップ代わりに保管する、どちらの用途にもお使いください。" },
+    { date: "2026-09-16", text: "マンスリー/ウィークリー/デイリーに「印刷」ボタンを追加しました。画面の表示をそのまま印刷するのではなく、読みやすいリスト形式(マンスリーはカレンダー形式)に組み直したA4サイズの印刷用レイアウトを作ります(デイリーは縦向き、マンスリー/ウィークリーは横向き)。紙のプランナーとして使う、バックアップ代わりに保管する、どちらの用途にもお使いください。" },
     { date: "2026-09-16", text: "設定ページに「バックアップ履歴」を追加しました。サインインしていると、Supabase側が日本時間0:05頃に自動で全データの控えを取り(直近90日分保持)、過去のある日の内容をここで確認できます。アプリ自体からは一切書き込まない読み取り専用の控えなので、万一の不具合でデータが消えた/変わったように見えた時の確認用にお使いください。" },
     { date: "2026-09-16", text: "複数端末でほぼ同時にデイリー右側のメモ欄(2つとも)へ書き込むと、わずかな差で後からpushした方が丸ごと勝ってしまい、先に書いた方の内容が跡形もなく消えてしまうことがある不具合を修正しました。今後は食い違いに気づいたら、どちらか一方を消さず、区切り線(----- 他端末の内容 -----)付きで両方その日欄に残すようにしました。" },
     { date: "2026-09-16", text: "他端末の更新を取り込むための自動リロード(約45秒おき)のたびにデイリーへ戻ってしまっていた不具合を修正し、直近開いていたタブ(設定/タスク/月/週/日/ログのいずれでも)をそのまま維持するようにしました。" },
@@ -2646,6 +2647,77 @@
     printArea.appendChild(page);
   }
 
+  function renderPrintMonth(monthAnchorDate) {
+    const first = firstOfMonthStr(monthAnchorDate);
+    const d0 = parseDateStr(first);
+    const gridStart = mondayOfWeek(first);
+    const lastDayOfMonth = new Date(d0.getFullYear(), d0.getMonth() + 1, 0);
+    const lastDayStr = `${lastDayOfMonth.getFullYear()}-${pad2(lastDayOfMonth.getMonth() + 1)}-${pad2(lastDayOfMonth.getDate())}`;
+
+    printArea.innerHTML = "";
+    const page = document.createElement("div");
+    page.className = "print-page print-page-monthly";
+
+    const h1 = document.createElement("h1");
+    h1.className = "print-title";
+    h1.textContent = `${d0.getFullYear()}年${d0.getMonth() + 1}月`;
+    page.appendChild(h1);
+
+    const weekdayRow = document.createElement("div");
+    weekdayRow.className = "print-month-weekday-row";
+    MONTH_WEEKDAYS.forEach((w, i) => {
+      const span = document.createElement("span");
+      span.textContent = w;
+      if (i === 5) span.className = "print-month-saturday";
+      if (i === 6) span.className = "print-month-sunday";
+      weekdayRow.appendChild(span);
+    });
+    page.appendChild(weekdayRow);
+
+    const grid = document.createElement("div");
+    grid.className = "print-month-grid";
+    for (let cursor = gridStart; cursor <= lastDayStr; cursor = addDaysStr(cursor, 7)) {
+      const weekRow = document.createElement("div");
+      weekRow.className = "print-month-week-row";
+      for (let i = 0; i < 7; i++) {
+        const dateStr = addDaysStr(cursor, i);
+        const d = parseDateStr(dateStr);
+        const cell = document.createElement("div");
+        cell.className = "print-month-cell";
+        if (dateStr.slice(0, 7) !== first.slice(0, 7)) cell.classList.add("other-month");
+        if (d.getDay() === 6) cell.classList.add("saturday");
+        if (d.getDay() === 0) cell.classList.add("sunday");
+
+        const dateEl = document.createElement("div");
+        dateEl.className = "print-month-date";
+        dateEl.textContent = String(d.getDate());
+        cell.appendChild(dateEl);
+
+        dayTitleEntriesForDate(dateStr).forEach((entry) => {
+          const t = document.createElement("div");
+          t.className = "print-month-title";
+          t.textContent = entry.label;
+          cell.appendChild(t);
+        });
+
+        labelsForDate(dateStr).forEach((label) => {
+          const ev = document.createElement("div");
+          ev.className = "print-month-event";
+          ev.textContent = label;
+          cell.appendChild(ev);
+        });
+
+        weekRow.appendChild(cell);
+      }
+      grid.appendChild(weekRow);
+    }
+    page.appendChild(grid);
+
+    page.appendChild(makePrintTreeSection("いつか", topLevelSomeday(), (n) => childrenOf(n.id)));
+
+    printArea.appendChild(page);
+  }
+
   function triggerPrint(orientation) {
     const margin = orientation === "landscape" ? "10mm" : "12mm";
     printPageStyle.textContent = `@page { size: A4 ${orientation}; margin: ${margin}; }`;
@@ -2665,6 +2737,11 @@
 
   weeklyPrintBtn.addEventListener("click", () => {
     renderPrintWeek(weeklyWeekAnchor);
+    triggerPrint("landscape");
+  });
+
+  monthlyPrintBtn.addEventListener("click", () => {
+    renderPrintMonth(monthAnchor);
     triggerPrint("landscape");
   });
 
