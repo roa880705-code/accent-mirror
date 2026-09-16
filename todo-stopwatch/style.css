@@ -3691,7 +3691,6 @@ body {
   color: #777;
 }
 
-.print-schedule-list,
 .print-plain-list,
 .print-tree-list {
   margin: 0;
@@ -3700,19 +3699,89 @@ body {
   line-height: 1.6;
 }
 
-.print-schedule-list {
-  list-style: none;
-  padding-left: 0;
-}
-
-.print-schedule-time {
-  display: inline-block;
-  min-width: 88px;
-  font-weight: 700;
-}
-
 .print-tree-list {
   list-style: disc;
+}
+
+/* 予定(時間にはまったスケジュール)は、画面のウィークリー/デイリーと
+   同じ「縦軸+時間帯を面積で示す箱」の見た目をそのまま印刷でも使う
+   (buildPrintTimeline参照)。 */
+.print-timeline {
+  position: relative;
+  display: flex;
+  margin-bottom: 4px;
+}
+
+.print-timeline-hours {
+  position: relative;
+  flex: none;
+  width: 36px;
+}
+
+.print-timeline-hour-label {
+  position: absolute;
+  right: 4px;
+  transform: translateY(-50%);
+  font-size: 0.6rem;
+  color: #777;
+  white-space: nowrap;
+}
+
+.print-timeline-grid {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  border-left: 1px solid #ccc;
+}
+
+.print-timeline-hour-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid #ddd;
+}
+
+.print-timeline-block {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid #b8672a;
+  border-radius: 3px;
+  background: #fdf3e9;
+  padding: 2px 4px;
+  overflow: hidden;
+}
+
+.print-timeline-block-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #141413;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.print-timeline-block-time {
+  font-size: 0.6rem;
+  color: #555;
+}
+
+.print-timeline-block-children {
+  font-size: 0.6rem;
+  color: #555;
+  white-space: normal;
+}
+
+.print-timeline-compact .print-timeline-hours {
+  width: 20px;
+}
+
+.print-timeline-compact .print-timeline-hour-label {
+  font-size: 0.5rem;
+}
+
+.print-timeline-compact .print-timeline-block-label {
+  font-size: 0.56rem;
 }
 
 .print-text-block {
@@ -3747,7 +3816,6 @@ body {
   padding-bottom: 2px;
 }
 
-.print-schedule-list-compact,
 .print-plain-list-compact {
   font-size: 0.66rem;
   line-height: 1.4;
