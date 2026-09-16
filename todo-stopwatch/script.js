@@ -982,6 +982,10 @@
   const timetableDayTabs = document.getElementById("timetableDayTabs");
   const timetablePeriodList = document.getElementById("timetablePeriodList");
   const calendarTimetableToggleBtn = document.getElementById("calendarTimetableToggleBtn");
+  const weeklyPrintBtn = document.getElementById("weeklyPrintBtn");
+  const dailyPrintBtn = document.getElementById("dailyPrintBtn");
+  const printArea = document.getElementById("printArea");
+  const printPageStyle = document.getElementById("printPageStyle");
   const appHeaderEl = document.querySelector(".app-header");
   const breakdownEl = document.getElementById("breakdown");
   const historyEl = document.getElementById("history");
@@ -1974,6 +1978,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-16", text: "ウィークリー/デイリーに「印刷」ボタンを追加しました。画面のグリッドをそのまま印刷するのではなく、予定(時刻順)・最優先/今日中/今週中/いつか・メモを読みやすいリスト形式に組み直したA4サイズの印刷用レイアウトを作ります(デイリーは縦向き、ウィークリーは横向き)。紙のプランナーとして使う、バックアップ代わりに保管する、どちらの用途にもお使いください。" },
     { date: "2026-09-16", text: "設定ページに「バックアップ履歴」を追加しました。サインインしていると、Supabase側が日本時間0:05頃に自動で全データの控えを取り(直近90日分保持)、過去のある日の内容をここで確認できます。アプリ自体からは一切書き込まない読み取り専用の控えなので、万一の不具合でデータが消えた/変わったように見えた時の確認用にお使いください。" },
     { date: "2026-09-16", text: "複数端末でほぼ同時にデイリー右側のメモ欄(2つとも)へ書き込むと、わずかな差で後からpushした方が丸ごと勝ってしまい、先に書いた方の内容が跡形もなく消えてしまうことがある不具合を修正しました。今後は食い違いに気づいたら、どちらか一方を消さず、区切り線(----- 他端末の内容 -----)付きで両方その日欄に残すようにしました。" },
     { date: "2026-09-16", text: "他端末の更新を取り込むための自動リロード(約45秒おき)のたびにデイリーへ戻ってしまっていた不具合を修正し、直近開いていたタブ(設定/タスク/月/週/日/ログのいずれでも)をそのまま維持するようにしました。" },
@@ -2439,6 +2444,228 @@
   calendarTimetableToggleBtn.addEventListener("click", () => {
     toggleTimetableVisibleForDate(weekAnchor);
     renderCalendar();
+  });
+
+  // --- デイリー/ウィークリーの印刷 ---
+  // 個人開発ゆえのデータ消失不安への保険(設定ページの「バックアップ
+  // 履歴」)の続き。紙のプランナーとして実際に書き込みながら使いたい、
+  // という要望にも応えられるよう、画面のピクセル位置合わせのグリッドを
+  // そのまま印刷するのではなく、時刻順のリスト形式で組み直した専用の
+  // 印刷用レイアウトを別途組み立てる(#printArea、通常は非表示)。
+
+  function appendPrintTreeList(container, nodes, getChildren) {
+    if (!nodes.length) return;
+    const ul = document.createElement("ul");
+    ul.className = "print-tree-list";
+    nodes.forEach((node) => {
+      const li = document.createElement("li");
+      li.textContent = node.label;
+      const kids = getChildren(node) || [];
+      if (kids.length) appendPrintTreeList(li, kids, getChildren);
+      ul.appendChild(li);
+    });
+    container.appendChild(ul);
+  }
+
+  function makePrintEmpty(text) {
+    const p = document.createElement("p");
+    p.className = "print-empty";
+    p.textContent = text;
+    return p;
+  }
+
+  function makePrintSectionShell(title) {
+    const section = document.createElement("section");
+    section.className = "print-section";
+    const h2 = document.createElement("h2");
+    h2.textContent = title;
+    section.appendChild(h2);
+    return section;
+  }
+
+  function makePrintListSection(title, labels) {
+    const section = makePrintSectionShell(title);
+    if (!labels.length) {
+      section.appendChild(makePrintEmpty("なし"));
+      return section;
+    }
+    const ul = document.createElement("ul");
+    ul.className = "print-plain-list";
+    labels.forEach((label) => {
+      const li = document.createElement("li");
+      li.textContent = label;
+      ul.appendChild(li);
+    });
+    section.appendChild(ul);
+    return section;
+  }
+
+  function makePrintTreeSection(title, nodes, getChildren) {
+    const section = makePrintSectionShell(title);
+    if (!nodes.length) {
+      section.appendChild(makePrintEmpty("なし"));
+      return section;
+    }
+    appendPrintTreeList(section, nodes, getChildren);
+    return section;
+  }
+
+  function makePrintTextSection(title, text) {
+    const section = makePrintSectionShell(title);
+    const p = document.createElement("p");
+    p.className = "print-text-block";
+    p.textContent = text;
+    section.appendChild(p);
+    return section;
+  }
+
+  function buildPrintScheduleList(dateStr, { compact } = {}) {
+    const dayPlans = plansForDate(dateStr).slice().sort((a, b) => a.startMin - b.startMin);
+    if (!dayPlans.length) return makePrintEmpty("予定なし");
+    const ul = document.createElement("ul");
+    ul.className = compact ? "print-schedule-list print-schedule-list-compact" : "print-schedule-list";
+    dayPlans.forEach((plan) => {
+      const li = document.createElement("li");
+      const label = plan.label || "(名称未設定)";
+      if (compact) {
+        li.textContent = `${formatMinHM(plan.startMin)} ${label}`;
+      } else {
+        const time = document.createElement("span");
+        time.className = "print-schedule-time";
+        time.textContent = `${formatMinHM(plan.startMin)}〜${formatMinHM(plan.endMin)}`;
+        const name = document.createElement("span");
+        name.textContent = label;
+        li.append(time, name);
+        const rootChildren = planChildrenOf(plan, null);
+        if (rootChildren.length) appendPrintTreeList(li, rootChildren, (n) => planChildrenOf(plan, n.id));
+      }
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+
+  function priorityAndTodayItems(dateStr) {
+    const items = itemsArrayForDate(dateStr);
+    return {
+      priorityItems: items.filter((it) => it.priority && !it.completed),
+      todayItems: items.filter((it) => !it.priority && !it.planId && !it.completed),
+    };
+  }
+
+  function renderPrintDay(dateStr) {
+    const d = parseDateStr(dateStr);
+    const { priorityItems, todayItems } = priorityAndTodayItems(dateStr);
+    const weekItems = itemsArrayForWeek(mondayOfWeek(dateStr));
+    const briefing = (briefingMemos[dateStr] || "").trim();
+    const notes = (dailyNotes[dateStr] || "").trim();
+
+    printArea.innerHTML = "";
+    const page = document.createElement("div");
+    page.className = "print-page print-page-daily";
+
+    const h1 = document.createElement("h1");
+    h1.className = "print-title";
+    h1.textContent = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS[d.getDay()]})`;
+    page.appendChild(h1);
+
+    const scheduleSection = makePrintSectionShell("予定");
+    scheduleSection.appendChild(buildPrintScheduleList(dateStr));
+    page.appendChild(scheduleSection);
+
+    page.appendChild(makePrintListSection("最優先", priorityItems.map((it) => labelOf(it, "最優先タスク"))));
+    page.appendChild(makePrintListSection("今日中", todayItems.map((it) => labelOf(it, "今日中タスク"))));
+    page.appendChild(makePrintTreeSection("今週中", weekItems, (n) => n.children || []));
+    page.appendChild(makePrintTreeSection("いつか", topLevelSomeday(), (n) => childrenOf(n.id)));
+    if (briefing) page.appendChild(makePrintTextSection("ブリーフィングメモ", briefing));
+    if (notes) page.appendChild(makePrintTextSection("メモ", notes));
+
+    printArea.appendChild(page);
+  }
+
+  function renderPrintWeek(weekStart) {
+    printArea.innerHTML = "";
+    const page = document.createElement("div");
+    page.className = "print-page print-page-weekly";
+
+    const h1 = document.createElement("h1");
+    h1.className = "print-title";
+    const s = parseDateStr(weekStart);
+    const e = parseDateStr(addDaysStr(weekStart, 6));
+    h1.textContent = `${s.getFullYear()}/${s.getMonth() + 1}/${s.getDate()} 〜 ${e.getMonth() + 1}/${e.getDate()} の週`;
+    page.appendChild(h1);
+
+    const grid = document.createElement("div");
+    grid.className = "print-week-grid";
+    for (let i = 0; i < 7; i++) {
+      const dateStr = addDaysStr(weekStart, i);
+      const d = parseDateStr(dateStr);
+      const col = document.createElement("div");
+      col.className = "print-week-col";
+
+      const dayTitle = document.createElement("h3");
+      dayTitle.textContent = `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS[d.getDay()]})`;
+      col.appendChild(dayTitle);
+
+      col.appendChild(buildPrintScheduleList(dateStr, { compact: true }));
+
+      const { priorityItems, todayItems } = priorityAndTodayItems(dateStr);
+      [
+        ["最優先", priorityItems],
+        ["今日中", todayItems],
+      ].forEach(([label, list]) => {
+        if (!list.length) return;
+        const heading = document.createElement("div");
+        heading.className = "print-week-sub-heading";
+        heading.textContent = label;
+        col.appendChild(heading);
+        const ul = document.createElement("ul");
+        ul.className = "print-plain-list print-plain-list-compact";
+        list.forEach((it) => {
+          const li = document.createElement("li");
+          li.textContent = labelOf(it, `${label}タスク`);
+          ul.appendChild(li);
+        });
+        col.appendChild(ul);
+      });
+
+      const notes = (dailyNotes[dateStr] || "").trim();
+      if (notes) {
+        const p = document.createElement("p");
+        p.className = "print-text-block print-text-block-compact";
+        p.textContent = notes;
+        col.appendChild(p);
+      }
+
+      grid.appendChild(col);
+    }
+    page.appendChild(grid);
+
+    page.appendChild(makePrintTreeSection("今週中", itemsArrayForWeek(weekStart), (n) => n.children || []));
+    page.appendChild(makePrintTreeSection("いつか", topLevelSomeday(), (n) => childrenOf(n.id)));
+
+    printArea.appendChild(page);
+  }
+
+  function triggerPrint(orientation) {
+    const margin = orientation === "landscape" ? "10mm" : "12mm";
+    printPageStyle.textContent = `@page { size: A4 ${orientation}; margin: ${margin}; }`;
+    document.body.classList.add("print-mode");
+    window.print();
+  }
+
+  // 印刷ダイアログを閉じた後(キャンセルも含む)、通常の画面表示へ戻す。
+  window.addEventListener("afterprint", () => {
+    document.body.classList.remove("print-mode");
+  });
+
+  dailyPrintBtn.addEventListener("click", () => {
+    renderPrintDay(dailyWeekAnchor);
+    triggerPrint("portrait");
+  });
+
+  weeklyPrintBtn.addEventListener("click", () => {
+    renderPrintWeek(weeklyWeekAnchor);
+    triggerPrint("landscape");
   });
 
   // --- breakdown page ---

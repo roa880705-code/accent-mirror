@@ -3626,3 +3626,143 @@ body {
   min-height: 200px;
   max-height: 60vh;
 }
+
+/* --- 印刷レイアウト(デイリー/ウィークリー) ---
+   renderPrintDay/renderPrintWeek(script.js)が#printAreaの中身を組み
+   立て、印刷ボタンが@page(印刷方向)をprintPageStyleへ書き込んでから
+   window.print()を呼ぶ。画面表示中は#printAreaを常に隠し、印刷時だけ
+   body.print-modeが付いた状態で.wrapを隠して#printAreaを見せる —
+   visibility切り替えではなくdisplay切り替えにしているのは、隠れた
+   .wrap側の改ページ計算を印刷に巻き込まないため。 */
+
+.print-toggle-btn {
+  margin-left: auto;
+}
+
+#printArea {
+  display: none;
+}
+
+@media print {
+  .wrap {
+    display: none !important;
+  }
+  body.print-mode {
+    /* ダークモード設定・プリンタの「背景色を印刷」設定の有無に関わらず、
+       紙のプランナーらしい白地に固定する(色は使わず罫線と太字だけで
+       区別しているので、背景印刷オフでも読みやすさは変わらない)。 */
+    background: #fff;
+  }
+  body.print-mode #printArea {
+    display: block;
+  }
+}
+
+.print-page {
+  font-family: "Hiragino Maru Gothic ProN", "Hiragino Kaku Gothic ProN", "BIZ UDPGothic", "Yu Gothic Medium", "Meiryo", "Noto Sans JP", sans-serif;
+  background: #fff;
+  color: #141413;
+}
+
+.print-title {
+  margin: 0 0 10px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  border-bottom: 2px solid #141413;
+  padding-bottom: 6px;
+}
+
+.print-section {
+  margin-bottom: 10px;
+  break-inside: avoid;
+}
+
+.print-section h2 {
+  margin: 0 0 4px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border-bottom: 1px solid #999;
+  padding-bottom: 2px;
+}
+
+.print-empty {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #777;
+}
+
+.print-schedule-list,
+.print-plain-list,
+.print-tree-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.print-schedule-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.print-schedule-time {
+  display: inline-block;
+  min-width: 88px;
+  font-weight: 700;
+}
+
+.print-tree-list {
+  list-style: disc;
+}
+
+.print-text-block {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  min-height: 20px;
+}
+
+/* ウィークリー: 曜日ごとの列を7つ横並びに(A4横向き前提)。 */
+.print-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.print-week-col {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 6px;
+  break-inside: avoid;
+}
+
+.print-week-col h3 {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-bottom: 1px solid #999;
+  padding-bottom: 2px;
+}
+
+.print-schedule-list-compact,
+.print-plain-list-compact {
+  font-size: 0.66rem;
+  line-height: 1.4;
+  padding-left: 14px;
+}
+
+.print-week-sub-heading {
+  margin-top: 4px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: #555;
+}
+
+.print-text-block-compact {
+  margin-top: 4px;
+  font-size: 0.62rem;
+  padding: 4px 5px;
+}

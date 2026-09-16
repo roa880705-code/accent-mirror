@@ -197,6 +197,7 @@
               <button type="button" class="timetable-toggle-btn box-toggle-btn" id="weeklyUnscheduledToggleBtn" title="当日中欄の表示切替">当日中</button>
               <button type="button" class="timetable-toggle-btn box-toggle-btn" id="weeklyThisWeekToggleBtn" title="今週中欄の表示切替">今週中</button>
               <button type="button" class="timetable-toggle-btn box-toggle-btn" id="weeklySomedayToggleBtn" title="いつか欄の表示切替">いつか</button>
+              <button type="button" class="timetable-toggle-btn print-toggle-btn" id="weeklyPrintBtn" title="この週をA4横向きで印刷">印刷</button>
             </div>
           </div>
           <div class="calendar-week-header" id="weeklyWeekHeader"></div>
@@ -256,6 +257,7 @@
               <button type="button" class="timetable-toggle-btn" id="calendarTimetableToggleBtn" title="時間割の表示切替">時間割</button>
               <button type="button" class="timetable-toggle-btn box-toggle-btn" id="calendarThisWeekToggleBtn" title="今週中欄の表示切替">今週中</button>
               <button type="button" class="timetable-toggle-btn box-toggle-btn" id="calendarSomedayToggleBtn" title="いつか欄の表示切替">いつか</button>
+              <button type="button" class="timetable-toggle-btn print-toggle-btn" id="dailyPrintBtn" title="この日をA4縦向きで印刷">印刷</button>
             </div>
           </div>
           <div class="daily-two-col-row">
@@ -459,6 +461,12 @@
     <button class="row-reset" type="button" title="リセット">&#8635;</button>
   </section>
 </template>
+
+<!-- デイリー/ウィークリーの印刷レイアウト: 印刷ボタンでJSが中身を組み立て、
+     window.print()の直前だけ@media printでこちらを表示し.wrapを隠す
+     (renderPrintDay/renderPrintWeek参照)。画面表示中は常に非表示。 -->
+<style id="printPageStyle"></style>
+<div id="printArea"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="sync.js"></script>
