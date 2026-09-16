@@ -43,6 +43,7 @@ button{width:100%;box-sizing:border-box;border:none;border-radius:12px;padding:1
 .quirk-eval-button[data-eval="correct"].selected{border-color:#116b32;background:#116b32}
 .quirk-eval-button[data-eval="partial"].selected{border-color:#805700;background:#805700}
 .quirk-eval-button[data-eval="wrong"].selected{border-color:#9b1c14;background:#9b1c14}
+.quirk-note-box{min-height:56px;font-size:13px}
 .inline-validation-item{display:none}
 table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}th,td{padding:10px;border-bottom:1px solid #e5e7ef;text-align:left}th{background:#f8f9fc;color:#555}.score-low{color:#b42318;font-weight:900}.score-mid{color:#9a6700;font-weight:900}.score-high{color:#116b32;font-weight:900}
 .phoneme-card{background:#f8f9fc;border-radius:14px;padding:14px;margin-top:12px}.phoneme-title{font-weight:900;font-size:18px}.phone-row{display:grid;grid-template-columns:90px 1fr 70px;gap:10px;align-items:center;margin:8px 0}.bar{height:12px;background:#e3e6ee;border-radius:999px;overflow:hidden}.bar>div{height:100%;background:#202124;border-radius:999px}

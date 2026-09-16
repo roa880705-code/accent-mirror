@@ -1653,6 +1653,7 @@ const QUIRK_EVAL_OPTIONS = [
   { value: "wrong", label: "間違っている" }
 ];
 let topQuirkEvaluations = {};
+let topQuirkNotes = {};
 
 function renderTopQuirks(mirror) {
   const el = $("topQuirksList");
@@ -1680,9 +1681,16 @@ function renderTopQuirks(mirror) {
     const buttons = QUIRK_EVAL_OPTIONS.map((option) => (
       `<button type="button" class="quirk-eval-button${selected === option.value ? " selected" : ""}" data-eval="${option.value}" data-quirk-id="${escapeHtml(quirk.id)}">${escapeHtml(option.label)}</button>`
     )).join("");
+    // スクショだけでは録音とミラー音声を実際に聞き比べられないため、判定ボタンに
+    // 加えて「実際はどう聞こえたか／ミラー音声はどうずれていたか」を書けるメモ欄を
+    // 項目ごとに置く。これにより、ボタンだけでは伝わらない具体的なズレの内容
+    // (例: 実際は母音が全部聞こえていた、ミラー側の区切りが不自然すぎた等)を
+    // 1件ごとに紐づけてスクショで送れるようにする。
+    const note = topQuirkNotes[quirk.id] || "";
     return `<div class="quirk-item">
       <div class="quirk-item-text"><span class="quirk-item-index">${index + 1}</span>${escapeHtml(quirk.explanation)}</div>
       <div class="quirk-eval-row">${buttons}</div>
+      <textarea class="note-box quirk-note-box" data-quirk-note-id="${escapeHtml(quirk.id)}" placeholder="実際の聞こえ方とのズレなど、具体的なメモ（任意）">${escapeHtml(note)}</textarea>
     </div>`;
   }).join("");
 }
@@ -1694,6 +1702,7 @@ function renderMirror(mirror) {
     $("mirrorAnalysisSummary").textContent = "まだありません。";
     renderMirrorDebugTable(null);
     topQuirkEvaluations = {};
+    topQuirkNotes = {};
     renderTopQuirks(null);
     $("mirrorVoiceStatus").textContent = "ミラー音声はまだありません。";
     $("mirrorVoicePlayback").className = "audio hidden";
@@ -1717,6 +1726,7 @@ function renderMirror(mirror) {
   $("mirrorAnalysisSummary").innerHTML = (freeRecognitionNote || "") + buildMirrorAnalysisSummary(mirror);
   renderMirrorDebugTable(mirror);
   topQuirkEvaluations = {};
+  topQuirkNotes = {};
   renderTopQuirks(mirror);
   $("mirrorVoiceStatus").textContent = mirror.confidence?.level === "high"
     ? "ミラー音声を生成できます。"
@@ -1959,6 +1969,13 @@ $("topQuirksList")?.addEventListener("click", (event) => {
   if (!button) return;
   topQuirkEvaluations[button.dataset.quirkId] = button.dataset.eval;
   renderTopQuirks(latestAssessment?.mirror || null);
+});
+$("topQuirksList")?.addEventListener("input", (event) => {
+  const textarea = event.target.closest(".quirk-note-box");
+  if (!textarea) return;
+  // 再描画するとテキストエリアの入力中のカーソル位置が失われるため、
+  // ボタンのクリック時(renderTopQuirksを呼ぶ)とは違い、ここでは状態だけ更新する。
+  topQuirkNotes[textarea.dataset.quirkNoteId] = textarea.value;
 });
 $("recordLocalButton").onclick = localRecord;
 $("modelVoiceButton").onclick = playModelVoice;
