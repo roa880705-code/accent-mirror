@@ -1964,6 +1964,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-16", text: "ウィークリー/デイリーで「今週中」または「いつか」のタスクを展開(ドリルダウン表示)している時に、別のタスク(最優先/今日中/今週中/いつかのいずれでも)をタップしたら、まず展開していたものが自動的にたたまれるようにしました。以前は展開したまま無関係な編集画面が開いてしまうことがありました。" },
     { date: "2026-09-15", text: "タスクページの最優先/今日中欄から＋ボタンを削除しました(追加はウィークリー/デイリーの＋から引き続き行えます)。" },
     { date: "2026-09-15", text: "「今週中」タスクも、未完了のまま週をまたいだら(日曜日から月曜日になるタイミングで)直前の週の分だけ自動的に今週の欄へ引き継がれるようにしました(「最優先」「今日中」の日またぎ引き継ぎと同じ考え方です)。これまでは引き継ぎが無く、週が変わると前の週に残ったまま画面に出てこなくなっていました。" },
     { date: "2026-09-14", text: "端末がスリープ/バックグラウンドから復帰した際、その間に他端末が日付をまたいで正しく進めていた内容(いつかタスクの復元、最優先/今日中タスクの引き継ぎなど)を、スリープ前の古い内容で誤って上書きしてしまうことがある不具合を修正しました。これが原因で、いつかタスクが重複したり、最優先/今日中タスクが日をまたいで引き継がれていないように見えることがありました。" },
@@ -5475,6 +5476,10 @@
   // (いつかのsomedayExpandAllガードと同じ)。
   function handleThisWeekParentTap(weekStart, item) {
     if (!thisWeekExpandAll && activeThisWeekItem !== item) {
+      // 新しく別の今週中タスクを展開する時は、いつか側で開いている
+      // ドリルダウンがあれば一緒に畳む(同時に2箇所が展開されたままに
+      // ならないようにする)
+      collapseSomedaySubtaskLayers();
       activeThisWeekItem = item;
       renderThisWeekTray();
       return;
@@ -5487,13 +5492,13 @@
   // 分岐)と同じ考え方: 他のタスクの子孫をドリルダウン表示中なら、この
   // タスク自身の編集モーダルは開かず、まずその展開を閉じるだけにする
   // (タップ1回で「よそ見していた展開を閉じつつ、意図と違う編集画面が
-  // 開いてしまう」のを防ぐ)。何も展開していない時だけ、通常通り編集
-  // モーダルを開く。全展開中は「今どれか1件だけ展開中」という状態自体が
-  // 無いので対象外(いつかの!somedayExpandAllガードと同じ)。
+  // 開いてしまう」のを防ぐ)。今週中自身だけでなく、いつか側が展開中の
+  // 場合も同様に畳む。何も展開していない時だけ、通常通り編集モーダルを
+  // 開く。全展開中は「今どれか1件だけ展開中」という状態自体が無いので
+  // 対象外(いつかの!somedayExpandAllガードと同じ)。
   function handleThisWeekLeafTap(weekStart, item) {
-    if (!thisWeekExpandAll && activeThisWeekItem) {
-      activeThisWeekItem = null;
-      renderThisWeekTray();
+    if (!thisWeekExpandAll && (activeThisWeekItem || activeSomedayIds.some((id) => id))) {
+      collapseAllDrilldowns();
       return;
     }
     promptWeeklyTaskEdit(weekStart, item);
@@ -6932,6 +6937,12 @@
       trayDragCtx = null;
       if (isThisWeekTap) {
         handleThisWeekTapLikeRelease(ctx.dateStr, ctx.item);
+      } else if (activeThisWeekItem || activeSomedayIds.some((id) => id)) {
+        // 今週中/いつかのどちらかをドリルダウン表示中に、無関係な
+        // 最優先/今日中チップをタップした場合は、この項目自身の編集
+        // モーダルは開かず、まずその展開を閉じるだけにする(他の家族の
+        // タップハンドラと同じ「よそ見していた展開を閉じる」挙動)
+        collapseAllDrilldowns();
       } else {
         promptRegularTaskEdit(ctx.dateStr, ctx.item);
       }
@@ -7805,18 +7816,24 @@
       if (expandAll || activeSomedayIds[depth] === task.id) {
         promptSomedayEditOrAddChild(task, depth);
       } else {
+        // 新しく別のいつかタスクを掘り下げる時は、今週中側で開いている
+        // ドリルダウンがあれば一緒に畳む
+        if (activeThisWeekItem) {
+          activeThisWeekItem = null;
+          renderThisWeekTray();
+        }
         activateSomedayChain(depth, task.id);
         renderSomedayList();
       }
       return;
     }
 
-    if (!expandAll && depth === 0 && activeSomedayIds.some((id) => id)) {
+    if (!expandAll && depth === 0 && (activeSomedayIds.some((id) => id) || activeThisWeekItem)) {
       // an unrelated childless いつか task, tapped while some other
-      // family's 子/孫/ひ孫 trays are expanded below — just close that
-      // expansion (like tapping outside does) instead of also popping
-      // open this task's own edit choice on top of it
-      collapseSomedaySubtaskLayers();
+      // family's 子/孫/ひ孫 trays are expanded below (いつか自身、または
+      // 今週中側) — just close that expansion (like tapping outside does)
+      // instead of also popping open this task's own edit choice on top of it
+      collapseAllDrilldowns();
       return;
     }
 
