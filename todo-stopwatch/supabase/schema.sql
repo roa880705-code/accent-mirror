@@ -87,3 +87,77 @@ create policy "device_stats_update_anyone" on public.device_stats
 -- 見る運用のまま)。
 create policy "device_stats_select_anyone" on public.device_stats
   for select using (true);
+
+-- 個人開発ゆえの「同期バグで気づかないうちにデータが消える/変わる」
+-- 不安への保険として、app_dataの内容を1日1回自動でこの
+-- app_data_snapshotsへ複製し、直近90日分だけ残す。アプリ自体が同期
+-- バグを持っていても影響しないよう、書き込みはアプリ(フロント)からは
+-- 一切行わず、Supabase側のpg_cronだけが行う(下記のtake_app_data_
+-- snapshot()参照)。読み取りは本人のみ(app_dataと同じRLS方針)。
+--
+-- 【既存プロジェクトへの追加手順】このブロックだけをSQL Editorへ貼って
+-- 実行すればよい(schema.sql全体の再実行は、create policyがIF NOT
+-- EXISTSに対応していないため「policy already exists」エラーになる)。
+-- pg_cron拡張が有効化できない場合はDashboard → Database →
+-- Extensions で「pg_cron」を先にオンにしてから再実行する。
+create extension if not exists pg_cron;
+
+create table if not exists public.app_data_snapshots (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  key text not null,
+  value jsonb not null,
+  -- 「その日のいつ時点か」ではなく「どの日の控えか」を表す日付。
+  -- 日本時間0:05頃に走らせるジョブが、直前(=前日の終わり)の内容を
+  -- その「前日」の日付として記録する設計(take_app_data_snapshot参照)。
+  snapshot_date date not null,
+  captured_at timestamptz not null default now()
+);
+
+create unique index if not exists app_data_snapshots_user_key_date
+  on public.app_data_snapshots (user_id, key, snapshot_date);
+
+create index if not exists app_data_snapshots_user_date
+  on public.app_data_snapshots (user_id, snapshot_date);
+
+alter table public.app_data_snapshots enable row level security;
+
+create policy "app_data_snapshots_select_own" on public.app_data_snapshots
+  for select using (auth.uid() = user_id);
+
+-- insert/update/delete用のポリシーは意図的に置かない。この後のジョブは
+-- SQL Editorと同じpostgresロール(テーブル所有者)で実行され、テーブル
+-- 所有者はFORCE ROW LEVEL SECURITYを付けない限りRLSの対象外のため、
+-- アプリ側(anonキー)からはこのテーブルへ一切書き込めない。
+
+create or replace function public.take_app_data_snapshot()
+returns void
+language plpgsql
+as $$
+begin
+  insert into public.app_data_snapshots (user_id, key, value, snapshot_date, captured_at)
+  select user_id, key, value, (now() at time zone 'Asia/Tokyo')::date - 1, now()
+  from public.app_data
+  on conflict (user_id, key, snapshot_date) do update
+    set value = excluded.value, captured_at = excluded.captured_at;
+
+  delete from public.app_data_snapshots
+  where snapshot_date < (now() at time zone 'Asia/Tokyo')::date - 90;
+end;
+$$;
+
+-- 同じジョブ名が既にあれば一旦解除してから登録し直す(このブロックを
+-- 再実行しても重複登録にならないようにするため)。日本時間0:05
+-- (=UTC 15:05)に毎日実行。
+do $$
+begin
+  perform cron.unschedule(jobid) from cron.job where jobname = 'daily_app_data_snapshot';
+exception when others then
+  null; -- pg_cronのジョブテーブルが無い/未初期化などは無視して先へ進む
+end $$;
+
+select cron.schedule(
+  'daily_app_data_snapshot',
+  '5 15 * * *',
+  $$select public.take_app_data_snapshot();$$
+);

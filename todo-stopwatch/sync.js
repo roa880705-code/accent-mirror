@@ -612,6 +612,50 @@
         return { ok: false, message: (err && err.message) || String(err) };
       }
     },
+    // 設定ページ「バックアップ履歴」パネル用: Supabase側でpg_cronが1日
+    // 1回自動保存しているapp_data_snapshots(直近90日分、schema.sql参照)
+    // から、この端末がサインインしているアカウント自身の分だけを読む。
+    // 日付一覧(新しい順、重複無し)を返す — 実際の中身はgetSnapshot()で
+    // 選ばれた日付ごとに取りに行く(一覧表示のたびに全件は読まない)。
+    async listSnapshotDates() {
+      if (!configured || !client || !session) return null;
+      try {
+        const { data, error } = await client
+          .from("app_data_snapshots")
+          .select("snapshot_date")
+          .eq("user_id", session.user.id)
+          .order("snapshot_date", { ascending: false });
+        if (error) throw error;
+        const seen = new Set();
+        const dates = [];
+        (data || []).forEach((row) => {
+          if (seen.has(row.snapshot_date)) return;
+          seen.add(row.snapshot_date);
+          dates.push(row.snapshot_date);
+        });
+        return dates;
+      } catch (err) {
+        log("snapshot dates fetch failed", err);
+        return null;
+      }
+    },
+    // 指定した日付(snapshot_date、"YYYY-MM-DD")のスナップショット本体
+    // (key/value/captured_atの配列)を返す。
+    async getSnapshot(snapshotDate) {
+      if (!configured || !client || !session) return null;
+      try {
+        const { data, error } = await client
+          .from("app_data_snapshots")
+          .select("key, value, captured_at")
+          .eq("user_id", session.user.id)
+          .eq("snapshot_date", snapshotDate);
+        if (error) throw error;
+        return data || [];
+      } catch (err) {
+        log("snapshot fetch failed", err);
+        return null;
+      }
+    },
     async signIn() {
       if (!client) return;
       // without this, Supabase falls back to the bare origin (no path) as

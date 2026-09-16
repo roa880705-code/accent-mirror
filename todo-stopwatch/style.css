@@ -727,6 +727,93 @@ body {
   line-height: 1.4;
 }
 
+/* --- 設定ページ: バックアップ履歴 --- */
+
+.snapshot-history-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.snapshot-date-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.snapshot-date-btn {
+  all: unset;
+  box-sizing: border-box;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1.5px solid var(--panel-line);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.snapshot-date-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.snapshot-date-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.snapshot-detail[hidden] {
+  display: none;
+}
+
+.snapshot-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.snapshot-key-block {
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 2px 10px;
+}
+
+.snapshot-key-title {
+  margin: 0;
+  padding: 6px 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+}
+
+.snapshot-key-title::-webkit-details-marker {
+  display: none;
+}
+
+.snapshot-key-json {
+  margin: 0 0 8px;
+  padding: 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--panel-line);
+  border-radius: 6px;
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", "Courier New", monospace;
+  font-size: 0.64rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
 .period-settings-list {
   display: flex;
   flex-direction: column;

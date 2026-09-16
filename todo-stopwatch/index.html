@@ -47,6 +47,15 @@
             <button id="resetAllBtn" class="btn btn-reset-all" type="button">全リセット</button>
             <p class="settings-section-note">今日ここまで計測した時間を履歴に保存したうえで、今日のタイマーをすべて0に戻します。タスクの名前や、スケジュール、タスク一覧に登録した項目など、時間以外のデータは削除されません。</p>
           </details>
+          <details class="settings-section" id="snapshotHistorySection">
+            <summary class="settings-section-title">バックアップ履歴</summary>
+            <p class="settings-section-note">サインインしていると、Supabase側が日本時間0:05頃に自動で全データの控え(スナップショット)を取り、直近90日分を保持します。アプリ自体の不具合でデータが消えた/変わったように見えた時、過去のある日の内容をここで確認できます(このアプリからは書き込めない、読み取り専用の控えです)。</p>
+            <div id="snapshotHistoryPanel" class="snapshot-history-panel">
+              <p class="settings-section-note" id="snapshotHistoryMessage">読み込み中…</p>
+              <div id="snapshotDateList" class="snapshot-date-list"></div>
+              <div id="snapshotDetail" class="snapshot-detail" hidden></div>
+            </div>
+          </details>
           <details class="settings-section">
             <summary class="settings-section-title">表示時間帯</summary>
             <p class="settings-section-note">ウィークリー/デイリーの時間軸に表示する時間帯を絞れます。範囲外の時間は完全に非表示になります(スクロールしても出てきません)。</p>

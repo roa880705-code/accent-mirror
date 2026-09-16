@@ -953,6 +953,10 @@
   const devStatsList = document.getElementById("devStatsList");
   const devTestWriteBtn = document.getElementById("devTestWriteBtn");
   const devTestWriteResult = document.getElementById("devTestWriteResult");
+  const snapshotHistorySection = document.getElementById("snapshotHistorySection");
+  const snapshotHistoryMessage = document.getElementById("snapshotHistoryMessage");
+  const snapshotDateList = document.getElementById("snapshotDateList");
+  const snapshotDetail = document.getElementById("snapshotDetail");
   const periodEnabledToggle = document.getElementById("periodEnabledToggle");
   const calendarHourRangeStartHour = document.getElementById("calendarHourRangeStartHour");
   const calendarHourRangeStartMinute = document.getElementById("calendarHourRangeStartMinute");
@@ -1970,6 +1974,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-16", text: "設定ページに「バックアップ履歴」を追加しました。サインインしていると、Supabase側が日本時間0:05頃に自動で全データの控えを取り(直近90日分保持)、過去のある日の内容をここで確認できます。アプリ自体からは一切書き込まない読み取り専用の控えなので、万一の不具合でデータが消えた/変わったように見えた時の確認用にお使いください。" },
     { date: "2026-09-16", text: "複数端末でほぼ同時にデイリー右側のメモ欄(2つとも)へ書き込むと、わずかな差で後からpushした方が丸ごと勝ってしまい、先に書いた方の内容が跡形もなく消えてしまうことがある不具合を修正しました。今後は食い違いに気づいたら、どちらか一方を消さず、区切り線(----- 他端末の内容 -----)付きで両方その日欄に残すようにしました。" },
     { date: "2026-09-16", text: "他端末の更新を取り込むための自動リロード(約45秒おき)のたびにデイリーへ戻ってしまっていた不具合を修正し、直近開いていたタブ(設定/タスク/月/週/日/ログのいずれでも)をそのまま維持するようにしました。" },
     { date: "2026-09-16", text: "ウィークリー/デイリーで「今週中」または「いつか」のタスクを展開(ドリルダウン表示)している時に、別のタスク(最優先/今日中/今週中/いつかのいずれでも)をタップしたら、まず展開していたものが自動的にたたまれるようにしました。以前は展開したまま無関係な編集画面が開いてしまうことがありました。" },
@@ -2229,6 +2234,133 @@
     } else {
       devTestWriteResult.textContent = `書き込み失敗: ${result.message}`;
     }
+  });
+
+  // --- 設定ページ: バックアップ履歴 ---
+  // Supabase側でpg_cronが日本時間0:05頃に自動保存する、直近90日分の
+  // app_data_snapshots(schema.sql参照)を読み取り専用で確認できる欄。
+  // 個人開発ゆえの「同期バグ等で気づかないうちにデータが消える/変わる」
+  // 不安への保険として、アプリ本体の不具合とは独立した経路(このアプリ
+  // からは一切書き込まない)で日々の控えを残しておく。
+
+  const SNAPSHOT_KEY_LABELS = {
+    "v6": "タイマー(最優先/今日中/割込/予定外)",
+    "history:v1": "履歴",
+    "drafts:v1": "下書き",
+    "plans:v1": "予定",
+    "someday:v1": "いつか",
+    "dayTitles:v1": "日付タイトル",
+    "briefingMemo:v1": "ブリーフィングメモ",
+    "dailyNotes:v1": "メモ",
+    "priorityTasks:v1": "最優先タスク(旧形式)",
+    "timetable:v1": "時間割",
+    "periodSettings:v1": "時限設定",
+    "calendarHourRange:v1": "表示時間帯設定",
+    "thisWeekTasks:v1": "今週中",
+    "displaySettings:v1": "表示設定",
+  };
+
+  function formatSnapshotDateLabel(dateStr) {
+    const d = parseDateStr(dateStr);
+    return `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS[d.getDay()]})`;
+  }
+
+  let activeSnapshotDate = null;
+
+  function renderSnapshotDetail(rows) {
+    snapshotDetail.innerHTML = "";
+    if (!rows || !rows.length) {
+      const empty = document.createElement("p");
+      empty.className = "settings-section-note";
+      empty.textContent = "この日の控えは空でした。";
+      snapshotDetail.appendChild(empty);
+      return;
+    }
+    rows
+      .slice()
+      .sort((a, b) => (SNAPSHOT_KEY_LABELS[a.key] || a.key).localeCompare(SNAPSHOT_KEY_LABELS[b.key] || b.key, "ja"))
+      .forEach((row) => {
+        const block = document.createElement("details");
+        block.className = "snapshot-key-block";
+        const title = document.createElement("summary");
+        title.className = "snapshot-key-title";
+        title.textContent = SNAPSHOT_KEY_LABELS[row.key] || row.key;
+        const pre = document.createElement("pre");
+        pre.className = "snapshot-key-json";
+        pre.textContent = JSON.stringify(row.value, null, 2);
+        block.append(title, pre);
+        snapshotDetail.appendChild(block);
+      });
+  }
+
+  async function loadSnapshotDetail(dateStr) {
+    activeSnapshotDate = dateStr;
+    Array.from(snapshotDateList.children).forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.date === dateStr);
+    });
+    snapshotDetail.hidden = false;
+    snapshotDetail.innerHTML = "";
+    const loading = document.createElement("p");
+    loading.className = "settings-section-note";
+    loading.textContent = "読み込み中…";
+    snapshotDetail.appendChild(loading);
+    const rows = await window.AppSync.getSnapshot(dateStr);
+    if (activeSnapshotDate !== dateStr) return; // 別の日付が選ばれ直した後なら結果を捨てる
+    if (rows === null) {
+      snapshotDetail.innerHTML = "";
+      const err = document.createElement("p");
+      err.className = "settings-section-note";
+      err.textContent = "取得に失敗しました。";
+      snapshotDetail.appendChild(err);
+      return;
+    }
+    renderSnapshotDetail(rows);
+  }
+
+  function renderSnapshotDateList(dates) {
+    snapshotDateList.innerHTML = "";
+    dates.forEach((dateStr) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "snapshot-date-btn";
+      btn.dataset.date = dateStr;
+      btn.textContent = formatSnapshotDateLabel(dateStr);
+      btn.addEventListener("click", () => loadSnapshotDetail(dateStr));
+      snapshotDateList.appendChild(btn);
+    });
+  }
+
+  let snapshotDatesLoaded = false;
+  async function loadSnapshotDates() {
+    if (snapshotDatesLoaded) return;
+    snapshotDatesLoaded = true;
+    if (!window.AppSync || !window.AppSync.isConfigured()) {
+      snapshotHistoryMessage.hidden = false;
+      snapshotHistoryMessage.textContent = "同期機能が設定されていません。";
+      return;
+    }
+    if (!window.AppSync.isSignedIn()) {
+      snapshotHistoryMessage.hidden = false;
+      snapshotHistoryMessage.textContent = "サインインすると、ここでバックアップ履歴を確認できます。";
+      return;
+    }
+    const dates = await window.AppSync.listSnapshotDates();
+    if (dates === null) {
+      snapshotHistoryMessage.hidden = false;
+      snapshotHistoryMessage.textContent = "取得に失敗しました。";
+      return;
+    }
+    if (!dates.length) {
+      snapshotHistoryMessage.hidden = false;
+      snapshotHistoryMessage.textContent = "まだ控えがありません(サインイン後、日本時間0:05頃の初回実行をお待ちください)。";
+      return;
+    }
+    snapshotHistoryMessage.hidden = true;
+    renderSnapshotDateList(dates);
+  }
+
+  snapshotHistorySection.addEventListener("toggle", () => {
+    if (snapshotHistorySection.open) loadSnapshotDates();
   });
 
   // --- 設定ページ: 時間割 ---
