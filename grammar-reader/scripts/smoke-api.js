@@ -30,8 +30,12 @@ const server = app.listen(0, async () => {
 
     const unit = await get("/api/grammar/units/relative");
     assert.strictEqual(unit.body.unit.questions.length, 6);
-    assert.ok(unit.body.unit.questions[0].choiceNotes.length === 4);
-    checks.push("GET /api/grammar/units/:unitId");
+    const sample = unit.body.unit.questions[0];
+    assert.strictEqual(sample.options.length, 2);
+    assert.strictEqual(sample.options.filter((option) => option.correct).length, 1);
+    assert.ok(sample.options.every((option) => option.answer && option.reason));
+    assert.ok(sample.misconception.length > 0);
+    checks.push("GET /api/grammar/units/:unitId (2択＋根拠)");
 
     const missingUnit = await get("/api/grammar/units/nope");
     assert.strictEqual(missingUnit.status, 404);
@@ -40,7 +44,9 @@ const server = app.listen(0, async () => {
     const passage = await get("/api/reading/passages/sleep");
     assert.strictEqual(passage.body.passage.questions.length, 4);
     assert.strictEqual(passage.body.passage.paragraphs.length, passage.body.passage.translations.length);
-    checks.push("GET /api/reading/passages/:passageId");
+    assert.ok(passage.body.passage.questions.every((question) => question.options.length === 2));
+    assert.ok(passage.body.passage.questions.some((question) => question.variant === "reason"));
+    checks.push("GET /api/reading/passages/:passageId (2択＋根拠)");
 
     const missingPassage = await get("/api/reading/passages/nope");
     assert.strictEqual(missingPassage.status, 404);

@@ -49,67 +49,95 @@ const readingPassages = [
     questions: [
       {
         id: "yawn-q1",
-        type: "detail",
         typeJa: "内容一致",
-        prompt: "What did the experiment described in the second paragraph show?",
-        choices: [
-          "Changing the amount of oxygen or carbon dioxide did not change how often people yawned.",
-          "People yawned more when they breathed air with more oxygen.",
-          "People stopped yawning when they breathed carbon dioxide.",
-          "The volunteers were too tired to take part in the experiment."
+        variant: "word",
+        prompt: "What did the experiment in the second paragraph show?",
+        options: [
+          {
+            answer: "Changing the amount of oxygen or carbon dioxide did not change how often people yawned.",
+            reason: "第2段落の Neither change made them yawn more or less. の neither が「どちらの変化でも〜ない」と両方を否定しているから",
+            correct: true
+          },
+          {
+            answer: "People yawned more when they breathed air with more oxygen.",
+            reason: "第1段落に「あくびは酸素を取り込むもの」とあり、酸素が増えればあくびも増えるはずだから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "Neither change made them yawn more or less.",
         explanation:
-          "Neither change made them yawn more or less. が根拠です。neither は「どちらの〜も…ない」という否定なので、酸素を増やしても二酸化炭素を増やしてもあくびの回数は変わらなかった、という意味になります。"
+          "neither は2つのものをまとめて否定する語です。酸素を増やしても二酸化炭素を増やしても、あくびの回数は変わらなかったと述べています。",
+        misconception:
+          "第1段落の「古い説明」を本文の主張として読んでいます。The old explanation ... is that 〜 は、このあと否定される考えとして紹介されているものです。"
       },
       {
         id: "yawn-q2",
-        type: "detail",
         typeJa: "因果関係",
+        variant: "reason",
         prompt: "According to the cooling theory, why do people yawn less in very hot weather?",
-        choices: [
-          "The outside air is too warm to lower the temperature of the brain.",
-          "Hot weather makes people too tired to open their mouths.",
-          "People breathe more slowly when the weather is hot.",
-          "The brain does not get warm at all in hot weather."
+        options: [
+          {
+            answer: "The outside air is too warm to lower the temperature of the brain.",
+            reason: "第3段落末の too warm to be of any help が「暖かすぎて役に立たない」と理由を述べているから",
+            correct: true
+          },
+          {
+            answer: "The outside air is too warm to lower the temperature of the brain.",
+            reason: "暑い日は体温が上がって脳を冷やす必要がなくなるので、あくびをする理由もなくなるから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "when the outside air is too warm to be of any help",
         explanation:
-          "too warm to be of any help（暖かすぎて何の役にも立たない）が根拠です。あくびの目的が脳を冷やすことなら、外の空気が暖かいときにはあくびをしても意味がない、という流れです。"
+          "あくびの目的が脳を冷やすことなら、外の空気が暖かいときにあくびをしても意味がない、という筋道です。too 〜 to … は「…するには〜すぎる」。",
+        misconception:
+          "結論は同じでも、根拠が本文にありません。本文が挙げている理由は「外の空気が暖かすぎて冷却の役に立たない」であって、冷やす必要がなくなるからではありません。もっともらしい理屈を自分で補ってしまう誤りです。"
       },
       {
         id: "yawn-q3",
-        type: "vocab",
         typeJa: "語彙推測",
-        prompt: "In the last paragraph, the word contagious is closest in meaning to",
-        choices: [
-          "spreading easily from one person to another",
-          "lasting for a very long time",
-          "difficult to notice",
-          "happening only once"
+        variant: "word",
+        prompt: "In the last paragraph, what does contagious mean?",
+        options: [
+          {
+            answer: "Spreading easily from one person to another",
+            reason: "直前に「見たり聞いたりするだけでこちらもあくびが出る」とあり、その内容を1語で言い換えているから",
+            correct: true
+          },
+          {
+            answer: "Difficult to stop once it begins",
+            reason: "あくびは一度始まると止まらないものだという一般的な感覚に合うから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "Seeing, hearing, or even reading about a yawn can make you yawn",
         explanation:
-          "直前で「あくびを見聞きするだけでこちらもあくびが出る」と説明されているので、contagious は「人から人へうつる」という意味だと推測できます。未知語は前後の言い換えから判断します。"
+          "未知語の意味は、前後にある言い換えから決めます。ここでは直前の一文がそのまま contagious の説明になっています。",
+        misconception:
+          "自分の知識や印象で語義を埋めています。本文に書かれていない「止まらない」という要素を持ち込むと、書き手の主張からずれていきます。"
       },
       {
         id: "yawn-q4",
-        type: "main",
         typeJa: "要旨",
-        prompt: "Which sentence best describes the main idea of the passage?",
-        choices: [
-          "The old oxygen explanation of yawning has been replaced by newer ideas about cooling and social behavior.",
-          "Yawning is a sign that a person is not getting enough oxygen.",
-          "Animals and humans yawn for completely different reasons.",
-          "Scientists have finally proved exactly why people yawn."
+        variant: "word",
+        prompt: "Which sentence best describes the whole passage?",
+        options: [
+          {
+            answer: "The old oxygen explanation has been replaced by newer ideas about cooling and social behavior.",
+            reason: "第1段落で古い説を示し、第2段落で否定し、第3・4段落で新しい説を2つ挙げるという構成そのものが要旨だから",
+            correct: true
+          },
+          {
+            answer: "Scientists have finally proved exactly why people yawn.",
+            reason: "第3段落と第4段落で理論が示され、研究者の考えも紹介されているから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "The old explanation ... A newer theory is that a yawn cools the brain. ... Yawning is also social.",
         explanation:
-          "第1段落で古い説を示し、第2段落でそれを否定、第3・4段落で新しい2つの説を示す構成です。全体の流れをまとめた選択肢を選びます。「完全に証明された」とまでは書かれていない点にも注意しましょう。"
+          "要旨は段落の並び方に表れます。旧説→反証→新説という流れをそのまま一文にまとめたものが答えになります。",
+        misconception:
+          "may / Some researchers think / If so は、断定を避けるための語です。これらがある文章を「証明された」とまとめると言い過ぎになります。"
       }
     ]
   },
@@ -158,67 +186,95 @@ const readingPassages = [
     questions: [
       {
         id: "citybees-q1",
-        type: "main",
         typeJa: "要旨",
+        variant: "word",
         prompt: "What is the main point of the passage?",
-        choices: [
-          "City bees often do well because cities offer a variety of flowers over a long season.",
-          "Bees should be moved from the countryside to cities as soon as possible.",
-          "Modern farming has made honey more expensive in cities.",
-          "Beekeeping is easier for beginners than most people imagine."
+        options: [
+          {
+            answer: "City bees often do well because cities offer a variety of flowers over a long season.",
+            reason: "第2段落が by contrast で「単一作物の農地」と「多様な都市」を対比し、健康である理由を説明しているから",
+            correct: true
+          },
+          {
+            answer: "Bees should be moved from the countryside to cities as soon as possible.",
+            reason: "第1段落に都市のミツバチのほうが健康だとあるので、都市へ移すべきだと分かるから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "Cities, by contrast, are full of small gardens, parks, and balconies ... so something is in bloom from March to October.",
         explanation:
-          "第2段落が中心です。「単一作物の農地では餌の時期が偏るが、都市は多様な植物が長期間咲く」という対比が、都市のミツバチが健康な理由として示されています。"
+          "by contrast は対比の合図です。この語を見つけると、筆者がどの2つを比べているかがはっきりします。",
+        misconception:
+          "事実の記述から筆者の提案へ飛躍しています。第3段落では逆に「巣箱を増やす前に花を植えよ」と慎重な立場が示されています。"
       },
       {
         id: "citybees-q2",
-        type: "detail",
         typeJa: "内容一致",
-        prompt: "What problem do bees face in areas where a single crop is grown?",
-        choices: [
-          "They have far too much food for a short time and almost none afterward.",
-          "They cannot find any food at all during the whole year.",
-          "They are attacked by other insects that live in the fields.",
-          "They have to fly to the city to find water."
+        variant: "word",
+        prompt: "What problem do bees face where a single crop is grown?",
+        options: [
+          {
+            answer: "They have far too much food for a short time and almost none afterward.",
+            reason: "第2段落のセミコロンをはさんだ2文が、more food than they can use と almost nothing を対比しているから",
+            correct: true
+          },
+          {
+            answer: "They cannot find any food at all during the whole year.",
+            reason: "同じ段落に almost nothing とあり、餌がないと書かれているから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "When that crop flowers, bees have more food than they can use; when it stops, they have almost nothing.",
         explanation:
-          "セミコロン（;）で対比された2文が根拠です。more food than they can use（使い切れないほどの餌）と almost nothing（ほとんど何もない）の落差を読み取ります。"
+          "セミコロンは対になる2文を並べる記号です。前半（花が咲いているとき）と後半（終わったとき）をセットで読みます。",
+        misconception:
+          "almost nothing だけを抜き出しています。それは花が終わったあとの話で、前半の when that crop flowers を読み落とすと一年中餌がないことになってしまいます。"
       },
       {
         id: "citybees-q3",
-        type: "detail",
         typeJa: "内容一致",
+        variant: "reason",
         prompt: "What do experts advise cities to do?",
-        choices: [
-          "Plant more flowers before increasing the number of hives.",
-          "Remove all hives from crowded districts.",
-          "Bring bumblebees into the city from the countryside.",
-          "Limit beekeeping to hotels and schools."
+        options: [
+          {
+            answer: "Plant more flowers before increasing the number of hives.",
+            reason: "第3段落の advise cities to plant more flowers before adding more hives が、助言の中身と順序をそのまま示しているから",
+            correct: true
+          },
+          {
+            answer: "Plant more flowers before increasing the number of hives.",
+            reason: "都市には花が少なく、ミツバチの餌が足りていないと書かれているから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "Experts now advise cities to plant more flowers before adding more hives.",
         explanation:
-          "advise +目的語+ to 不定詞の形で助言の内容が述べられています。before adding more hives（巣箱を増やす前に）という順序まで含めて読み取ります。"
+          "advise +目的語+ to 不定詞で助言の内容が示されます。before 以下の順序まで含めて読み取ります。",
+        misconception:
+          "答えは合っていますが、根拠が本文と逆です。第2段落は都市が多様な花にあふれていると述べています。本文の理由は「巣箱が増えすぎると野生のハチと餌を奪い合うから」です。"
       },
       {
         id: "citybees-q4",
-        type: "inference",
         typeJa: "推論",
+        variant: "word",
         prompt: "What does the writer suggest in the last paragraph?",
-        choices: [
-          "Seeing bees at work changes how city people think about nature.",
-          "Advertisements are the best way to protect insects.",
-          "People in cities should stop watching bees and start keeping them.",
-          "Nature can only be understood far from the city."
+        options: [
+          {
+            answer: "Seeing bees at work changes how city people think about nature.",
+            reason: "最終文の rarely think of nature as something that exists only far away が「遠くにあるものとは考えなくなる」という否定だから",
+            correct: true
+          },
+          {
+            answer: "Nature can only be understood far from the city.",
+            reason: "最終文に nature ... exists only far away と書かれているから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "People who have watched bees work above a busy street rarely think of nature as something that exists only far away.",
         explanation:
-          "rarely（めったに〜ない）という否定語がポイントです。「自然は遠くにだけあるものだ、とは考えなくなる」＝身近なものとして感じるようになる、という含意を読み取ります。"
+          "rarely は「めったに〜ない」という否定語です。否定語を拾えるかどうかで、文の向きが正反対になります。",
+        misconception:
+          "文の一部だけを抜き出して読んでいます。exists only far away は rarely think of nature as 〜 の中身で、筆者が否定している考え方のほうです。"
       }
     ]
   },
@@ -266,67 +322,95 @@ const readingPassages = [
     questions: [
       {
         id: "sleep-q1",
-        type: "vocab",
         typeJa: "語句の意味",
+        variant: "word",
         prompt: "What is consolidation, as the passage uses the word?",
-        choices: [
-          "The process of moving new information into a more lasting form",
-          "The act of studying one more chapter before a test",
-          "A stage of sleep that comes just before morning",
-          "The loss of memories during a long night"
+        options: [
+          {
+            answer: "The process of moving new information into a more lasting form",
+            reason: "a process called consolidation が、直前の説明を同格で言い換えたものだから",
+            correct: true
+          },
+          {
+            answer: "A stage of sleep that comes just before morning",
+            reason: "第3段落で睡眠の段階が説明されており、consolidation もその一つだと考えられるから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "the brain slowly moves new information from short-term storage into a more permanent form, a process called consolidation",
         explanation:
-          "a process called consolidation は直前の内容全体を言い換えた同格表現です。called の前にある説明部分をそのまま答えにします。"
+          "専門用語は、初めて出てくる場所で定義されます。called / known as / that is の前後を見れば意味が分かります。",
+        misconception:
+          "語が出てきた場所ではなく、あとの段落の内容と結びつけています。定義はその語が最初に登場する第2段落にあります。"
       },
       {
         id: "sleep-q2",
-        type: "detail",
         typeJa: "内容一致",
-        prompt: "What did the study of two groups show?",
-        choices: [
-          "The group that slept remembered more, although both groups studied for the same length of time.",
-          "The group that stayed awake remembered more because it had more practice.",
-          "Both groups remembered the same number of words.",
-          "The group that slept studied for a longer time than the other group."
+        variant: "word",
+        prompt: "What did the study of the two groups show?",
+        options: [
+          {
+            answer: "The group that slept remembered more, although both groups studied for the same length of time.",
+            reason: "even though both groups had spent the same amount of time studying が譲歩節で、条件をそろえたことを示しているから",
+            correct: true
+          },
+          {
+            answer: "The group that slept studied for a longer time than the other group.",
+            reason: "眠ったグループのほうがよく覚えていたので、勉強量も多かったと考えられるから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "even though both groups had spent the same amount of time studying",
         explanation:
-          "even though（〜にもかかわらず）が譲歩を示しています。勉強時間が同じだったという条件があるからこそ、差を生んだのは睡眠だと言える、という論理です。"
+          "even though は「〜にもかかわらず」。勉強時間が同じという条件があるからこそ、差を生んだのは睡眠だと言えます。",
+        misconception:
+          "結果から原因を想像で補っています。譲歩節は、ほかの原因を消すために置かれている大事な情報です。"
       },
       {
         id: "sleep-q3",
-        type: "detail",
         typeJa: "内容一致",
+        variant: "reason",
         prompt: "According to the passage, REM sleep is linked to",
-        choices: [
-          "skills and seeing connections between ideas.",
-          "facts and events only.",
-          "the first half of the night.",
-          "the amount of time spent studying."
+        options: [
+          {
+            answer: "skills and seeing connections between ideas.",
+            reason: "第3段落の REM sleep, which increases toward morning, is linked to skills and to the ability to see connections between ideas がそのまま対応するから",
+            correct: true
+          },
+          {
+            answer: "skills and seeing connections between ideas.",
+            reason: "REM 睡眠は朝に向かって増えると書かれており、朝は頭が冴えて発想が生まれやすいから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "REM sleep, which increases toward morning, is linked to skills and to the ability to see connections between ideas.",
         explanation:
-          "深い睡眠（事実・出来事）と REM 睡眠（技能・発想のつながり）の対比です。which increases toward morning は挿入的な説明なので、いったん外して主語と述語を結びます。"
+          "同じ段落に同じ形の文が2つ並ぶときは、主語を取り違えないように分けて読みます。深い睡眠は事実や出来事、REM 睡眠は技能と発想です。",
+        misconception:
+          "which increases toward morning は時間帯の説明にすぎず、「朝は頭が冴える」とは書かれていません。何と何が結びつくかは is linked to の直後で確かめます。"
       },
       {
         id: "sleep-q4",
-        type: "inference",
         typeJa: "筆者の主張",
+        variant: "word",
         prompt: "Which statement would the writer most likely agree with?",
-        choices: [
-          "Studying early and then sleeping is better than studying late into the night.",
-          "Sleeping longer is always more useful than studying.",
-          "Sleep can replace the work of learning new material.",
-          "Students should stop worrying about how long they sleep."
+        options: [
+          {
+            answer: "Studying early and then sleeping is better than studying late into the night.",
+            reason: "最終段落の study earlier, and then go to bed が筆者の助言そのものだから",
+            correct: true
+          },
+          {
+            answer: "Sleeping longer is always more useful than studying.",
+            reason: "睡眠が記憶を助けると本文全体で述べられているから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "The practical advice is simple but unpopular: study earlier, and then go to bed.",
         explanation:
-          "最終段落で、筆者は「睡眠は学んだことを守るだけで、知識を作りはしない」と断ったうえで助言をしています。極端な選択肢（always / replace）は本文の留保と矛盾します。"
+          "筆者の主張は、留保（〜という意味ではない）とセットで読みます。ここでは「睡眠は守るだけで、知識を作りはしない」と断ったうえで助言しています。",
+        misconception:
+          "always のような言い切りは、本文の留保と衝突します。筆者は None of this means that sleeping instead of studying 〜 とあらかじめ否定しています。"
       }
     ]
   },
@@ -374,67 +458,95 @@ const readingPassages = [
     questions: [
       {
         id: "colorwords-q1",
-        type: "detail",
         typeJa: "内容一致",
+        variant: "word",
         prompt: "What do the Russian experiments actually measure?",
-        choices: [
-          "How quickly speakers match colors, not how well their eyes work",
-          "How many colors Russian speakers can see",
-          "Whether Russian speakers prefer light or dark blue",
-          "How long Russian speakers can remember a color"
+        options: [
+          {
+            answer: "How quickly speakers match colors, not how well their eyes work",
+            reason: "第2段落冒頭の experiments that measure speed rather than eyesight が、測っている対象を明示しているから",
+            correct: true
+          },
+          {
+            answer: "How many colors Russian speakers can see",
+            reason: "第1段落に the number of colors ... depends on the language you speak とあり、見える色の数の話だから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "experiments that measure speed rather than eyesight",
         explanation:
-          "rather than（〜ではなく）が対比を作っています。speed（速さ）と eyesight（視力）のどちらを測っているかを読み分ける問題です。"
+          "rather than は「〜ではなく」と対象を絞り込む語です。測っているのは速さであって、視力ではありません。",
+        misconception:
+          "name（名づける）と see（見える）を同じものとして読んでいます。第1段落も「いくつの色に名前を付けるか」の話で、見える色の数ではありません。"
       },
       {
         id: "colorwords-q2",
-        type: "detail",
-        typeJa: "内容一致",
+        typeJa: "指示語",
+        variant: "reason",
         prompt: "What happens when speakers repeat numbers in their heads during the task?",
-        choices: [
-          "The Russian speakers' small advantage disappears.",
-          "The Russian speakers become even faster.",
-          "The English speakers begin to see two kinds of blue.",
-          "Both groups stop making mistakes."
+        options: [
+          {
+            answer: "The Russian speakers' small advantage disappears.",
+            reason: "第3段落の it disappears の it が、直前の the difference（速さの差）を指しているから",
+            correct: true
+          },
+          {
+            answer: "The Russian speakers' small advantage disappears.",
+            reason: "頭の中で数字を繰り返すと色に集中できなくなり、誰でも反応が遅くなるから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
-        evidence: "it disappears when speakers are asked to repeat numbers in their heads",
+        evidence: "The difference is measured in milliseconds, and it disappears when speakers are asked to repeat numbers in their heads",
         explanation:
-          "it が指すのは前の文の the difference（ロシア語話者に見られた差）です。指示語が何を受けているかを確認してから選びます。"
+          "it / this / that が出てきたら、受けている中身を必ず前の文から特定します。ここでは the difference です。",
+        misconception:
+          "「誰でも遅くなる」とは本文に書かれていません。消えるのは it が指す the difference、つまり2つの言語の話者のあいだにあった差であって、速さそのものの話ではありません。"
       },
       {
         id: "colorwords-q3",
-        type: "detail",
         typeJa: "具体例の役割",
+        variant: "word",
         prompt: "Why does the writer mention the Japanese word ao?",
-        choices: [
-          "To show that the boundaries between color words can shift over time",
-          "To prove that Japanese speakers cannot tell green from blue",
-          "To argue that Japanese has more color words than English",
-          "To explain why traffic lights were first invented"
+        options: [
+          {
+            answer: "To show that the boundaries between color words can shift over time",
+            reason: "第4段落冒頭の a familiar example of how such boundaries shift が、この例の役割を先に述べているから",
+            correct: true
+          },
+          {
+            answer: "To prove that Japanese speakers cannot tell green from blue",
+            reason: "緑色に見える信号を ao と呼ぶと書かれているから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "Japanese offers a familiar example of how such boundaries shift.",
         explanation:
-          "具体例の前後には、その例が何を示すためのものかを述べる文が置かれます。ここでは a familiar example of how such boundaries shift が役割を明示しています。"
+          "具体例の直前には、その例が何を示すためのものかを述べる文が置かれます。そこを読めば例の役割が決まります。",
+        misconception:
+          "例そのものから結論を作っています。本文が扱っているのは呼び名の範囲であって、色が見分けられるかどうかではありません。"
       },
       {
         id: "colorwords-q4",
-        type: "main",
         typeJa: "要旨",
+        variant: "word",
         prompt: "Which statement best sums up the passage?",
-        choices: [
-          "Language influences how quickly we sort colors, though it does not change what the eye sees.",
-          "People who speak different languages see completely different rainbows.",
-          "Color words are the same in every language once you look closely.",
-          "Scientists cannot measure any effect of language on color."
+        options: [
+          {
+            answer: "Language influences how quickly we sort colors, though it does not change what the eye sees.",
+            reason: "第3段落の language is not changing the eye; it is offering a shortcut が、主張の範囲を限定しているから",
+            correct: true
+          },
+          {
+            answer: "People who speak different languages see completely different rainbows.",
+            reason: "第1段落に、見える色の数は話す言語によって決まると書かれているから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "language is not changing the eye; it is offering a shortcut",
         explanation:
-          "本文は「影響はあるが、目の働き自体を変えるほどではない」という限定つきの主張です。completely different のような言い過ぎの選択肢と、効果を全否定する選択肢の両方を外します。"
+          "筆者は「影響はあるが、目の働きを変えるほどではない」という限定つきの主張をしています。セミコロンの前後がその限定を作っています。",
+        misconception:
+          "in part（ある程度は）という限定を落として読んでいます。completely のような強い語は、限定つきの主張とは噛み合いません。"
       }
     ]
   },
@@ -483,67 +595,95 @@ const readingPassages = [
     questions: [
       {
         id: "repaircafe-q1",
-        type: "detail",
         typeJa: "内容一致",
+        variant: "word",
         prompt: "What is the rule of a repair café?",
-        choices: [
-          "The owner of the broken item takes part in the repair.",
-          "Visitors must pay a small fee for each repair.",
-          "Only volunteers are allowed to touch the tools.",
-          "Each visitor may bring only one item a year."
+        options: [
+          {
+            answer: "The owner of the broken item takes part in the repair.",
+            reason: "第1段落の the owner stays at the table and holds the screwdriver が決まりの中身を述べているから",
+            correct: true
+          },
+          {
+            answer: "Only volunteers are allowed to touch the tools.",
+            reason: "第1段落に volunteers who know how to fix them とあり、直せるのはボランティアだから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "the owner stays at the table and holds the screwdriver whenever possible",
         explanation:
-          "直前の Nobody pays, and nobody is simply served. も手がかりです。「サービスを受けるだけの客はいない」＝持ち主も作業に加わる、という流れになっています。"
+          "直前の Nobody pays, and nobody is simply served.（ただサービスを受ける人はいない）も同じ内容を別の言い方で示しています。",
+        misconception:
+          "技術を持っている人＝作業する人、と読み替えています。本文はむしろ、持ち主が作業に加わることを決まりとして挙げています。"
       },
       {
         id: "repaircafe-q2",
-        type: "detail",
         typeJa: "内容一致",
-        prompt: "Which of the following makes repair difficult, according to the passage?",
-        choices: [
-          "Parts are glued in place and spare components are hard to buy.",
-          "Volunteers are not allowed to use screwdrivers.",
-          "Most broken machines are far too old to be fixed.",
-          "European rules forbid the repair of household appliances."
+        variant: "word",
+        prompt: "Which of the following makes repair difficult?",
+        options: [
+          {
+            answer: "Parts are glued in place and spare components are hard to buy.",
+            reason: "第3段落の glued rather than screwed と sold only to authorized dealers, if at all が2つの障害を並べているから",
+            correct: true
+          },
+          {
+            answer: "Most broken machines are far too old to be fixed.",
+            reason: "修理が難しいと書かれており、古い機械ほど直しにくいから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "parts are glued rather than screwed, and replacement components are sold only to authorized dealers, if at all",
         explanation:
-          "if at all は「もし売られているとしても（そもそも売られていないことも多い）」という強い限定を加える表現です。"
+          "if at all は「もしあるとしても（ほとんどない）」と、前の内容をさらに限定する表現です。",
+        misconception:
+          "本文は much of what is thrown away is close to working（捨てられるものの多くはあと少しで動く）と逆のことを述べています。障害は製品の設計と部品の入手です。"
       },
       {
         id: "repaircafe-q3",
-        type: "detail",
         typeJa: "内容一致",
+        variant: "word",
         prompt: "What do repair cafés send to European lawmakers?",
-        choices: [
-          "Data about repairs that could not be completed",
-          "The broken appliances themselves",
-          "Lists of volunteers who want new rules",
-          "Money collected from visitors"
+        options: [
+          {
+            answer: "Data about repairs that could not be completed",
+            reason: "第3段落の send data on failed repairs to European lawmakers がそのまま対応するから",
+            correct: true
+          },
+          {
+            answer: "Lists of volunteers who want new rules",
+            reason: "ボランティアが記録を取り、議員が規則の議論に使うと書かれているから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "Repair cafés now send data on failed repairs to European lawmakers",
         explanation:
-          "failed repairs は「失敗した修理」＝直せなかった事例です。第3段落の「記録に時間を使う」という内容ともつながっています。"
+          "failed repairs は「失敗した修理」、つまり直せなかった事例です。第3段落前半の「設計を記録する」という話ともつながります。",
+        misconception:
+          "同じ段落にある要素（ボランティア・規則）を組み合わせて作った選択肢です。誰が何を送ったのかを、本文の一文で確かめます。"
       },
       {
         id: "repaircafe-q4",
-        type: "inference",
         typeJa: "推論",
+        variant: "reason",
         prompt: "What does the writer imply in the final two sentences?",
-        choices: [
-          "The social value of a repair café may be greater than its environmental value.",
-          "Repair cafés should fix more than thirty toasters a day.",
-          "Repairing toasters does nothing to help the environment.",
-          "Streets with repair cafés have fewer broken machines."
+        options: [
+          {
+            answer: "The social value of a repair café may be greater than its environmental value.",
+            reason: "最後の2文が something small for the environment と something larger for the street を対比しているから",
+            correct: true
+          },
+          {
+            answer: "The social value of a repair café may be greater than its environmental value.",
+            reason: "修理カフェは環境のためではなく、地域の交流の場として作られたと書かれているから",
+            correct: false
+          }
         ],
-        answerIndex: 0,
         evidence: "something small for the environment ... something larger for the street it stands on",
         explanation:
-          "something small と something larger の対比が答えを決めます。環境への効果を否定しているのではなく、地域社会への効果のほうが大きいかもしれない、と述べている点に注意します。"
+          "small と larger という対比が結論を作っています。筆者は環境への効果を認めたうえで、地域への効果のほうが大きいかもしれないと述べています。",
+        misconception:
+          "設立の目的について本文は何も述べていません。筆者は環境への効果を認めたうえで、small と larger という程度の対比で締めくくっています。"
       }
     ]
   }

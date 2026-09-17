@@ -23,19 +23,42 @@ function checkUniqueId(id, label) {
   seenIds.add(id);
 }
 
-function checkChoiceBlock(question, label) {
-  check(Array.isArray(question.choices) && question.choices.length === 4, `${label}: 選択肢は4つ必要です`);
-  if (!Array.isArray(question.choices)) return;
-  const unique = new Set(question.choices.map((choice) => String(choice).trim().toLowerCase()));
-  check(unique.size === question.choices.length, `${label}: 同じ選択肢が重複しています`);
-  question.choices.forEach((choice, index) => {
-    check(typeof choice === "string" && choice.trim().length > 0, `${label}: 選択肢${index + 1}が空です`);
+/**
+ * 2択＋根拠の共通チェック。
+ * - 選択肢はちょうど2つ、正解はちょうど1つ
+ * - すべての選択肢に根拠を書く（誤答には「もっともらしいが誤った根拠」）
+ * - 根拠は「〜から」で終える（形をそろえて読み比べやすくする）
+ * - variant "reason" は語が同じ、"word" は語が異なる
+ */
+function checkOptionBlock(question, label) {
+  const options = question.options;
+  check(Array.isArray(options) && options.length === 2, `${label}: 選択肢はちょうど2つにしてください`);
+  if (!Array.isArray(options) || options.length !== 2) return;
+
+  const correctCount = options.filter((option) => option.correct === true).length;
+  check(correctCount === 1, `${label}: 正解の選択肢はちょうど1つにしてください（現在 ${correctCount} 個）`);
+
+  options.forEach((option, index) => {
+    const oLabel = `${label}/選択肢${index + 1}`;
+    check(typeof option.answer === "string" && option.answer.trim().length > 0, `${oLabel}: answer が空です`);
+    check(typeof option.reason === "string" && option.reason.length >= 10, `${oLabel}: 根拠が短すぎます`);
+    check(/から$/.test(String(option.reason)), `${oLabel}: 根拠は「〜から」で終えてください`);
   });
-  check(
-    Number.isInteger(question.answerIndex) && question.answerIndex >= 0 && question.answerIndex < question.choices.length,
-    `${label}: answerIndex が選択肢の範囲外です`
-  );
+
+  const [first, second] = options.map((option) => String(option.answer).trim());
+  check(["word", "reason"].includes(question.variant), `${label}: variant は "word" か "reason" です`);
+  if (question.variant === "reason") {
+    check(first === second, `${label}: variant "reason" では2つの選択肢の語を同じにしてください`);
+    check(options[0].reason !== options[1].reason, `${label}: 根拠まで同じになっています`);
+  } else if (question.variant === "word") {
+    check(first.toLowerCase() !== second.toLowerCase(), `${label}: variant "word" では語を変えてください`);
+  }
+
   check(typeof question.explanation === "string" && question.explanation.length >= 10, `${label}: 解説が短すぎます`);
+  check(
+    typeof question.misconception === "string" && question.misconception.length >= 10,
+    `${label}: misconception（誤った根拠のどこが違うか）が必要です`
+  );
 }
 
 /* ---- 文法 ---- */
@@ -51,6 +74,10 @@ grammarUnits.forEach((unit) => {
   unitOrders.add(unit.order);
   check(!!unit.title && !!unit.subtitle && !!unit.overview, `${label}: title / subtitle / overview が必要です`);
   check(unit.questions.length === 6, `${label}: 1ユニット6問にそろえてください（現在 ${unit.questions.length} 問）`);
+  check(
+    unit.questions.some((question) => question.variant === "reason"),
+    `${label}: 「語は同じで根拠だけが違う」問題を1問以上入れてください`
+  );
 
   unit.questions.forEach((question) => {
     const qLabel = `${label}/${question.id}`;
@@ -59,14 +86,7 @@ grammarUnits.forEach((unit) => {
     check([1, 2, 3].includes(question.level), `${qLabel}: level は 1〜3 で指定してください`);
     check(!!question.point, `${qLabel}: point（文法項目）が必要です`);
     check(typeof question.translation === "string" && question.translation.length > 0, `${qLabel}: 和訳が必要です`);
-    checkChoiceBlock(question, qLabel);
-    check(
-      Array.isArray(question.choiceNotes) && question.choiceNotes.length === question.choices.length,
-      `${qLabel}: choiceNotes は選択肢と同じ数だけ必要です`
-    );
-    (question.choiceNotes || []).forEach((note, index) => {
-      check(typeof note === "string" && note.length >= 5, `${qLabel}: 選択肢${index + 1}のコメントが短すぎます`);
-    });
+    checkOptionBlock(question, qLabel);
   });
 });
 
@@ -109,7 +129,7 @@ readingPassages.forEach((passage) => {
     const qLabel = `${label}/${question.id}`;
     checkUniqueId(question.id, qLabel);
     check(!!question.typeJa, `${qLabel}: typeJa（設問の種類）が必要です`);
-    checkChoiceBlock(question, qLabel);
+    checkOptionBlock(question, qLabel);
     check(typeof question.evidence === "string" && question.evidence.length > 0, `${qLabel}: evidence（根拠）が必要です`);
     // evidence は本文からの引用。"..." でつないだ場合は各断片が本文にあることを確認する。
     String(question.evidence)
@@ -124,8 +144,9 @@ readingPassages.forEach((passage) => {
 
 /* ---- 結果 ---- */
 
-const grammarQuestionCount = grammarUnits.reduce((total, unit) => total + unit.questions.length, 0);
-const readingQuestionCount = readingPassages.reduce((total, passage) => total + passage.questions.length, 0);
+const grammarQuestions = grammarUnits.flatMap((unit) => unit.questions);
+const readingQuestions = readingPassages.flatMap((passage) => passage.questions);
+const reasonOnly = grammarQuestions.concat(readingQuestions).filter((question) => question.variant === "reason");
 
 if (errors.length) {
   console.error(`問題バンクの検証に失敗しました（${errors.length} 件）`);
@@ -134,8 +155,9 @@ if (errors.length) {
 }
 
 console.log("問題バンクの検証に成功しました");
-console.log(` 文法: ${grammarUnits.length} ユニット / ${grammarQuestionCount} 問`);
-console.log(` 読解: ${readingPassages.length} 本 / 設問 ${readingQuestionCount} 問`);
+console.log(` 文法: ${grammarUnits.length} ユニット / ${grammarQuestions.length} 問`);
+console.log(` 読解: ${readingPassages.length} 本 / 設問 ${readingQuestions.length} 問`);
+console.log(` うち「語は同じで根拠だけが違う」問題: ${reasonOnly.length} 問`);
 readingPassages.forEach((passage) => {
   console.log(`  - ${passage.id}: ${countWords(passage.paragraphs)} words`);
 });

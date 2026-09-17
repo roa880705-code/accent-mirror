@@ -22,7 +22,7 @@
   <section id="homeScreen" class="screen">
     <div class="card hero-card">
       <h1>今日はどちらから始めますか</h1>
-      <p class="lead">文法は10ユニット60問、読解は200語前後の英文5本。すべて日本語の解説つきで、間違えた問題は自動で復習キューに入ります。</p>
+      <p class="lead">出題はすべて2択。選ぶのは「空所に入る語」だけでなく<strong>その根拠</strong>です。誤ったほうの選択肢には、もっともらしいけれど間違った根拠が書いてあります。</p>
       <div class="stat-row">
         <div class="stat"><span>解いた問題</span><strong id="statAnswered">0</strong></div>
         <div class="stat"><span>正答率</span><strong id="statAccuracy">--</strong></div>
@@ -35,7 +35,7 @@
       <button id="goGrammarButton" class="menu-card" type="button">
         <span class="menu-card-label">文法ドリル</span>
         <span class="menu-card-title">英文法 10ユニット</span>
-        <span class="menu-card-note">時制・完了形・助動詞・受動態・不定詞・動名詞・分詞・関係詞・仮定法・比較</span>
+        <span class="menu-card-note">時制・完了形・助動詞・受動態・不定詞・動名詞・分詞・関係詞・仮定法・比較。各ユニットに「語は同じで根拠だけが違う」問題を用意</span>
       </button>
       <button id="goReadingButton" class="menu-card" type="button">
         <span class="menu-card-label">読解</span>
@@ -91,6 +91,7 @@
     <div class="card">
       <div class="eyebrow" id="quizPoint"></div>
       <p class="question-prompt" id="quizPrompt"></p>
+      <p class="quiz-hint minor" id="quizHint"></p>
       <div id="quizChoices" class="choice-list"></div>
       <div id="quizFeedback" class="feedback hidden"></div>
       <button id="quizNextButton" class="primary-button hidden" type="button">次の問題へ</button>

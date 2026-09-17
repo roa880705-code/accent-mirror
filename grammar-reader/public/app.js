@@ -1,6 +1,7 @@
 "use strict";
 
 /* 英文法・英語読解トレーナー フロントエンド
+   出題は「空所に入る語＋その根拠」を一体で選ぶ2択。
    - 問題は /api から取得
    - 学習記録は localStorage（reviewPlanner.js のロジックで box 管理）    */
 
@@ -96,14 +97,12 @@ function refreshHomeStats() {
   }
 }
 
-/* ---------- ホーム ---------- */
-
 function goHome() {
   refreshHomeStats();
   show("homeScreen");
 }
 
-/* ---------- 文法ユニット一覧 ---------- */
+/* ---------- 一覧 ---------- */
 
 function renderGrammarList() {
   var listNode = $("grammarUnitList");
@@ -137,8 +136,6 @@ function renderGrammarList() {
   show("grammarListScreen");
 }
 
-/* ---------- 読解パッセージ一覧 ---------- */
-
 function renderReadingList() {
   var listNode = $("readingPassageList");
   clear(listNode);
@@ -168,6 +165,84 @@ function renderReadingList() {
     listNode.appendChild(button);
   });
   show("readingListScreen");
+}
+
+/* ---------- 2択＋根拠の描画（文法・読解で共用） ---------- */
+
+function correctIndexOf(question) {
+  for (var i = 0; i < question.options.length; i += 1) {
+    if (question.options[i].correct === true) return i;
+  }
+  return 0;
+}
+
+// 正解が常に同じ位置に来ないよう、表示のたびに並びを入れ替える。
+function shuffledOrder() {
+  return Math.random() < 0.5 ? [0, 1] : [1, 0];
+}
+
+function renderOptionButtons(question, container, onPick) {
+  var order = shuffledOrder();
+  clear(container);
+  order.forEach(function (optionIndex, displayIndex) {
+    var option = question.options[optionIndex];
+    var button = el("button", "choice");
+    button.type = "button";
+    button.appendChild(el("span", "choice-mark", String.fromCharCode(65 + displayIndex)));
+    var body = el("span", "choice-body");
+    body.appendChild(el("span", "choice-answer", option.answer));
+    body.appendChild(el("span", "choice-reason", option.reason));
+    button.appendChild(body);
+    button.addEventListener("click", function () {
+      onPick(optionIndex);
+    });
+    container.appendChild(button);
+  });
+  return order;
+}
+
+function revealOptions(container, order, question, chosenIndex) {
+  var buttons = container.querySelectorAll(".choice");
+  for (var i = 0; i < buttons.length; i += 1) {
+    var option = question.options[order[i]];
+    buttons[i].disabled = true;
+    buttons[i].classList.add(option.correct ? "is-correct" : "is-wrong");
+    if (order[i] === chosenIndex) {
+      buttons[i].classList.add("is-picked");
+      buttons[i].appendChild(el("span", "picked-badge", "選んだ根拠"));
+    }
+  }
+}
+
+function feedbackBlock(label, text) {
+  var block = el("div", "feedback-block");
+  block.appendChild(el("div", "feedback-label", label));
+  block.appendChild(el("div", "feedback-text", text));
+  return block;
+}
+
+function renderFeedback(node, question, correct) {
+  clear(node);
+  node.className = "feedback " + (correct ? "correct" : "wrong");
+  node.appendChild(el("div", "feedback-verdict", correct ? "正解" : "不正解"));
+
+  var answerIndex = correctIndexOf(question);
+  var right = question.options[answerIndex];
+  var wrong = question.options[answerIndex === 0 ? 1 : 0];
+
+  node.appendChild(feedbackBlock("正しい根拠", right.answer + " — " + right.reason));
+
+  var wrongBlock = el("div", "feedback-block");
+  wrongBlock.appendChild(el("div", "feedback-label", "もう一方の根拠はどこが違うか"));
+  wrongBlock.appendChild(el("div", "feedback-text wrong-reason", "「" + wrong.reason + "」"));
+  wrongBlock.appendChild(el("div", "feedback-text", question.misconception));
+  node.appendChild(wrongBlock);
+
+  if (question.translation) node.appendChild(feedbackBlock("和訳", question.translation));
+  if (question.evidence) node.appendChild(feedbackBlock("本文の根拠", "“" + question.evidence + "”"));
+  node.appendChild(feedbackBlock("解説", question.explanation));
+
+  node.classList.remove("hidden");
 }
 
 /* ---------- 演習セッション（文法ドリル・復習で共用） ---------- */
@@ -252,22 +327,18 @@ function renderQuizQuestion() {
   if (session.mode === "review") {
     label = (item.kind === "grammar" ? "文法" : "読解") + "／" + item.groupTitle + (label ? "／" + label : "");
   }
+  if (question.variant === "reason") {
+    label = label + "（根拠だけが違う2択）";
+  }
   $("quizPoint").textContent = label;
 
   renderPromptInto($("quizPrompt"), question.prompt);
+  $("quizHint").textContent =
+    question.variant === "reason"
+      ? "入る語は同じです。根拠が正しいほうを選んでください。"
+      : "語と根拠がセットです。根拠まで正しいほうを選んでください。";
 
-  var choicesNode = $("quizChoices");
-  clear(choicesNode);
-  question.choices.forEach(function (choice, index) {
-    var button = el("button", "choice");
-    button.type = "button";
-    button.appendChild(el("span", "choice-mark", String.fromCharCode(65 + index)));
-    button.appendChild(el("span", "choice-text", choice));
-    button.addEventListener("click", function () {
-      answerQuizQuestion(index);
-    });
-    choicesNode.appendChild(button);
-  });
+  session.currentOrder = renderOptionButtons(question, $("quizChoices"), answerQuizQuestion);
 
   $("quizFeedback").classList.add("hidden");
   $("quizNextButton").classList.add("hidden");
@@ -276,70 +347,19 @@ function renderQuizQuestion() {
   show("quizScreen");
 }
 
-function answerQuizQuestion(chosenIndex) {
+function answerQuizQuestion(optionIndex) {
   var item = session.items[session.index];
   var question = item.question;
-  var correct = chosenIndex === question.answerIndex;
+  var correct = question.options[optionIndex].correct === true;
 
   if (correct) session.correctCount += 1;
-  else session.missed.push({ item: item, chosenIndex: chosenIndex });
+  else session.missed.push({ item: item, chosenIndex: optionIndex });
   recordAnswer(item.kind, item.groupId, question.id, correct);
 
-  var buttons = $("quizChoices").querySelectorAll(".choice");
-  for (var i = 0; i < buttons.length; i += 1) {
-    buttons[i].disabled = true;
-    if (i === question.answerIndex) buttons[i].classList.add("is-correct");
-    else if (i === chosenIndex) buttons[i].classList.add("is-wrong");
-    else buttons[i].classList.add("is-dimmed");
-  }
-
-  renderFeedback($("quizFeedback"), item, question, correct);
+  revealOptions($("quizChoices"), session.currentOrder, question, optionIndex);
+  renderFeedback($("quizFeedback"), question, correct);
   $("quizNextButton").classList.remove("hidden");
   $("quizProgress").style.width = Math.round(((session.index + 1) / session.items.length) * 100) + "%";
-}
-
-function renderFeedback(node, item, question, correct) {
-  clear(node);
-  node.className = "feedback " + (correct ? "correct" : "wrong");
-  node.appendChild(el("div", "feedback-verdict", correct ? "正解" : "不正解"));
-
-  var answerBlock = el("div", "feedback-block");
-  answerBlock.appendChild(el("div", "feedback-label", "正解"));
-  answerBlock.appendChild(el("div", "feedback-text", question.choices[question.answerIndex]));
-  node.appendChild(answerBlock);
-
-  if (question.translation) {
-    var transBlock = el("div", "feedback-block");
-    transBlock.appendChild(el("div", "feedback-label", "和訳"));
-    transBlock.appendChild(el("div", "feedback-text", question.translation));
-    node.appendChild(transBlock);
-  }
-
-  if (question.evidence) {
-    var evidenceBlock = el("div", "feedback-block");
-    evidenceBlock.appendChild(el("div", "feedback-label", "本文の根拠"));
-    evidenceBlock.appendChild(el("div", "feedback-text", "“" + question.evidence + "”"));
-    node.appendChild(evidenceBlock);
-  }
-
-  var explanationBlock = el("div", "feedback-block");
-  explanationBlock.appendChild(el("div", "feedback-label", "解説"));
-  explanationBlock.appendChild(el("div", "feedback-text", question.explanation));
-  node.appendChild(explanationBlock);
-
-  if (question.choiceNotes && question.choiceNotes.length === question.choices.length) {
-    var notesBlock = el("div", "feedback-block");
-    notesBlock.appendChild(el("div", "feedback-label", "選択肢ごとのチェック"));
-    var list = el("ul", "note-list");
-    question.choiceNotes.forEach(function (note, index) {
-      var li = el("li", index === question.answerIndex ? "is-answer" : null, question.choices[index] + " — " + note);
-      list.appendChild(li);
-    });
-    notesBlock.appendChild(list);
-    node.appendChild(notesBlock);
-  }
-
-  node.classList.remove("hidden");
 }
 
 function advanceQuiz() {
@@ -361,26 +381,22 @@ function renderResult() {
   var comment;
   if (accuracy === 100) comment = "全問正解です。次のユニットへ進みましょう。";
   else if (accuracy >= 70) comment = "間違えた問題は復習キューに入りました。日を置いてもう一度出てきます。";
-  else comment = "解説を読んでから、同じセットをもう一度解くのが近道です。";
+  else comment = "誤った根拠のどこが違うかを読み直してから、同じセットをもう一度解くのが近道です。";
   $("resultComment").textContent = comment;
 
   var missedNode = $("resultMissedList");
   clear(missedNode);
   if (session.missed.length) {
-    missedNode.appendChild(el("div", "feedback-label", "間違えた問題"));
+    missedNode.appendChild(el("div", "feedback-label", "選んだ根拠が誤っていた問題"));
     session.missed.forEach(function (entry) {
       var question = entry.item.question;
+      var right = question.options[correctIndexOf(question)];
       var card = el("div", "missed-item");
       var prompt = el("div", "missed-item-prompt");
       renderPromptInto(prompt, question.prompt);
       card.appendChild(prompt);
-      card.appendChild(
-        el(
-          "div",
-          "missed-item-answer",
-          "あなたの答え: " + question.choices[entry.chosenIndex] + " ／ 正解: " + question.choices[question.answerIndex]
-        )
-      );
+      card.appendChild(el("div", "missed-item-answer", "選んだ根拠: " + question.options[entry.chosenIndex].reason));
+      card.appendChild(el("div", "missed-item-answer", "正しい根拠: " + right.answer + " — " + right.reason));
       missedNode.appendChild(card);
     });
   }
@@ -505,21 +521,15 @@ function renderReadingQuestions() {
 
   passage.questions.forEach(function (question, qIndex) {
     var block = el("div", "reading-question");
-    block.appendChild(el("div", "eyebrow", "設問 " + (qIndex + 1) + "／" + question.typeJa));
+    var label = "設問 " + (qIndex + 1) + "／" + question.typeJa;
+    if (question.variant === "reason") label += "（根拠だけが違う2択）";
+    block.appendChild(el("div", "eyebrow", label));
     block.appendChild(el("p", "reading-question-prompt", question.prompt));
 
     var choicesNode = el("div", "choice-list");
     var feedbackNode = el("div", "feedback hidden");
-
-    question.choices.forEach(function (choice, index) {
-      var button = el("button", "choice");
-      button.type = "button";
-      button.appendChild(el("span", "choice-mark", String.fromCharCode(65 + index)));
-      button.appendChild(el("span", "choice-text", choice));
-      button.addEventListener("click", function () {
-        answerReadingQuestion(question, index, choicesNode, feedbackNode);
-      });
-      choicesNode.appendChild(button);
+    var order = renderOptionButtons(question, choicesNode, function (optionIndex) {
+      answerReadingQuestion(question, optionIndex, choicesNode, feedbackNode, order);
     });
 
     block.appendChild(choicesNode);
@@ -528,23 +538,17 @@ function renderReadingQuestions() {
   });
 }
 
-function answerReadingQuestion(question, chosenIndex, choicesNode, feedbackNode) {
+function answerReadingQuestion(question, optionIndex, choicesNode, feedbackNode, order) {
   var buttons = choicesNode.querySelectorAll(".choice");
   if (buttons.length && buttons[0].disabled) return; // 二重解答を防ぐ
 
-  var correct = chosenIndex === question.answerIndex;
+  var correct = question.options[optionIndex].correct === true;
   reading.answered += 1;
   if (correct) reading.correct += 1;
   recordAnswer("reading", reading.passage.id, question.id, correct);
 
-  for (var i = 0; i < buttons.length; i += 1) {
-    buttons[i].disabled = true;
-    if (i === question.answerIndex) buttons[i].classList.add("is-correct");
-    else if (i === chosenIndex) buttons[i].classList.add("is-wrong");
-    else buttons[i].classList.add("is-dimmed");
-  }
-
-  renderFeedback(feedbackNode, null, question, correct);
+  revealOptions(choicesNode, order, question, optionIndex);
+  renderFeedback(feedbackNode, question, correct);
 
   if (reading.answered === reading.passage.questions.length) {
     var button = $("readingShowNotesButton");
