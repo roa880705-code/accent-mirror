@@ -3627,13 +3627,21 @@ body {
   max-height: 60vh;
 }
 
-/* --- 印刷レイアウト(デイリー/ウィークリー) ---
-   renderPrintDay/renderPrintWeek(script.js)が#printAreaの中身を組み
-   立て、印刷ボタンが@page(印刷方向)をprintPageStyleへ書き込んでから
-   window.print()を呼ぶ。画面表示中は#printAreaを常に隠し、印刷時だけ
-   body.print-modeが付いた状態で.wrapを隠して#printAreaを見せる —
-   visibility切り替えではなくdisplay切り替えにしているのは、隠れた
-   .wrap側の改ページ計算を印刷に巻き込まないため。 */
+/* --- 印刷レイアウト(マンスリー/ウィークリー/デイリー) ---
+   renderPrintDay/renderPrintWeek/renderPrintMonth(script.js)が
+   #printAreaの中身を組み立て、印刷ボタンが@page(印刷方向)を
+   printPageStyleへ書き込んでからwindow.print()を呼ぶ。画面表示中は
+   #printAreaを常に隠し、印刷時(@media print)だけ.wrapを隠して
+   #printAreaを見せる。
+   以前はこの切り替えをbody.print-modeというJSが付けるクラスに
+   依存させていたが、iOSのSafariで印刷プレビューを開いた後に用紙の
+   向き(縦/横)を手動で切り替えると、ページ全体が空白になってしまう
+   不具合があった — 印刷設定の変更でプレビューが再計算される際、
+   window.print()直前にJSで付けたクラスがその時点で残っている保証が
+   なく、消えていると.wrapも#printAreaもどちらも表示されない(=真っ白)
+   状態に陥っていたとみられる。クラスに頼らず@media print自体で
+   常に.wrapを隠し#printAreaを見せるようにすることで、印刷設定の
+   変更によるプレビュー再計算がいつ起きても表示が崩れないようにする。 */
 
 .print-toggle-btn {
   margin-left: auto;
@@ -3647,13 +3655,13 @@ body {
   .wrap {
     display: none !important;
   }
-  body.print-mode {
+  body {
     /* ダークモード設定・プリンタの「背景色を印刷」設定の有無に関わらず、
        紙のプランナーらしい白地に固定する(色は使わず罫線と太字だけで
        区別しているので、背景印刷オフでも読みやすさは変わらない)。 */
     background: #fff;
   }
-  body.print-mode #printArea {
+  #printArea {
     display: block;
   }
 }
