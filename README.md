@@ -1,6 +1,12 @@
-# Accent Mirror v0.12.0 Timeline Voice Script
+﻿# Accent Mirror v0.12.0 Timeline Voice Script
 
 Accent Mirror is a Japanese listener-facing pronunciation mirror.
+
+このリポジトリには2つのアプリが入っています。
+
+- ルート: Accent Mirror（発音ミラー。`npm start`、ポート 3003）
+- `grammar-reader/`: 英文法・英語読解トレーナー（`npm run start:grammar`、ポート 3004 / [README](grammar-reader/README.md)）
+
 
 Concept:
 

@@ -10,7 +10,10 @@
     "start": "node server.js",
     "start:3003": "set PORT=3003&& node server.js",
     "check": "node --check server.js && node --check src/services/mirrorGeneratorService.js && node --check src/services/azureTtsService.js && node --check src/services/contrastAnalysisService.js && node --check public/app.js",
-    "smoke:v012": "node scripts/smoke-v012.js"
+    "smoke:v012": "node scripts/smoke-v012.js",
+    "start:grammar": "node grammar-reader/server.js",
+    "check:grammar": "node --check grammar-reader/server.js && node --check grammar-reader/src/services/contentService.js && node --check grammar-reader/data/grammarBank.js && node --check grammar-reader/data/readingBank.js && node --check grammar-reader/public/app.js && node --check grammar-reader/public/reviewPlanner.js",
+    "test:grammar": "node grammar-reader/scripts/validate-content.js && node grammar-reader/scripts/test-review-planner.js && node grammar-reader/scripts/smoke-api.js"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

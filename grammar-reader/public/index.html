@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>英文法・英語読解トレーナー</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-header-inner">
+    <button id="headerHomeButton" class="ghost-button" type="button">&larr; ホーム</button>
+    <div class="app-title">英文法・英語読解トレーナー<span class="app-title-sub">高校英文法＋標準読解</span></div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ホーム -->
+  <section id="homeScreen" class="screen">
+    <div class="card hero-card">
+      <h1>今日はどちらから始めますか</h1>
+      <p class="lead">文法は10ユニット60問、読解は200語前後の英文5本。すべて日本語の解説つきで、間違えた問題は自動で復習キューに入ります。</p>
+      <div class="stat-row">
+        <div class="stat"><span>解いた問題</span><strong id="statAnswered">0</strong></div>
+        <div class="stat"><span>正答率</span><strong id="statAccuracy">--</strong></div>
+        <div class="stat"><span>復習待ち</span><strong id="statDue">0</strong></div>
+        <div class="stat"><span>習得済み</span><strong id="statMastered">0</strong></div>
+      </div>
+    </div>
+
+    <div class="menu-grid">
+      <button id="goGrammarButton" class="menu-card" type="button">
+        <span class="menu-card-label">文法ドリル</span>
+        <span class="menu-card-title">英文法 10ユニット</span>
+        <span class="menu-card-note">時制・完了形・助動詞・受動態・不定詞・動名詞・分詞・関係詞・仮定法・比較</span>
+      </button>
+      <button id="goReadingButton" class="menu-card" type="button">
+        <span class="menu-card-label">読解</span>
+        <span class="menu-card-title">英文 5本＋設問20問</span>
+        <span class="menu-card-note">読了時間から読む速さ（wpm）を計測。全文和訳と重要文の構文解説つき</span>
+      </button>
+      <button id="goReviewButton" class="menu-card review-card" type="button">
+        <span class="menu-card-label">復習</span>
+        <span class="menu-card-title">間違えた問題をもう一度</span>
+        <span class="menu-card-note" id="reviewCardNote">復習待ちはまだありません</span>
+      </button>
+    </div>
+
+    <div class="card">
+      <h2>学習の記録</h2>
+      <p class="minor">記録はこのブラウザだけに保存されます（サーバーには送りません）。端末を変えると引き継がれません。</p>
+      <button id="resetProgressButton" class="danger-button" type="button">記録をすべて消す</button>
+    </div>
+  </section>
+
+  <!-- 文法ユニット一覧 -->
+  <section id="grammarListScreen" class="screen hidden">
+    <div class="card">
+      <h1>文法ドリル</h1>
+      <p class="lead">1ユニット6問。答えるとすぐに解説が出ます。</p>
+    </div>
+    <div id="grammarUnitList" class="list-grid"></div>
+  </section>
+
+  <!-- 読解パッセージ一覧 -->
+  <section id="readingListScreen" class="screen hidden">
+    <div class="card">
+      <h1>読解</h1>
+      <p class="lead">まず辞書なしで通して読み、そのあと設問と和訳で確認する順番がおすすめです。</p>
+    </div>
+    <div id="readingPassageList" class="list-grid"></div>
+  </section>
+
+  <!-- 問題演習（文法ドリル・復習で共用） -->
+  <section id="quizScreen" class="screen hidden">
+    <div class="card">
+      <div class="quiz-head">
+        <div>
+          <div class="eyebrow" id="quizEyebrow">文法ドリル</div>
+          <h1 id="quizTitle">ユニット</h1>
+        </div>
+        <div class="quiz-counter"><span id="quizCounter">1 / 6</span></div>
+      </div>
+      <div class="progress-bar"><div id="quizProgress" class="progress-bar-fill"></div></div>
+      <p class="minor" id="quizUnitOverview"></p>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow" id="quizPoint"></div>
+      <p class="question-prompt" id="quizPrompt"></p>
+      <div id="quizChoices" class="choice-list"></div>
+      <div id="quizFeedback" class="feedback hidden"></div>
+      <button id="quizNextButton" class="primary-button hidden" type="button">次の問題へ</button>
+    </div>
+  </section>
+
+  <!-- 演習結果 -->
+  <section id="resultScreen" class="screen hidden">
+    <div class="card">
+      <h1>結果</h1>
+      <div class="score-display"><strong id="resultScore">0 / 6</strong><span id="resultAccuracy"></span></div>
+      <p class="minor" id="resultComment"></p>
+      <div id="resultMissedList" class="missed-list"></div>
+      <div class="button-row">
+        <button id="resultRetryButton" class="primary-button" type="button">もう一度解く</button>
+        <button id="resultBackButton" class="secondary-button" type="button">一覧に戻る</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 読解 -->
+  <section id="readingScreen" class="screen hidden">
+    <div class="card">
+      <div class="quiz-head">
+        <div>
+          <div class="eyebrow" id="readingTopic"></div>
+          <h1 id="readingTitle"></h1>
+          <p class="minor" id="readingMeta"></p>
+        </div>
+        <div class="reading-timer" id="readingTimer">0:00</div>
+      </div>
+      <div class="toggle-row">
+        <button id="toggleGlossaryButton" class="chip-button" type="button">語注を見る</button>
+        <button id="toggleTranslationButton" class="chip-button" type="button">段落の和訳を見る</button>
+      </div>
+      <div id="readingGlossary" class="glossary hidden"></div>
+    </div>
+
+    <div class="card">
+      <div id="readingBody" class="reading-body"></div>
+      <button id="readingToQuestionsButton" class="primary-button" type="button">読み終えた → 設問へ</button>
+    </div>
+
+    <div id="readingQuestionsCard" class="card hidden">
+      <h2>設問</h2>
+      <p class="minor" id="readingWpm"></p>
+      <div id="readingQuestionList" class="reading-question-list"></div>
+      <button id="readingShowNotesButton" class="primary-button hidden" type="button">構文解説と全文和訳を見る</button>
+    </div>
+
+    <div id="readingNotesCard" class="card hidden">
+      <h2>重要文の構文解説</h2>
+      <div id="readingKeySentences"></div>
+      <h2 class="section-gap">全文和訳</h2>
+      <div id="readingFullTranslation" class="translation-block"></div>
+      <div class="button-row">
+        <button id="readingBackButton" class="secondary-button" type="button">読解一覧に戻る</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="app-footer">
+  <span id="footerStatus">読み込み中…</span>
+</footer>
+
+<script src="reviewPlanner.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
