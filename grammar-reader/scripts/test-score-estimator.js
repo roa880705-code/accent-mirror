@@ -40,6 +40,14 @@ function repeat(count, template) {
   return Array.from({ length: count }, () => Object.assign({}, template));
 }
 
+// [レベル, 出題数, 正解数] の組から初見の記録を作る
+function estimateFor(spec) {
+  const results = spec.flatMap(([level, total, correct]) =>
+    Array.from({ length: total }, (unused, index) => ({ level, correct: index < correct }))
+  );
+  return estimateOf(stateWith(results));
+}
+
 test("解答数が足りないうちは点数を出さない", () => {
   const result = estimateOf(stateWith(repeat(5, { level: 2, correct: true })));
   assert.strictEqual(result.ready, false);
@@ -115,6 +123,50 @@ test("分野別・難易度別・ユニット別の内訳を返す", () => {
   const weakest = estimator.weakestGroup(result);
   assert.strictEqual(weakest.key, "relative");
   assert.strictEqual(weakest.accuracy, 0);
+});
+
+test("やさしい問題だけ全問正解しても、共通テストの点数は出ない", () => {
+  const result = estimateFor([[1, 10, 10]]);
+  assert.strictEqual(result.ready, true);
+  assert.strictEqual(result.scoreReady, false, "レベル3をクリアするまで点数は出さない");
+  assert.strictEqual(result.rank.label, estimator.TIERS[1].clearedLabel);
+  assert.strictEqual(result.rank.goal, estimator.TIERS[2].goal);
+  assert.strictEqual(result.rank.levels[2].answered, 0);
+});
+
+test("レベルを上げてクリアするほど階級が上がる", () => {
+  assert.strictEqual(estimateFor([[1, 8, 4]]).rank.label, estimator.BASE_LABEL);
+  assert.strictEqual(estimateFor([[1, 8, 8]]).rank.label, estimator.TIERS[1].clearedLabel);
+  assert.strictEqual(estimateFor([[1, 6, 6], [2, 8, 8]]).rank.label, estimator.TIERS[2].clearedLabel);
+
+  const top = estimateFor([[1, 6, 6], [2, 8, 8], [3, 8, 8]]);
+  assert.strictEqual(top.rank.label, estimator.TIERS[3].clearedLabel);
+  assert.strictEqual(top.scoreReady, true);
+  assert.strictEqual(top.score, 88);
+});
+
+test("挑戦中は「あと◯歩」が出て、進むほど減る", () => {
+  const early = estimateFor([[1, 6, 6], [2, 2, 1]]);
+  const late = estimateFor([[1, 6, 6], [2, 5, 5]]);
+  assert.strictEqual(early.rank.label, estimator.TIERS[2].tryLabel);
+  assert.strictEqual(early.rank.goal, estimator.TIERS[2].goal);
+  assert.ok(early.rank.steps >= 1 && early.rank.steps <= estimator.MAX_STEPS);
+  assert.ok(late.rank.steps < early.rank.steps, `${late.rank.steps} < ${early.rank.steps}`);
+  assert.ok(late.rank.message.length > 0);
+});
+
+test("そのレベルを解く前は、クリア済みの階級を名乗って次を促す", () => {
+  const result = estimateFor([[1, 8, 8]]);
+  assert.strictEqual(result.rank.label, estimator.TIERS[1].clearedLabel);
+  assert.strictEqual(result.rank.steps, estimator.MAX_STEPS);
+  assert.ok(result.rank.message.includes("レベル2"));
+});
+
+test("難しい問題を落とすと、上の階級には上がらない", () => {
+  const result = estimateFor([[1, 6, 6], [2, 8, 8], [3, 8, 4]]);
+  assert.strictEqual(result.scoreReady, false);
+  assert.strictEqual(result.rank.label, estimator.TIERS[3].tryLabel);
+  assert.strictEqual(result.rank.levels[2].cleared, false);
 });
 
 test("アンカー表は到達度に対して単調に増える", () => {

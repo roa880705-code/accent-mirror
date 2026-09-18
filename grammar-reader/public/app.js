@@ -177,7 +177,7 @@ function refreshHomeStats() {
   $("statMastered").textContent = String(summary.mastered);
 
   var est = currentEstimate();
-  renderHomeScore(est);
+  renderScoreBlock($("homeScoreBlock"), est, false);
 
   var grammarLeft = totalUnseen("grammar", contentSummary.grammar.units);
   var readingLeft = totalUnseen("reading", contentSummary.reading.passages);
@@ -186,6 +186,11 @@ function refreshHomeStats() {
       ? "次は レベル" + progress.difficulty.target + " の文法を3問。初見は残り " + (grammarLeft + readingLeft) +
         "問（文法 " + grammarLeft + "／読解 " + readingLeft + "）。"
       : "初見の問題はすべて解き終わりました。";
+  $("homeRankNote").textContent = est.ready
+    ? est.scoreReady
+      ? "レベル3までクリア。共通テスト換算で表示しています。"
+      : est.rank.goal + "まで あと" + est.rank.steps + "歩。上の階級は、上のレベルの問題を解いて初めて届きます。"
+    : "";
 
   var reviewCard = $("goReviewButton");
   if (summary.dueNow > 0) {
@@ -196,26 +201,6 @@ function refreshHomeStats() {
     $("reviewCardNote").textContent =
       summary.answered > 0 ? "今すぐ復習する問題はありません。" : "復習待ちはまだありません。";
   }
-}
-
-function renderHomeScore(est) {
-  if (!est.ready) {
-    $("homeScoreReady").classList.add("hidden");
-    $("homeScorePending").classList.remove("hidden");
-    $("homeScorePending").textContent =
-      est.answered === 0
-        ? "初見問題を " + est.minAnswers + "問 解くと、共通テスト英語 Reading の推定点が出ます。"
-        : "初見 " + est.answered + "問。あと " + est.needMore + "問で共通テスト英語 Reading の推定点が出ます。";
-    return;
-  }
-  $("homeScorePending").classList.add("hidden");
-  $("homeScoreReady").classList.remove("hidden");
-  $("homeScoreValue").textContent = String(est.score);
-  $("homeScoreRange").textContent = "推定の幅 " + est.low + "〜" + est.high + "点";
-  $("homeScoreMeter").style.width = est.score + "%";
-  $("homeScoreBasis").textContent =
-    "初見 " + est.answered + "問／難易度で重みをつけた正答率 " + est.accuracyPercent + "%" +
-    (est.stable ? "。推定はほぼ安定しています。" : "。あと " + est.untilStable + "問で安定します。");
 }
 
 function goHome() {
@@ -252,74 +237,148 @@ function breakdownRow(label, summary) {
   return row;
 }
 
-function renderScoreCard() {
-  var est = currentEstimate();
+/* ---------- 実力表示（ホームと初見モードで共用） ----------
+   共通テストの点数は、レベル3までクリアして初めて出す。
+   それまでは英検相当の階級と「あと何歩か」で現在地を示す。 */
+
+function stepDots(stepsLeft, max) {
+  var row = el("span", "step-dots");
+  for (var i = 0; i < max; i += 1) {
+    row.appendChild(el("span", "step-dot" + (i < max - stepsLeft ? " done" : "")));
+  }
+  return row;
+}
+
+function meter(ratio) {
+  var bar = el("div", "score-meter");
+  var fill = el("div", "score-meter-fill");
+  fill.style.width = Math.round(clampRatio(ratio) * 100) + "%";
+  bar.appendChild(fill);
+  return bar;
+}
+
+function clampRatio(value) {
+  return Math.min(1, Math.max(0, value));
+}
+
+function levelRow(summary) {
+  var row = el("div", "level-row" + (summary.cleared ? " is-cleared" : ""));
+  row.appendChild(el("span", "level-row-name", "レベル " + summary.level));
+  var bar = el("span", "breakdown-bar");
+  var fill = el("span", "breakdown-bar-fill");
+  fill.style.width = Math.round(summary.accuracy * 100) + "%";
+  bar.appendChild(fill);
+  row.appendChild(bar);
+  var note;
+  if (summary.cleared) note = "クリア";
+  else if (summary.answered === 0) note = "未挑戦";
+  else if (summary.answered < summary.minAnswers) note = "あと" + (summary.minAnswers - summary.answered) + "問";
+  else note = "正答率が不足";
+  row.appendChild(
+    el("span", "level-row-value", Math.round(summary.accuracy * 100) + "%（" + summary.answered + "問）・" + note)
+  );
+  return row;
+}
+
+function renderScoreBlock(node, est, detailed) {
+  clear(node);
 
   if (!est.ready) {
-    $("scoreReady").classList.add("hidden");
-    $("scoreNotReady").classList.remove("hidden");
-    $("scoreNotReadyText").textContent =
-      "初見の解答が " + est.answered + " 問です。あと " + est.needMore +
-      " 問解くと、共通テスト英語 Reading の推定点を出します（最低 " + est.minAnswers + " 問）。";
+    node.appendChild(
+      el(
+        "p",
+        "lead",
+        est.answered === 0
+          ? "初見問題を " + est.minAnswers + "問 解くと、いまのレベルを判定します。"
+          : "初見 " + est.answered + "問。あと " + est.needMore + "問で、いまのレベルを判定します。"
+      )
+    );
     return;
   }
 
-  $("scoreNotReady").classList.add("hidden");
-  $("scoreReady").classList.remove("hidden");
-  $("scoreValue").textContent = String(est.score);
-  $("scoreRange").textContent = "推定の幅 " + est.low + "〜" + est.high + "点";
-  $("scoreMeter").style.width = est.score + "%";
-  $("scoreBasis").textContent =
-    "初見 " + est.answered + "問／難易度で重みをつけた正答率 " + est.accuracyPercent + "%" +
-    (est.stable ? "。推定はほぼ安定しています。" : "。あと " + est.untilStable + "問解くと推定が安定します。");
+  var rank = est.rank;
 
-  var breakdown = $("scoreBreakdown");
-  clear(breakdown);
-  breakdown.appendChild(el("div", "feedback-label", "分野別（初見・加重正答率）"));
+  if (est.scoreReady) {
+    var headline = el("div", "score-headline");
+    headline.appendChild(el("span", "score-label", "共通テスト英語 Reading"));
+    var value = el("span", "score-value");
+    value.appendChild(el("strong", null, String(est.score)));
+    value.appendChild(document.createTextNode("点"));
+    headline.appendChild(value);
+    node.appendChild(headline);
+    node.appendChild(el("div", "score-range", rank.label + "／推定の幅 " + est.low + "〜" + est.high + "点"));
+    node.appendChild(meter(est.score / 100));
+  } else {
+    node.appendChild(el("div", "rank-headline", rank.label));
+    var stepRow = el("div", "step-row");
+    stepRow.appendChild(el("span", "step-goal", rank.goal + "まで"));
+    stepRow.appendChild(stepDots(rank.steps, estimator.MAX_STEPS));
+    stepRow.appendChild(el("span", "step-count", "あと" + rank.steps + "歩"));
+    node.appendChild(stepRow);
+    node.appendChild(meter(rank.ladderProgress));
+  }
+
+  node.appendChild(el("p", "minor", rank.message));
+  node.appendChild(
+    el(
+      "p",
+      "minor",
+      "初見 " + est.answered + "問／難易度で重みをつけた正答率 " + est.accuracyPercent + "%" +
+        (est.stable ? "。判定はほぼ安定しています。" : "。あと " + est.untilStable + "問で安定します。")
+    )
+  );
+
+  if (!detailed) return;
+
+  var levels = el("div", "score-breakdown");
+  levels.appendChild(el("div", "feedback-label", "難易度ごとの到達（初見のみ）"));
+  rank.levels.forEach(function (summary) {
+    levels.appendChild(levelRow(summary));
+  });
+  levels.appendChild(el("div", "feedback-label", "分野別"));
   est.byArea.forEach(function (area) {
-    breakdown.appendChild(breakdownRow(areaLabel(area.key), area));
+    levels.appendChild(breakdownRow(areaLabel(area.key), area));
   });
-  breakdown.appendChild(el("div", "feedback-label", "難易度別"));
-  est.byLevel.forEach(function (level) {
-    breakdown.appendChild(breakdownRow("レベル " + level.key, level));
-  });
+  node.appendChild(levels);
 
   var weakest = estimator.weakestGroup(est);
-  var weakNode = $("weakPoint");
-  clear(weakNode);
   if (weakest && weakest.accuracy < 0.8) {
-    weakNode.classList.remove("hidden");
-    weakNode.appendChild(el("span", "weak-point-label", "いちばん弱いところ"));
-    weakNode.appendChild(
+    var weak = el("div", "weak-point");
+    weak.appendChild(el("span", "weak-point-label", "いちばん弱いところ"));
+    weak.appendChild(
       el(
         "span",
         "weak-point-body",
         groupTitle(weakest.key) + "　初見の加重正答率 " + Math.round(weakest.accuracy * 100) + "%（" + weakest.answered + "問）"
       )
     );
-  } else {
-    weakNode.classList.add("hidden");
+    node.appendChild(weak);
   }
 
-  var note = $("scoreNoteBody");
-  clear(note);
+  var details = el("details", "score-note");
+  details.appendChild(el("summary", null, "この判定の出し方"));
+  var body = el("div", "score-note-body");
   [
     "材料は初見（1回目）の解答だけです。復習の結果は、答えを覚えているぶん実力より高く出るので使いません。",
-    "難易度（レベル1〜3）を配点として加重正答率を出し、2択で当てずっぽうでも50%当たる分を差し引いて到達度に直しています。",
-    "到達度と点数の対応は次のとおりで、あいだは直線で補間します。" +
+    "階級は「解いた問題の難易度」で決まります。やさしい問題だけを正解しても上の階級には届きません。レベル1をクリアで" +
+      estimator.TIERS[1].clearedLabel + "、レベル2で" + estimator.TIERS[2].clearedLabel + "、レベル3で" +
+      estimator.TIERS[3].clearedLabel + "です。",
+    "クリアの条件は、そのレベルを " + estimator.TIERS[2].minAnswers + "問前後解いたうえで、2択のまぐれ当たりを差し引いた到達度が基準を超えること（素の正答率でおよそ8割）。",
+    "共通テストの点数は、レベル3をクリアして初めて出します。到達度と点数の対応は" +
       estimator.ANCHORS.map(function (anchor) {
-        return " 到達度" + Math.round(anchor[0] * 100) + "%→" + anchor[1] + "点";
-      }).join("、"),
-    "本アプリの問題で測った目安であり、公式の換算表ではありません。本番の分量（およそ6000語・80分）や設問形式は再現していないため、全問正解でも " +
-      estimator.ANCHORS[estimator.ANCHORS.length - 1][1] + "点で頭打ちにしています。",
-    "幅は標準誤差から出しています。解いた問題が少ないほど広く、増えるほど狭くなります。"
+        return " " + Math.round(anchor[0] * 100) + "%→" + anchor[1] + "点";
+      }).join("、") + "（あいだは直線で補間）。",
+    "本アプリの問題で測った目安であり、公式の換算表でも英検の合否判定でもありません。本番の分量（およそ6000語・80分）は再現していないため、全問正解でも " +
+      estimator.ANCHORS[estimator.ANCHORS.length - 1][1] + "点で頭打ちにしています。"
   ].forEach(function (line) {
-    note.appendChild(el("p", null, line));
+    body.appendChild(el("p", null, line));
   });
+  details.appendChild(body);
+  node.appendChild(details);
 }
 
 function renderFreshScreen() {
-  renderScoreCard();
+  renderScoreBlock($("freshScoreBlock"), currentEstimate(), true);
   var grammarLeft = totalUnseen("grammar", contentSummary.grammar.units);
   var readingLeft = totalUnseen("reading", contentSummary.reading.passages);
   $("freshLevelLabel").textContent = "レベル " + progress.difficulty.target;
