@@ -160,9 +160,14 @@ function refreshHomeStats() {
   $("statMastered").textContent = String(summary.mastered);
 
   var est = currentEstimate();
-  $("freshCardNote").textContent = est.ready
-    ? "共通テスト英語 Reading 推定 " + est.score + "点（" + est.low + "〜" + est.high + "点）／初見 " + est.answered + "問"
-    : "あと " + est.needMore + "問の初見で、共通テスト英語 Reading の推定点が出ます";
+  renderHomeScore(est);
+
+  var grammarLeft = totalUnseen("grammar", contentSummary.grammar.units);
+  var readingLeft = totalUnseen("reading", contentSummary.reading.passages);
+  $("freshCardNote").textContent =
+    grammarLeft + readingLeft > 0
+      ? "初見の問題があと " + (grammarLeft + readingLeft) + "問（文法 " + grammarLeft + "／読解 " + readingLeft + "）。解くほど推定点が動きます。"
+      : "初見の問題はすべて解き終わりました。";
 
   var reviewCard = $("goReviewButton");
   if (summary.dueNow > 0) {
@@ -173,6 +178,26 @@ function refreshHomeStats() {
     $("reviewCardNote").textContent =
       summary.answered > 0 ? "今すぐ復習する問題はありません。" : "復習待ちはまだありません。";
   }
+}
+
+function renderHomeScore(est) {
+  if (!est.ready) {
+    $("homeScoreReady").classList.add("hidden");
+    $("homeScorePending").classList.remove("hidden");
+    $("homeScorePending").textContent =
+      est.answered === 0
+        ? "初見問題を " + est.minAnswers + "問 解くと、共通テスト英語 Reading の推定点が出ます。"
+        : "初見 " + est.answered + "問。あと " + est.needMore + "問で共通テスト英語 Reading の推定点が出ます。";
+    return;
+  }
+  $("homeScorePending").classList.add("hidden");
+  $("homeScoreReady").classList.remove("hidden");
+  $("homeScoreValue").textContent = String(est.score);
+  $("homeScoreRange").textContent = "推定の幅 " + est.low + "〜" + est.high + "点";
+  $("homeScoreMeter").style.width = est.score + "%";
+  $("homeScoreBasis").textContent =
+    "初見 " + est.answered + "問／難易度で重みをつけた正答率 " + est.accuracyPercent + "%" +
+    (est.stable ? "。推定はほぼ安定しています。" : "。あと " + est.untilStable + "問で安定します。");
 }
 
 function goHome() {

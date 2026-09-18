@@ -20,15 +20,25 @@
 
   <!-- ホーム -->
   <section id="homeScreen" class="screen">
-    <div class="card hero-card">
-      <h1>今日はどちらから始めますか</h1>
-      <p class="lead">出題はすべて2択。選ぶのは「空所に入る語」だけでなく<strong>その根拠</strong>です。誤ったほうの選択肢には、もっともらしいけれど間違った根拠が書いてあります。</p>
+    <div class="card hero-card score-card">
+      <div class="eyebrow">いまの実力（初見問題の結果から）</div>
+      <div id="homeScoreReady" class="hidden">
+        <div class="score-headline">
+          <span class="score-label">共通テスト英語 Reading</span>
+          <span class="score-value"><strong id="homeScoreValue">--</strong>点</span>
+        </div>
+        <div class="score-range" id="homeScoreRange"></div>
+        <div class="score-meter"><div id="homeScoreMeter" class="score-meter-fill"></div></div>
+        <p class="minor" id="homeScoreBasis"></p>
+      </div>
+      <p class="lead" id="homeScorePending"></p>
       <div class="stat-row">
         <div class="stat"><span>解いた問題</span><strong id="statAnswered">0</strong></div>
         <div class="stat"><span>正答率</span><strong id="statAccuracy">--</strong></div>
         <div class="stat"><span>復習待ち</span><strong id="statDue">0</strong></div>
         <div class="stat"><span>習得済み</span><strong id="statMastered">0</strong></div>
       </div>
+      <p class="minor">出題はすべて2択。選ぶのは「空所に入る語」だけでなく<strong>その根拠</strong>です。誤ったほうの選択肢には、もっともらしいけれど間違った根拠が書いてあります。</p>
     </div>
 
     <div class="menu-grid">
