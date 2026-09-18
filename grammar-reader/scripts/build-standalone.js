@@ -30,10 +30,14 @@ body = body.replace(
 const data = {
   content: content.contentSummary(),
   units: {},
+  vocabUnits: {},
   passages: {}
 };
 content.listGrammarUnits().forEach((unit) => {
   data.units[unit.id] = content.getGrammarUnit(unit.id);
+});
+content.listVocabUnits().forEach((unit) => {
+  data.vocabUnits[unit.id] = content.getVocabUnit(unit.id);
 });
 content.listReadingPassages().forEach((passage) => {
   data.passages[passage.id] = content.getReadingPassage(passage.id);
@@ -67,4 +71,4 @@ fs.writeFileSync(outPath, page);
 
 const summary = data.content;
 console.log(`1枚版を書き出しました: ${outPath}`);
-console.log(` ${(Buffer.byteLength(page) / 1024).toFixed(0)} KB / 文法 ${summary.grammar.questionCount}問 / 読解 ${summary.reading.questionCount}問`);
+console.log(` ${(Buffer.byteLength(page) / 1024).toFixed(0)} KB / 文法 ${summary.grammar.questionCount}問 / 語彙 ${summary.vocab.questionCount}問 / 読解 ${summary.reading.questionCount}問`);

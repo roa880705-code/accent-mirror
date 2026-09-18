@@ -22,6 +22,8 @@ app.get("/api/health", (_req, res) => {
     app: "grammar-reader",
     grammarUnits: summary.grammar.unitCount,
     grammarQuestions: summary.grammar.questionCount,
+    vocabUnits: summary.vocab.unitCount,
+    vocabQuestions: summary.vocab.questionCount,
     readingPassages: summary.reading.passageCount,
     readingQuestions: summary.reading.questionCount
   });
@@ -35,9 +37,22 @@ app.get("/api/grammar/units", (_req, res) => {
   res.json({ units: content.listGrammarUnits() });
 });
 
-// 分野をまたいだランダム出題用。全問まとめて返し、選ぶのはクライアント側。
-app.get("/api/grammar/questions", (_req, res) => {
-  res.json({ questions: content.listAllGrammarQuestions() });
+// 分野をまたいだランダム出題用。文法と語彙をまとめて返し、選ぶのはクライアント側。
+app.get("/api/practice/questions", (_req, res) => {
+  res.json({ questions: content.listPracticeQuestions() });
+});
+
+app.get("/api/vocab/units", (_req, res) => {
+  res.json({ units: content.listVocabUnits() });
+});
+
+app.get("/api/vocab/units/:unitId", (req, res) => {
+  const unit = content.getVocabUnit(req.params.unitId);
+  if (!unit) {
+    res.status(404).json({ error: "unit_not_found", unitId: req.params.unitId });
+    return;
+  }
+  res.json({ unit });
 });
 
 app.get("/api/grammar/units/:unitId", (req, res) => {
@@ -88,7 +103,7 @@ if (require.main === module) {
     const summary = content.contentSummary();
     console.log(`grammar-reader listening on http://localhost:${PORT}/`);
     console.log(
-      `content: ${summary.grammar.questionCount} grammar questions in ${summary.grammar.unitCount} units, ` +
+      `content: ${summary.grammar.questionCount} grammar + ${summary.vocab.questionCount} vocabulary questions, ` +
         `${summary.reading.passageCount} reading passages`
     );
   });

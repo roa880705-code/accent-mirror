@@ -5,6 +5,7 @@
 // 問題を追加したら必ずこれを通してからコミットする。
 
 const { grammarUnits } = require("../data/grammarBank");
+const { vocabUnits } = require("../data/vocabBank");
 const { readingPassages } = require("../data/readingBank");
 const { countWords } = require("../src/services/contentService");
 
@@ -61,33 +62,45 @@ function checkOptionBlock(question, label) {
   );
 }
 
-/* ---- 文法 ---- */
+/* ---- 文法・語彙（同じ形式） ---- */
 
-const unitOrders = new Set();
-check(grammarUnits.length > 0, "文法ユニットが1つもありません");
+function checkUnits(units, kind) {
+  const orders = new Set();
+  check(units.length > 0, `${kind} のユニットが1つもありません`);
 
-grammarUnits.forEach((unit) => {
-  const label = `grammar/${unit.id}`;
-  checkUniqueId(unit.id, label);
-  check(Number.isInteger(unit.order), `${label}: order が整数ではありません`);
-  check(!unitOrders.has(unit.order), `${label}: order が重複しています (${unit.order})`);
-  unitOrders.add(unit.order);
-  check(!!unit.title && !!unit.subtitle && !!unit.overview, `${label}: title / subtitle / overview が必要です`);
-  check(unit.questions.length === 6, `${label}: 1ユニット6問にそろえてください（現在 ${unit.questions.length} 問）`);
-  check(
-    unit.questions.some((question) => question.variant === "reason"),
-    `${label}: 「語は同じで根拠だけが違う」問題を1問以上入れてください`
-  );
+  units.forEach((unit) => {
+    const label = `${kind}/${unit.id}`;
+    checkUniqueId(unit.id, label);
+    check(Number.isInteger(unit.order), `${label}: order が整数ではありません`);
+    check(!orders.has(unit.order), `${label}: order が重複しています (${unit.order})`);
+    orders.add(unit.order);
+    check(!!unit.title && !!unit.subtitle && !!unit.overview, `${label}: title / subtitle / overview が必要です`);
+    check(unit.questions.length === 6, `${label}: 1ユニット6問にそろえてください（現在 ${unit.questions.length} 問）`);
+    check(
+      unit.questions.some((question) => question.variant === "reason"),
+      `${label}: 「語は同じで根拠だけが違う」問題を1問以上入れてください`
+    );
 
-  unit.questions.forEach((question) => {
-    const qLabel = `${label}/${question.id}`;
-    checkUniqueId(question.id, qLabel);
-    check(question.prompt.includes("____"), `${qLabel}: 空所 ____ が prompt にありません`);
-    check([1, 2, 3].includes(question.level), `${qLabel}: level は 1〜3 で指定してください`);
-    check(!!question.point, `${qLabel}: point（文法項目）が必要です`);
-    check(typeof question.translation === "string" && question.translation.length > 0, `${qLabel}: 和訳が必要です`);
-    checkOptionBlock(question, qLabel);
+    unit.questions.forEach((question) => {
+      const qLabel = `${label}/${question.id}`;
+      checkUniqueId(question.id, qLabel);
+      check(question.prompt.includes("____"), `${qLabel}: 空所 ____ が prompt にありません`);
+      check([1, 2, 3].includes(question.level), `${qLabel}: level は 1〜3 で指定してください`);
+      check(!!question.point, `${qLabel}: point（項目名）が必要です`);
+      check(typeof question.translation === "string" && question.translation.length > 0, `${qLabel}: 和訳が必要です`);
+      checkOptionBlock(question, qLabel);
+    });
   });
+}
+
+checkUnits(grammarUnits, "grammar");
+checkUnits(vocabUnits, "vocab");
+
+// 階級判定がレベル3で止まらないよう、各レベルに十分な問題数があることを確かめる
+const practiceQuestions = grammarUnits.concat(vocabUnits).flatMap((unit) => unit.questions);
+[1, 2, 3].forEach((level) => {
+  const count = practiceQuestions.filter((question) => question.level === level).length;
+  check(count >= 12, `レベル${level}の問題が ${count} 問しかありません（12問以上にしてください）`);
 });
 
 /* ---- 読解 ---- */
@@ -146,8 +159,15 @@ readingPassages.forEach((passage) => {
 /* ---- 結果 ---- */
 
 const grammarQuestions = grammarUnits.flatMap((unit) => unit.questions);
+const vocabQuestions = vocabUnits.flatMap((unit) => unit.questions);
 const readingQuestions = readingPassages.flatMap((passage) => passage.questions);
-const reasonOnly = grammarQuestions.concat(readingQuestions).filter((question) => question.variant === "reason");
+const reasonOnly = grammarQuestions
+  .concat(vocabQuestions, readingQuestions)
+  .filter((question) => question.variant === "reason");
+const byLevel = [1, 2, 3].map((level) => {
+  const count = practiceQuestions.filter((question) => question.level === level).length;
+  return `レベル${level} ${count}問`;
+});
 
 if (errors.length) {
   console.error(`問題バンクの検証に失敗しました（${errors.length} 件）`);
@@ -157,6 +177,8 @@ if (errors.length) {
 
 console.log("問題バンクの検証に成功しました");
 console.log(` 文法: ${grammarUnits.length} ユニット / ${grammarQuestions.length} 問`);
+console.log(` 語彙: ${vocabUnits.length} ユニット / ${vocabQuestions.length} 問`);
+console.log(` 難易度の内訳（文法＋語彙）: ${byLevel.join(" / ")}`);
 console.log(` 読解: ${readingPassages.length} 本 / 設問 ${readingQuestions.length} 問`);
 console.log(` うち「語は同じで根拠だけが違う」問題: ${reasonOnly.length} 問`);
 readingPassages.forEach((passage) => {

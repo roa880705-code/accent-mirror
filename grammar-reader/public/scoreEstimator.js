@@ -212,8 +212,24 @@
       mastery: subset.length ? masteryFromAccuracy(accuracy) : 0,
       minAnswers: requirement.minAnswers,
       minMastery: requirement.minMastery,
-      cleared: subset.length >= requirement.minAnswers && masteryFromAccuracy(accuracy) >= requirement.minMastery
+      cleared: subset.length >= requirement.minAnswers && masteryFromAccuracy(accuracy) >= requirement.minMastery,
+      impliedByHigher: false
     };
+  }
+
+  /**
+   * 上のレベルをクリアしていれば、下のレベルもクリア扱いにする。
+   * 適応出題で難しい問題へ進んだ学習者が、やさしいレベルの解答数が足りないという
+   * それだけの理由で階級を下げられないようにするため。
+   */
+  function applyImpliedClears(levels) {
+    for (var i = levels.length - 2; i >= 0; i -= 1) {
+      if (!levels[i].cleared && levels[i + 1].cleared) {
+        levels[i].cleared = true;
+        levels[i].impliedByHigher = true;
+      }
+    }
+    return levels;
   }
 
   /** そのレベルをクリアするまでの進み具合（0〜1）。問題数4割、到達度6割で見る。 */
@@ -229,9 +245,11 @@
    * やさしい問題だけを正解しても共通テストの点数には届かない。
    */
   function rankOf(attempts) {
-    var levels = [1, 2, 3].map(function (level) {
-      return levelSummary(attempts, level);
-    });
+    var levels = applyImpliedClears(
+      [1, 2, 3].map(function (level) {
+        return levelSummary(attempts, level);
+      })
+    );
 
     var tier = 1;
     while (tier <= TIER_COUNT && levels[tier - 1].cleared) tier += 1;
@@ -318,6 +336,7 @@
     BASE_LABEL: BASE_LABEL,
     MAX_STEPS: MAX_STEPS,
     levelSummary: levelSummary,
+    applyImpliedClears: applyImpliedClears,
     rankOf: rankOf,
     weightOf: weightOf,
     masteryFromAccuracy: masteryFromAccuracy,

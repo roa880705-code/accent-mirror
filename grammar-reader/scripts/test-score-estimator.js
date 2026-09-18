@@ -169,6 +169,23 @@ test("難しい問題を落とすと、上の階級には上がらない", () =>
   assert.strictEqual(result.rank.levels[2].cleared, false);
 });
 
+test("上のレベルをクリアしていれば、下のレベルの解答数不足で足踏みしない", () => {
+  // 適応出題でレベル3まで進み、レベル1・2の解答数が足りていない状態
+  const result = estimateFor([[1, 3, 3], [2, 3, 3], [3, 18, 18]]);
+  assert.strictEqual(result.scoreReady, true, "レベル3をクリアしていれば点数を出す");
+  assert.strictEqual(result.rank.label, estimator.TIERS[3].clearedLabel);
+  assert.strictEqual(result.rank.levels[0].impliedByHigher, true);
+  assert.strictEqual(result.rank.levels[1].impliedByHigher, true);
+  assert.strictEqual(result.rank.levels[2].impliedByHigher, false, "レベル3は自力のクリア");
+});
+
+test("上のレベルを落としていれば、下のクリアは引き継がれない", () => {
+  const result = estimateFor([[1, 3, 3], [2, 8, 4], [3, 6, 2]]);
+  assert.strictEqual(result.scoreReady, false);
+  assert.strictEqual(result.rank.levels[1].cleared, false);
+  assert.strictEqual(result.rank.levels[0].impliedByHigher, false);
+});
+
 test("アンカー表は到達度に対して単調に増える", () => {
   let previous = -1;
   for (let m = 0; m <= 1.0001; m += 0.05) {

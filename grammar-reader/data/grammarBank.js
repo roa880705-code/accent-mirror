@@ -1553,6 +1553,468 @@ const grammarUnits = [
           "比べているから than、と考えています。than とセットになるのは比較級（-er / more 〜）で、この文には比較級がありません。"
       }
     ]
+  },
+  {
+    id: "emphasis",
+    order: 11,
+    title: "強調・倒置",
+    subtitle: "強調構文と、否定語が文頭に出たときの語順",
+    overview:
+      "英語は語順で意味を作る言語なので、語順を変えること自体が強調になります。It is 〜 that … の強調構文、否定語が文頭に出たときの倒置、動詞を強める do が代表です。",
+    questions: [
+      {
+        id: "emphasis-1",
+        level: 3,
+        point: "not until の強調構文",
+        variant: "word",
+        prompt: "It was not until he left Japan ____ he realized how much he missed it.",
+        translation: "日本を離れて初めて、彼はどれほど日本が恋しいかに気づいた。",
+        options: [
+          {
+            answer: "that",
+            reason: "It is 〜 that … の強調構文で、not until he left Japan を強調している形だから",
+            correct: true
+          },
+          {
+            answer: "when",
+            reason: "時を表す節をつなぐ必要があるので、接続詞 when を使うから",
+            correct: false
+          }
+        ],
+        explanation:
+          "It is not until A that B で「A して初めて B する」。強調構文は、強調したい部分を It is と that ではさむ形です。",
+        misconception:
+          "強調される部分が時を表す語句でも、つなぐのは that のままです。when にすると強調構文として読めなくなり、文頭の It が何を指すのか分からなくなります。"
+      },
+      {
+        id: "emphasis-2",
+        level: 3,
+        point: "否定語の文頭と倒置",
+        variant: "word",
+        prompt: "Never ____ such a beautiful sunset.",
+        translation: "あんなに美しい夕日は見たことがない。",
+        options: [
+          {
+            answer: "have I seen",
+            reason: "否定語 Never が文頭に出ると、そのあとが疑問文と同じ語順になるから",
+            correct: true
+          },
+          {
+            answer: "I have seen",
+            reason: "文の意味は変わらないので、主語+動詞の語順のまま続けるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "never / little / hardly / not only / under no circumstances などが文頭に出ると、主語と助動詞がひっくり返ります。",
+        misconception:
+          "日本語では語順が変わらないので見落としがちですが、英語では否定語を前に出した時点で倒置が必要です。強調のために語順を動かした代償、と考えると覚えやすくなります。"
+      },
+      {
+        id: "emphasis-3",
+        level: 2,
+        point: "little（否定）＋倒置",
+        variant: "word",
+        prompt: "____ did I imagine that he would win the prize.",
+        translation: "彼が賞を取るとは夢にも思わなかった。",
+        options: [
+          {
+            answer: "Little",
+            reason: "「少しも〜ない」という否定の意味を表し、文頭に出て倒置を起こす語だから",
+            correct: true
+          },
+          {
+            answer: "Few",
+            reason: "数が少ないことを表す語なので、同じように否定の意味で文頭に置けるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "little は量や程度が「ほとんどない」ことを表し、think / know / imagine などと結びついて「夢にも〜ない」となります。",
+        misconception:
+          "few は数えられる名詞の数を表す語で、Few people knew it. のように名詞を伴います。動詞を否定するこの位置には置けません。"
+      },
+      {
+        id: "emphasis-4",
+        level: 2,
+        point: "So +動詞+主語",
+        variant: "word",
+        prompt: "\"I'm tired after the trip.\" \"____\"",
+        translation: "「旅行のあとで疲れたよ」「私もだよ」",
+        options: [
+          {
+            answer: "So am I.",
+            reason: "「私もそうだ」と相手に同意するときは、So +動詞+主語の語順にするから",
+            correct: true
+          },
+          {
+            answer: "So I am.",
+            reason: "自分のことを述べるので、主語+動詞の語順にするから",
+            correct: false
+          }
+        ],
+        explanation:
+          "So am I. / Neither do I. のように、同意するときは倒置します。相手が be動詞なら be動詞、一般動詞なら do で受けます。",
+        misconception:
+          "So I am. も英語として存在しますが、意味は「本当にそのとおりだ」と相手の指摘を認める表現です。「私も」と言いたいときは倒置します。"
+      },
+      {
+        id: "emphasis-5",
+        level: 3,
+        point: "強調構文と関係代名詞の見分け",
+        variant: "reason",
+        prompt: "It was in this room ____ the treaty was signed.",
+        translation: "条約が署名されたのは、この部屋でだった。",
+        options: [
+          {
+            answer: "that",
+            reason: "in this room を強調した It is 〜 that … の強調構文なので、that でつなぐから",
+            correct: true
+          },
+          {
+            answer: "that",
+            reason: "先行詞 this room を後ろから説明する関係代名詞が必要だから",
+            correct: false
+          }
+        ],
+        explanation:
+          "強調構文かどうかは、It is と that を取り除いて文が成り立つかで見分けます。ここは The treaty was signed in this room. に戻せます。",
+        misconception:
+          "関係代名詞なら、that のあとは主語か目的語が欠けた不完全な文になります。the treaty was signed は欠けのない完全な文なので、関係代名詞ではありません。"
+      },
+      {
+        id: "emphasis-6",
+        level: 2,
+        point: "強調の do",
+        variant: "word",
+        prompt: "I ____ believe you — I'm just asking for details.",
+        translation: "君を信じてはいるんだ。ただ詳しく聞きたいだけで。",
+        options: [
+          {
+            answer: "do",
+            reason: "動詞の意味を強めるときは、動詞の原形の前に do を置くから",
+            correct: true
+          },
+          {
+            answer: "am",
+            reason: "「本当に〜だ」と状態を強めるので、be動詞を加えるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "肯定文で do / does / did を加えると「本当に〜する」と動詞を強められます。過去なら I did believe you. となります。",
+        misconception:
+          "am believe という形は作れません。be動詞と一般動詞は並べて使えないので、一般動詞を強めるのは助動詞の do です。"
+      }
+    ]
+  },
+  {
+    id: "ellipsis",
+    order: 12,
+    title: "省略・同格・挿入",
+    subtitle: "省かれた語を補って読む",
+    overview:
+      "英語は繰り返しを嫌うので、同じ語をくり返す代わりに省略したり、代わりの語で受けたりします。省かれた部分を補えるかどうかが、長い文を読む力を分けます。",
+    questions: [
+      {
+        id: "ellipsis-1",
+        level: 2,
+        point: "同格の that",
+        variant: "word",
+        prompt: "The fact ____ he lied to us surprised everyone.",
+        translation: "彼が私たちに嘘をついたという事実が、皆を驚かせた。",
+        options: [
+          {
+            answer: "that",
+            reason: "the fact の中身を説明する名詞節を導くので、同格の接続詞 that を使うから",
+            correct: true
+          },
+          {
+            answer: "which",
+            reason: "先行詞 the fact を後ろから説明するので、関係代名詞 which を使うから",
+            correct: false
+          }
+        ],
+        explanation:
+          "the fact / news / idea / belief / possibility などのあとで「〜という…」と中身を述べるのが同格の that です。",
+        misconception:
+          "関係代名詞なら後ろが不完全な文になりますが、he lied to us は完全な文です。名詞の中身を説明しているので同格です。"
+      },
+      {
+        id: "ellipsis-2",
+        level: 3,
+        point: "挿入句 as far as I know",
+        variant: "word",
+        prompt: "He is, ____ I know, the only person who can solve this.",
+        translation: "私の知る限り、彼がこれを解決できる唯一の人物だ。",
+        options: [
+          {
+            answer: "as far as",
+            reason: "「〜の範囲では」と知識の及ぶ範囲を限定する挿入句になるから",
+            correct: true
+          },
+          {
+            answer: "as long as",
+            reason: "「〜する限りは」と条件をつける挿入句になるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "コンマではさまれた部分は挿入句です。いったん外して He is the only person 〜 と読むと骨組みが見えます。",
+        misconception:
+          "as far as は範囲や程度（知る限り、見渡す限り）、as long as は条件（〜さえすれば）。ここは話し手の知識の範囲を断っているので as far as です。"
+      },
+      {
+        id: "ellipsis-3",
+        level: 3,
+        point: "as is often the case",
+        variant: "word",
+        prompt: "____ is often the case with him, he was late again.",
+        translation: "彼にはよくあることだが、また遅刻した。",
+        options: [
+          {
+            answer: "As",
+            reason: "前後の文の内容全体を受けて主節につなぐので、接続詞のはたらきを持つ as を使うから",
+            correct: true
+          },
+          {
+            answer: "It",
+            reason: "文の主語が必要なので、形式主語の it を置くから",
+            correct: false
+          }
+        ],
+        explanation:
+          "as is often the case with 〜 は「〜にはよくあることだが」という決まった形です。この as は関係代名詞で、あとに続く文全体を先行詞にします。",
+        misconception:
+          "It is often the case that he is late. なら成り立ちますが、この文はコンマのあとに主節が続きます。2つの文をつなぐはたらきがない it では、文が並んだままになります。"
+      },
+      {
+        id: "ellipsis-4",
+        level: 2,
+        point: "代動詞 do",
+        variant: "reason",
+        prompt: "She speaks English better than I ____.",
+        translation: "彼女は私よりも英語を上手に話す。",
+        options: [
+          {
+            answer: "do",
+            reason: "than 以下でくり返しになる speak English を、代動詞 do で受けているから",
+            correct: true
+          },
+          {
+            answer: "do",
+            reason: "than のあとには助動詞を置く決まりなので、do を補うから",
+            correct: false
+          }
+        ],
+        explanation:
+          "than I do は than I speak English の省略形です。一般動詞のくり返しは do / does / did で受けます。",
+        misconception:
+          "than のあとに助動詞を置く決まりはありません（than I am tall のように be動詞が来ることもあります）。ここで do を使うのは、前に出てきた一般動詞 speak のくり返しを避けるためです。"
+      },
+      {
+        id: "ellipsis-5",
+        level: 3,
+        point: "if any（挿入）",
+        variant: "word",
+        prompt: "There are few, ____ any, mistakes in his report.",
+        translation: "彼の報告書に間違いは、あるとしてもごくわずかだ。",
+        options: [
+          {
+            answer: "if",
+            reason: "few if any で「あるとしてもごくわずか」と譲歩を差し込む決まった形だから",
+            correct: true
+          },
+          {
+            answer: "or",
+            reason: "「少しか、いくらか」と2つを並べて示すから",
+            correct: false
+          }
+        ],
+        explanation:
+          "if any / if ever は、直前の少なさを補強する挿入表現です。seldom if ever（めったに、あるとしても稀に）もセットで覚えます。",
+        misconception:
+          "or では2つの選択肢を並べることになり、「あるとしても」という譲歩の意味が出ません。if は省略された if there are any の一部です。"
+      },
+      {
+        id: "ellipsis-6",
+        level: 2,
+        point: "代不定詞",
+        variant: "word",
+        prompt: "You don't have to come if you don't want ____.",
+        translation: "来たくなければ、来なくていいですよ。",
+        options: [
+          {
+            answer: "to",
+            reason: "want の目的語である to come のくり返しを避け、to だけを残すから",
+            correct: true
+          },
+          {
+            answer: "it",
+            reason: "want の目的語が必要なので、前の内容を受ける代名詞 it を置くから",
+            correct: false
+          }
+        ],
+        explanation:
+          "to だけを残す形を代不定詞といいます。I'd like to. / You may if you want to. のように会話でもよく使われます。",
+        misconception:
+          "want it だと「それが欲しい」という意味になり、「来ること」を受けられません。動詞のくり返しを避けるときは to を残します。"
+      }
+    ]
+  },
+  {
+    id: "verbusage",
+    order: 13,
+    title: "動詞の語法",
+    subtitle: "前置詞をとるか、どんな形を続けるか",
+    overview:
+      "意味が分かっていても形を間違えやすいのが動詞の語法です。日本語の「〜について」「〜から」に引きずられず、動詞ごとに続く形を覚えます。",
+    questions: [
+      {
+        id: "verbusage-1",
+        level: 2,
+        point: "他動詞 discuss",
+        variant: "word",
+        prompt: "We ____ the problem for two hours.",
+        translation: "私たちはその問題について2時間話し合った。",
+        options: [
+          {
+            answer: "discussed",
+            reason: "discuss は目的語を前置詞なしで直接とる他動詞だから",
+            correct: true
+          },
+          {
+            answer: "discussed about",
+            reason: "「〜について話し合う」という意味なので、about を添えるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "discuss / enter / marry / reach / mention / attend は、日本語では前置詞が必要に見えても、英語では直接目的語をとります。",
+        misconception:
+          "日本語の「〜について」に引かれて about を入れてしまう例です。discuss about という形は使いません。"
+      },
+      {
+        id: "verbusage-2",
+        level: 2,
+        point: "自動詞 rise と他動詞 raise",
+        variant: "word",
+        prompt: "The sun ____ in the east and sets in the west.",
+        translation: "太陽は東から昇り、西に沈む。",
+        options: [
+          {
+            answer: "rises",
+            reason: "rise は「自分で上がる」自動詞で、目的語をとらないから",
+            correct: true
+          },
+          {
+            answer: "raises",
+            reason: "「上がる」という意味を表すので raise を使うから",
+            correct: false
+          }
+        ],
+        explanation:
+          "rise（上がる）は自動詞、raise（〜を上げる）は他動詞。lie（横たわる）と lay（〜を横たえる）も同じ関係です。",
+        misconception:
+          "raise は raise your hand のように目的語が必要です。太陽が何かを上げるわけではないので、ここでは自動詞になります。"
+      },
+      {
+        id: "verbusage-3",
+        level: 3,
+        point: "remind A of B",
+        variant: "word",
+        prompt: "This photo ____ me of my childhood.",
+        translation: "この写真を見ると子どものころを思い出す。",
+        options: [
+          {
+            answer: "reminds",
+            reason: "remind A of B で「A に B を思い出させる」という形をとるから",
+            correct: true
+          },
+          {
+            answer: "remembers",
+            reason: "「思い出す」という意味なので remember を使うから",
+            correct: false
+          }
+        ],
+        explanation:
+          "主語が「思い出させる側」なら remind、「思い出す側」なら remember です。日本語の訳は同じ「思い出す」でも主語が違います。",
+        misconception:
+          "写真が何かを思い出すわけではありません。主語が人でないときは、思い出させる側だと考えると選びやすくなります。"
+      },
+      {
+        id: "verbusage-4",
+        level: 3,
+        point: "prevent A from -ing",
+        variant: "word",
+        prompt: "The heavy rain prevented us ____ going out.",
+        translation: "大雨のせいで私たちは外出できなかった。",
+        options: [
+          {
+            answer: "from",
+            reason: "prevent A from -ing の形で、妨げられる行為を from で示すから",
+            correct: true
+          },
+          {
+            answer: "to",
+            reason: "「〜することを妨げる」と目的を表すので、to 不定詞を続けるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "prevent / stop / keep / discourage は A from -ing の形をとります。「A を〜から遠ざける」というイメージです。",
+        misconception:
+          "これらの動詞に to 不定詞は続きません。日本語の「〜することを」に引かれて to にしないよう、from -ing の形で覚えます。"
+      },
+      {
+        id: "verbusage-5",
+        level: 3,
+        point: "提案・要求の that 節",
+        variant: "reason",
+        prompt: "The doctor suggested that she ____ more slowly.",
+        translation: "医者は彼女にもっとゆっくり食べるよう勧めた。",
+        options: [
+          {
+            answer: "eat",
+            reason: "提案・要求・主張を表す動詞のあとの that 節では、should が省略されて動詞が原形になるから",
+            correct: true
+          },
+          {
+            answer: "eat",
+            reason: "主節が過去形なので、時制の一致で that 節の動詞も形を変えるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "suggest / propose / insist / demand / recommend のあとの that 節は（should +）原形です。主語が三人称単数でも -s は付きません。",
+        misconception:
+          "時制の一致とは関係ありません。時制の一致なら ate になるはずです。原形になるのは、提案の内容がまだ実現していないことを表す形（仮定法現在）だからです。"
+      },
+      {
+        id: "verbusage-6",
+        level: 2,
+        point: "rob A of B",
+        variant: "word",
+        prompt: "She was robbed ____ her bag on the train.",
+        translation: "彼女は電車でかばんを奪われた。",
+        options: [
+          {
+            answer: "of",
+            reason: "rob A of B（A から B を奪う）の形で、奪われた物を of で示すから",
+            correct: true
+          },
+          {
+            answer: "from",
+            reason: "「〜から奪う」という意味なので、起点を表す from を使うから",
+            correct: false
+          }
+        ],
+        explanation:
+          "rob / deprive / cure / clear は「A of B」の形をとります。受動態にすると be robbed of B となります。",
+        misconception:
+          "日本語の「〜から」に引かれて from としてしまう例です。奪う対象（人）が目的語、奪われる物が of のあと、と形で覚えます。"
+      }
+    ]
   }
 ];
 

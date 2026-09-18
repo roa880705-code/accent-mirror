@@ -68,25 +68,29 @@ function loadContent() {
   return embedded ? Promise.resolve(embedded.content) : getJson("/api/content");
 }
 
-var allGrammarQuestions = null; // 一度取ったら使い回す
+var practiceQuestions = null; // 一度取ったら使い回す
 
-function loadAllGrammarQuestions() {
-  if (allGrammarQuestions) return Promise.resolve(allGrammarQuestions);
+function flattenEmbedded(units, kind) {
+  return Object.keys(units || {}).reduce(function (list, unitId) {
+    var unit = units[unitId];
+    return list.concat(
+      unit.questions.map(function (question) {
+        return { kind: kind, groupId: unit.id, groupTitle: unit.title, question: question };
+      })
+    );
+  }, []);
+}
+
+function loadPracticeQuestions() {
+  if (practiceQuestions) return Promise.resolve(practiceQuestions);
   var source = embedded
     ? Promise.resolve({
-        questions: Object.keys(embedded.units).reduce(function (list, unitId) {
-          var unit = embedded.units[unitId];
-          return list.concat(
-            unit.questions.map(function (question) {
-              return { kind: "grammar", groupId: unit.id, groupTitle: unit.title, question: question };
-            })
-          );
-        }, [])
+        questions: flattenEmbedded(embedded.units, "grammar").concat(flattenEmbedded(embedded.vocabUnits, "vocab"))
       })
-    : getJson("/api/grammar/questions");
+    : getJson("/api/practice/questions");
   return source.then(function (data) {
-    allGrammarQuestions = data.questions;
-    return allGrammarQuestions;
+    practiceQuestions = data.questions;
+    return practiceQuestions;
   });
 }
 
@@ -100,7 +104,9 @@ function loadReviewQuestions(items) {
   if (!embedded) return postJson("/api/review/questions", { items: items });
   var questions = items
     .map(function (item) {
-      var group = item.kind === "grammar" ? embedded.units[item.groupId] : embedded.passages[item.groupId];
+      var groups =
+        item.kind === "grammar" ? embedded.units : item.kind === "vocab" ? embedded.vocabUnits : embedded.passages;
+      var group = groups[item.groupId];
       if (!group) return null;
       var question = group.questions.filter(function (candidate) {
         return candidate.id === item.questionId;
@@ -179,12 +185,12 @@ function refreshHomeStats() {
   var est = currentEstimate();
   renderScoreBlock($("homeScoreBlock"), est, false);
 
-  var grammarLeft = totalUnseen("grammar", contentSummary.grammar.units);
+  var practiceLeft = totalUnseen("grammar", contentSummary.grammar.units) + totalUnseen("vocab", contentSummary.vocab.units);
   var readingLeft = totalUnseen("reading", contentSummary.reading.passages);
   $("freshCardNote").textContent =
-    grammarLeft + readingLeft > 0
-      ? "次は レベル" + progress.difficulty.target + " の文法を3問。初見は残り " + (grammarLeft + readingLeft) +
-        "問（文法 " + grammarLeft + "／読解 " + readingLeft + "）。"
+    practiceLeft + readingLeft > 0
+      ? "次は レベル" + progress.difficulty.target + " の問題を3問。初見は残り " + (practiceLeft + readingLeft) +
+        "問（文法・語彙 " + practiceLeft + "／読解 " + readingLeft + "）。"
       : "初見の問題はすべて解き終わりました。";
   $("homeRankNote").textContent = est.ready
     ? est.scoreReady
@@ -211,11 +217,14 @@ function goHome() {
 /* ---------- 初見問題モード ---------- */
 
 function areaLabel(key) {
-  return key === "grammar" ? "文法" : key === "reading" ? "読解" : key;
+  if (key === "grammar") return "文法";
+  if (key === "vocab") return "語彙";
+  if (key === "reading") return "読解";
+  return key;
 }
 
 function groupTitle(groupId) {
-  var unit = contentSummary.grammar.units.filter(function (item) {
+  var unit = contentSummary.grammar.units.concat(contentSummary.vocab.units).filter(function (item) {
     return item.id === groupId;
   })[0];
   if (unit) return unit.title;
@@ -270,7 +279,8 @@ function levelRow(summary) {
   bar.appendChild(fill);
   row.appendChild(bar);
   var note;
-  if (summary.cleared) note = "クリア";
+  if (summary.impliedByHigher) note = "クリア（上のレベル達成による）";
+  else if (summary.cleared) note = "クリア";
   else if (summary.answered === 0) note = "未挑戦";
   else if (summary.answered < summary.minAnswers) note = "あと" + (summary.minAnswers - summary.answered) + "問";
   else note = "正答率が不足";
@@ -380,11 +390,13 @@ function renderScoreBlock(node, est, detailed) {
 function renderFreshScreen() {
   renderScoreBlock($("freshScoreBlock"), currentEstimate(), true);
   var grammarLeft = totalUnseen("grammar", contentSummary.grammar.units);
+  var vocabLeft = totalUnseen("vocab", contentSummary.vocab.units);
   var readingLeft = totalUnseen("reading", contentSummary.reading.passages);
   $("freshLevelLabel").textContent = "レベル " + progress.difficulty.target;
-  $("freshGrammarNote").textContent = grammarLeft
-    ? "分野をまたいで、いまのレベルに近い問題から出します。初見の残り " + grammarLeft + "問。全問正解で次はレベルが上がります。"
-    : "初見の文法問題はもうありません（復習問題モードへ）";
+  $("freshGrammarNote").textContent = grammarLeft + vocabLeft
+    ? "文法と語彙をまたいで、いまのレベルに近い問題から出します。初見の残り " + (grammarLeft + vocabLeft) +
+      "問（文法 " + grammarLeft + "／語彙 " + vocabLeft + "）。全問正解で次はレベルが上がります。"
+    : "初見の文法・語彙問題はもうありません（復習問題モードへ）";
   $("freshReadingNote").textContent = readingLeft
     ? "本文を読んでから設問4問。初見の設問が " + readingLeft + "問 残っています"
     : "初見の設問はもうありません（復習問題モードへ）";
@@ -553,13 +565,13 @@ function pickQuestions(pool, target, count) {
 }
 
 function startRandomSession() {
-  loadAllGrammarQuestions()
+  loadPracticeQuestions()
     .then(function (items) {
       var pool = items.filter(function (item) {
-        return !planner.hasSeen(progress, "grammar", item.groupId, item.question.id);
+        return !planner.hasSeen(progress, item.kind, item.groupId, item.question.id);
       });
       if (!pool.length) {
-        window.alert("初見の文法問題はすべて解き終わりました。復習問題モードか読解へどうぞ。");
+        window.alert("初見の文法・語彙問題はすべて解き終わりました。復習問題モードか読解へどうぞ。");
         return;
       }
       var target = progress.difficulty.target;
@@ -567,8 +579,8 @@ function startRandomSession() {
       session = {
         kind: "fresh",
         eyebrow: "初見問題モード",
-        title: "レベル" + target + " の文法 " + picked.length + "問",
-        overview: "分野をまたいでランダムに出題します。全問正解すると、次のセットのレベルが上がります。",
+        title: "レベル" + target + " の問題 " + picked.length + "問",
+        overview: "文法と語彙から、分野をまたいでランダムに出題します。全問正解すると、次のセットのレベルが上がります。",
         backTo: "fresh",
         scoreBefore: currentEstimate(),
         levelBefore: target,
@@ -636,7 +648,7 @@ function renderQuizQuestion() {
   $("quizUnitOverview").textContent = session.overview || "";
 
   // 分野をまたいで出題するので、どのユニットの問題かを必ず添える
-  var label = (item.kind === "grammar" ? "文法" : "読解") + "／" + item.groupTitle;
+  var label = areaLabel(item.kind) + "／" + item.groupTitle;
   if (question.point || question.typeJa) label += "／" + (question.point || question.typeJa);
   if (question.level) label += "　レベル" + question.level;
   if (question.variant === "reason") label += "（根拠だけが違う2択）";
@@ -1029,7 +1041,7 @@ function boot() {
     .then(function (data) {
       contentSummary = data;
       $("footerStatus").textContent =
-        "文法 " + data.grammar.questionCount + "問（" + data.grammar.unitCount + "ユニット）／読解 " +
+        "文法 " + data.grammar.questionCount + "問／語彙 " + data.vocab.questionCount + "問／読解 " +
         data.reading.passageCount + "本・設問 " + data.reading.questionCount + "問";
       goHome();
     })

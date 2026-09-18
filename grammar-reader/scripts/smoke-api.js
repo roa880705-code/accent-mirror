@@ -19,22 +19,33 @@ const server = app.listen(0, async () => {
     const health = await get("/api/health");
     assert.strictEqual(health.status, 200);
     assert.strictEqual(health.body.ok, true);
-    assert.strictEqual(health.body.grammarQuestions, 60);
+    assert.ok(health.body.grammarQuestions >= 78 && health.body.vocabQuestions >= 24);
     checks.push("GET /api/health");
 
     const content = await get("/api/content");
-    assert.strictEqual(content.body.grammar.units.length, 10);
+    assert.ok(content.body.grammar.units.length >= 13);
+    assert.ok(content.body.vocab.units.length >= 4);
     assert.strictEqual(content.body.reading.passages.length, 5);
     assert.ok(content.body.reading.passages[0].wordCount > 100);
     assert.strictEqual(content.body.grammar.units[0].questionIds.length, 6);
+    assert.ok(content.body.vocab.questionCount >= 24);
     assert.strictEqual(content.body.reading.passages[0].questionIds.length, 4);
     checks.push("GET /api/content");
 
-    const all = await get("/api/grammar/questions");
-    assert.strictEqual(all.body.questions.length, 60);
+    const all = await get("/api/practice/questions");
     assert.ok(all.body.questions.every((item) => item.groupTitle && item.question.id && item.question.level));
-    assert.ok(new Set(all.body.questions.map((item) => item.groupId)).size === 10, "10ユニットすべてから出せる");
-    checks.push("GET /api/grammar/questions (ランダム出題用)");
+    const kinds = all.body.questions.reduce((map, item) => Object.assign(map, { [item.kind]: true }), {});
+    assert.ok(kinds.grammar && kinds.vocab, "文法と語彙の両方が混ざる");
+    assert.strictEqual(
+      all.body.questions.length,
+      content.body.grammar.questionCount + content.body.vocab.questionCount
+    );
+    checks.push("GET /api/practice/questions (文法＋語彙のランダム出題用)");
+
+    const vocabUnit = await get("/api/vocab/units/phrasal");
+    assert.strictEqual(vocabUnit.body.unit.questions.length, 6);
+    assert.strictEqual((await get("/api/vocab/units/nope")).status, 404);
+    checks.push("GET /api/vocab/units/:unitId");
 
     const unit = await get("/api/grammar/units/relative");
     assert.strictEqual(unit.body.unit.questions.length, 6);

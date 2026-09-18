@@ -1,13 +1,14 @@
 "use strict";
 
 const { grammarUnits } = require("../../data/grammarBank");
+const { vocabUnits } = require("../../data/vocabBank");
 const { readingPassages } = require("../../data/readingBank");
 
 function countWords(paragraphs) {
   return paragraphs.join(" ").split(/\s+/).filter(Boolean).length;
 }
 
-function grammarUnitSummary(unit) {
+function unitSummary(unit) {
   return {
     id: unit.id,
     order: unit.order,
@@ -35,11 +36,19 @@ function readingPassageSummary(passage) {
 }
 
 function listGrammarUnits() {
-  return grammarUnits.slice().sort((a, b) => a.order - b.order).map(grammarUnitSummary);
+  return grammarUnits.slice().sort((a, b) => a.order - b.order).map(unitSummary);
 }
 
 function getGrammarUnit(id) {
   return grammarUnits.find((unit) => unit.id === id) || null;
+}
+
+function listVocabUnits() {
+  return vocabUnits.slice().sort((a, b) => a.order - b.order).map(unitSummary);
+}
+
+function getVocabUnit(id) {
+  return vocabUnits.find((unit) => unit.id === id) || null;
 }
 
 function listReadingPassages() {
@@ -52,17 +61,13 @@ function getReadingPassage(id) {
   return Object.assign({}, passage, { wordCount: countWords(passage.paragraphs) });
 }
 
-/**
- * 全ユニットの文法問題をフラットに並べて返す。
- * 分野をまたいでランダムに出題するときに使う（返す形は復習と同じ）。
- */
-function listAllGrammarQuestions() {
-  return grammarUnits
+function flatten(units, kind) {
+  return units
     .slice()
     .sort((a, b) => a.order - b.order)
     .flatMap((unit) =>
       unit.questions.map((question) => ({
-        kind: "grammar",
+        kind,
         groupId: unit.id,
         groupTitle: unit.title,
         question
@@ -70,10 +75,18 @@ function listAllGrammarQuestions() {
     );
 }
 
+/**
+ * 文法と語彙の問題をフラットに並べて返す。
+ * 分野をまたいでランダムに出題するときに使う（返す形は復習と同じ）。
+ */
+function listPracticeQuestions() {
+  return flatten(grammarUnits, "grammar").concat(flatten(vocabUnits, "vocab"));
+}
+
 /** 復習画面が問題本体を引き当てるための逆引き。 */
 function findQuestion(kind, groupId, questionId) {
-  if (kind === "grammar") {
-    const unit = getGrammarUnit(groupId);
+  if (kind === "grammar" || kind === "vocab") {
+    const unit = kind === "grammar" ? getGrammarUnit(groupId) : getVocabUnit(groupId);
     if (!unit) return null;
     const question = unit.questions.find((q) => q.id === questionId);
     if (!question) return null;
@@ -91,12 +104,18 @@ function findQuestion(kind, groupId, questionId) {
 
 function contentSummary() {
   const units = listGrammarUnits();
+  const vocab = listVocabUnits();
   const passages = listReadingPassages();
   return {
     grammar: {
       unitCount: units.length,
       questionCount: units.reduce((total, unit) => total + unit.questionCount, 0),
       units
+    },
+    vocab: {
+      unitCount: vocab.length,
+      questionCount: vocab.reduce((total, unit) => total + unit.questionCount, 0),
+      units: vocab
     },
     reading: {
       passageCount: passages.length,
@@ -109,8 +128,10 @@ function contentSummary() {
 module.exports = {
   countWords,
   listGrammarUnits,
-  listAllGrammarQuestions,
   getGrammarUnit,
+  listVocabUnits,
+  getVocabUnit,
+  listPracticeQuestions,
   listReadingPassages,
   getReadingPassage,
   findQuestion,
