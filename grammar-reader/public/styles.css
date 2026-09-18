@@ -167,3 +167,39 @@ h2{font-size:17px;margin:0 0 10px}
 .choice.is-picked{box-shadow:0 0 0 2px var(--text) inset}
 .picked-badge{position:absolute;top:-10px;right:12px;background:var(--text);color:var(--bg);border-radius:999px;font-size:11px;font-weight:800;padding:3px 9px;letter-spacing:.02em}
 .feedback-text.wrong-reason{color:var(--text-soft);font-weight:600;font-size:13.5px;border-left:3px solid var(--ng);padding-left:10px;margin-bottom:6px}
+
+/* 初見問題モードのスコアカード */
+.fresh-card .menu-card-label{color:var(--accent)}
+.score-card{background:linear-gradient(180deg,var(--accent-soft),var(--surface) 62%)}
+.score-headline{display:flex;align-items:baseline;flex-wrap:wrap;gap:10px;margin:2px 0 4px}
+.score-label{font-size:15px;font-weight:800}
+.score-value{font-size:16px;font-weight:800}
+.score-value strong{font-size:52px;line-height:1.1;letter-spacing:-.02em;margin-right:2px}
+.score-range{font-size:13px;font-weight:700;color:var(--text-soft)}
+.score-meter{height:8px;border-radius:999px;background:var(--surface-soft);margin:12px 0 6px;overflow:hidden}
+.score-meter-fill{height:100%;width:0;background:var(--accent);border-radius:999px;transition:width .4s ease}
+.score-breakdown{margin-top:14px}
+.score-breakdown .feedback-label{margin-top:12px}
+.breakdown-row{display:grid;grid-template-columns:76px 1fr auto;gap:8px;align-items:center;margin:6px 0;font-size:13px}
+.breakdown-label{font-weight:800}
+.breakdown-bar{height:8px;border-radius:999px;background:var(--surface-soft);overflow:hidden}
+.breakdown-bar-fill{display:block;height:100%;background:var(--accent);border-radius:999px}
+.breakdown-value{color:var(--text-soft);font-weight:700;font-variant-numeric:tabular-nums}
+.weak-point{display:flex;flex-direction:column;gap:2px;margin-top:14px;padding:12px;border-radius:12px;background:var(--ng-soft);border:1px solid var(--ng)}
+.weak-point-label{font-size:12px;font-weight:800;color:var(--ng)}
+.weak-point-body{font-size:14px;font-weight:700}
+.score-note{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.score-note summary{font-size:13px;font-weight:800;color:var(--text-soft);cursor:pointer}
+.score-note-body p{font-size:12.5px;line-height:1.85;color:var(--text-soft);margin:8px 0 0}
+.list-item.is-done{opacity:.6}
+
+/* 結果画面の推定点の変化 */
+.score-shift{margin:10px 0 4px;padding:12px;border-radius:12px;background:var(--surface-soft);border:1px solid var(--line)}
+.score-shift-text{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px}
+.score-shift-label{font-size:12px;font-weight:800;color:var(--text-soft)}
+.score-shift-old{font-size:17px;font-weight:800;color:var(--text-soft)}
+.score-shift-arrow{color:var(--text-soft)}
+.score-shift-new{font-size:26px;font-weight:900}
+.score-shift-diff{font-size:13px;font-weight:900;border-radius:999px;padding:3px 9px;background:var(--surface);color:var(--text-soft)}
+.score-shift-diff.up{background:var(--ok-soft);color:var(--ok)}
+.score-shift-diff.down{background:var(--ng-soft);color:var(--ng)}

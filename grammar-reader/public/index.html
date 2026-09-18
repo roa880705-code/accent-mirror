@@ -32,18 +32,13 @@
     </div>
 
     <div class="menu-grid">
-      <button id="goGrammarButton" class="menu-card" type="button">
-        <span class="menu-card-label">文法ドリル</span>
-        <span class="menu-card-title">英文法 10ユニット</span>
-        <span class="menu-card-note">時制・完了形・助動詞・受動態・不定詞・動名詞・分詞・関係詞・仮定法・比較。各ユニットに「語は同じで根拠だけが違う」問題を用意</span>
-      </button>
-      <button id="goReadingButton" class="menu-card" type="button">
-        <span class="menu-card-label">読解</span>
-        <span class="menu-card-title">英文 5本＋設問20問</span>
-        <span class="menu-card-note">読了時間から読む速さ（wpm）を計測。全文和訳と重要文の構文解説つき</span>
+      <button id="goFreshButton" class="menu-card fresh-card" type="button">
+        <span class="menu-card-label">初見問題モード</span>
+        <span class="menu-card-title">まだ解いていない問題に挑む</span>
+        <span class="menu-card-note" id="freshCardNote">初見の結果から、共通テスト英語 Reading の推定点を出します</span>
       </button>
       <button id="goReviewButton" class="menu-card review-card" type="button">
-        <span class="menu-card-label">復習</span>
+        <span class="menu-card-label">復習問題モード</span>
         <span class="menu-card-title">間違えた問題をもう一度</span>
         <span class="menu-card-note" id="reviewCardNote">復習待ちはまだありません</span>
       </button>
@@ -56,11 +51,64 @@
     </div>
   </section>
 
+  <!-- 初見問題モード -->
+  <section id="freshScreen" class="screen hidden">
+    <div class="card score-card">
+      <div class="eyebrow">初見問題モード　いまの実力</div>
+      <div id="scoreReady">
+        <div class="score-headline">
+          <span class="score-label">共通テスト英語 Reading</span>
+          <span class="score-value"><strong id="scoreValue">--</strong>点</span>
+        </div>
+        <div class="score-range" id="scoreRange"></div>
+        <div class="score-meter"><div id="scoreMeter" class="score-meter-fill"></div></div>
+        <p class="minor" id="scoreBasis"></p>
+        <div class="score-breakdown" id="scoreBreakdown"></div>
+        <div class="weak-point hidden" id="weakPoint"></div>
+        <details class="score-note">
+          <summary>この点数の出し方</summary>
+          <div class="score-note-body" id="scoreNoteBody"></div>
+        </details>
+      </div>
+      <div id="scoreNotReady" class="hidden">
+        <p class="lead" id="scoreNotReadyText"></p>
+      </div>
+    </div>
+
+    <div class="menu-grid">
+      <button id="freshGrammarButton" class="menu-card" type="button">
+        <span class="menu-card-label">文法</span>
+        <span class="menu-card-title">英文法 10ユニット</span>
+        <span class="menu-card-note" id="freshGrammarNote"></span>
+      </button>
+      <button id="freshReadingButton" class="menu-card" type="button">
+        <span class="menu-card-label">読解</span>
+        <span class="menu-card-title">英文 5本</span>
+        <span class="menu-card-note" id="freshReadingNote"></span>
+      </button>
+    </div>
+  </section>
+
+  <!-- 復習問題モード -->
+  <section id="reviewScreen" class="screen hidden">
+    <div class="card">
+      <h1>復習問題モード</h1>
+      <p class="lead">一度間違えた問題が、日を置いてもう一度出てきます。ここでの結果は推定点には反映しません（答えを覚えているため）。</p>
+      <div class="stat-row">
+        <div class="stat"><span>いま復習</span><strong id="reviewDueCount">0</strong></div>
+        <div class="stat"><span>待機中</span><strong id="reviewLearningCount">0</strong></div>
+        <div class="stat"><span>習得済み</span><strong id="reviewMasteredCount">0</strong></div>
+      </div>
+      <p class="minor" id="reviewScheduleNote"></p>
+      <button id="startReviewButton" class="primary-button" type="button">復習を始める</button>
+    </div>
+  </section>
+
   <!-- 文法ユニット一覧 -->
   <section id="grammarListScreen" class="screen hidden">
     <div class="card">
-      <h1>文法ドリル</h1>
-      <p class="lead">1ユニット6問。答えるとすぐに解説が出ます。</p>
+      <h1 id="grammarListTitle">文法</h1>
+      <p class="lead" id="grammarListLead">1ユニット6問。答えるとすぐに解説が出ます。</p>
     </div>
     <div id="grammarUnitList" class="list-grid"></div>
   </section>
@@ -68,8 +116,8 @@
   <!-- 読解パッセージ一覧 -->
   <section id="readingListScreen" class="screen hidden">
     <div class="card">
-      <h1>読解</h1>
-      <p class="lead">まず辞書なしで通して読み、そのあと設問と和訳で確認する順番がおすすめです。</p>
+      <h1 id="readingListTitle">読解</h1>
+      <p class="lead" id="readingListLead">まず辞書なしで通して読み、そのあと設問と和訳で確認する順番がおすすめです。</p>
     </div>
     <div id="readingPassageList" class="list-grid"></div>
   </section>
@@ -104,6 +152,7 @@
       <h1>結果</h1>
       <div class="score-display"><strong id="resultScore">0 / 6</strong><span id="resultAccuracy"></span></div>
       <p class="minor" id="resultComment"></p>
+      <div id="resultScoreShift" class="score-shift hidden"></div>
       <div id="resultMissedList" class="missed-list"></div>
       <div class="button-row">
         <button id="resultRetryButton" class="primary-button" type="button">もう一度解く</button>
@@ -123,6 +172,7 @@
         </div>
         <div class="reading-timer" id="readingTimer">0:00</div>
       </div>
+      <p class="minor" id="readingFreshNote"></p>
       <div class="toggle-row">
         <button id="toggleGlossaryButton" class="chip-button" type="button">語注を見る</button>
         <button id="toggleTranslationButton" class="chip-button" type="button">段落の和訳を見る</button>
@@ -160,6 +210,7 @@
 </footer>
 
 <script src="reviewPlanner.js"></script>
+<script src="scoreEstimator.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

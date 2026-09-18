@@ -129,6 +129,7 @@ readingPassages.forEach((passage) => {
     const qLabel = `${label}/${question.id}`;
     checkUniqueId(question.id, qLabel);
     check(!!question.typeJa, `${qLabel}: typeJa（設問の種類）が必要です`);
+    check([1, 2, 3].includes(question.level), `${qLabel}: level は 1〜3 で指定してください（推定点の配点になります）`);
     checkOptionBlock(question, qLabel);
     check(typeof question.evidence === "string" && question.evidence.length > 0, `${qLabel}: evidence（根拠）が必要です`);
     // evidence は本文からの引用。"..." でつないだ場合は各断片が本文にあることを確認する。

@@ -26,6 +26,8 @@ const server = app.listen(0, async () => {
     assert.strictEqual(content.body.grammar.units.length, 10);
     assert.strictEqual(content.body.reading.passages.length, 5);
     assert.ok(content.body.reading.passages[0].wordCount > 100);
+    assert.strictEqual(content.body.grammar.units[0].questionIds.length, 6);
+    assert.strictEqual(content.body.reading.passages[0].questionIds.length, 4);
     checks.push("GET /api/content");
 
     const unit = await get("/api/grammar/units/relative");
@@ -46,6 +48,7 @@ const server = app.listen(0, async () => {
     assert.strictEqual(passage.body.passage.paragraphs.length, passage.body.passage.translations.length);
     assert.ok(passage.body.passage.questions.every((question) => question.options.length === 2));
     assert.ok(passage.body.passage.questions.some((question) => question.variant === "reason"));
+    assert.ok(passage.body.passage.questions.every((question) => [1, 2, 3].includes(question.level)));
     checks.push("GET /api/reading/passages/:passageId (2択＋根拠)");
 
     const missingPassage = await get("/api/reading/passages/nope");

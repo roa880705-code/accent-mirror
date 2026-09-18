@@ -14,6 +14,8 @@ function grammarUnitSummary(unit) {
     title: unit.title,
     subtitle: unit.subtitle,
     questionCount: unit.questions.length,
+    // 未解答（初見）の問題数をクライアント側で数えるために id を渡す
+    questionIds: unit.questions.map((q) => q.id),
     points: unit.questions.map((q) => q.point)
   };
 }
@@ -27,7 +29,8 @@ function readingPassageSummary(passage) {
     titleJa: passage.titleJa,
     topic: passage.topic,
     wordCount: countWords(passage.paragraphs),
-    questionCount: passage.questions.length
+    questionCount: passage.questions.length,
+    questionIds: passage.questions.map((q) => q.id)
   };
 }
 

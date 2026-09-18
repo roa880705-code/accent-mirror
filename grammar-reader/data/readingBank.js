@@ -49,6 +49,7 @@ const readingPassages = [
     questions: [
       {
         id: "yawn-q1",
+        level: 1,
         typeJa: "内容一致",
         variant: "word",
         prompt: "What did the experiment in the second paragraph show?",
@@ -72,6 +73,7 @@ const readingPassages = [
       },
       {
         id: "yawn-q2",
+        level: 2,
         typeJa: "因果関係",
         variant: "reason",
         prompt: "According to the cooling theory, why do people yawn less in very hot weather?",
@@ -95,6 +97,7 @@ const readingPassages = [
       },
       {
         id: "yawn-q3",
+        level: 2,
         typeJa: "語彙推測",
         variant: "word",
         prompt: "In the last paragraph, what does contagious mean?",
@@ -118,6 +121,7 @@ const readingPassages = [
       },
       {
         id: "yawn-q4",
+        level: 2,
         typeJa: "要旨",
         variant: "word",
         prompt: "Which sentence best describes the whole passage?",
@@ -186,6 +190,7 @@ const readingPassages = [
     questions: [
       {
         id: "citybees-q1",
+        level: 3,
         typeJa: "要旨",
         variant: "word",
         prompt: "What is the main point of the passage?",
@@ -209,6 +214,7 @@ const readingPassages = [
       },
       {
         id: "citybees-q2",
+        level: 2,
         typeJa: "内容一致",
         variant: "word",
         prompt: "What problem do bees face where a single crop is grown?",
@@ -232,6 +238,7 @@ const readingPassages = [
       },
       {
         id: "citybees-q3",
+        level: 2,
         typeJa: "内容一致",
         variant: "reason",
         prompt: "What do experts advise cities to do?",
@@ -255,6 +262,7 @@ const readingPassages = [
       },
       {
         id: "citybees-q4",
+        level: 3,
         typeJa: "推論",
         variant: "word",
         prompt: "What does the writer suggest in the last paragraph?",
@@ -322,6 +330,7 @@ const readingPassages = [
     questions: [
       {
         id: "sleep-q1",
+        level: 2,
         typeJa: "語句の意味",
         variant: "word",
         prompt: "What is consolidation, as the passage uses the word?",
@@ -345,6 +354,7 @@ const readingPassages = [
       },
       {
         id: "sleep-q2",
+        level: 2,
         typeJa: "内容一致",
         variant: "word",
         prompt: "What did the study of the two groups show?",
@@ -368,6 +378,7 @@ const readingPassages = [
       },
       {
         id: "sleep-q3",
+        level: 2,
         typeJa: "内容一致",
         variant: "reason",
         prompt: "According to the passage, REM sleep is linked to",
@@ -391,6 +402,7 @@ const readingPassages = [
       },
       {
         id: "sleep-q4",
+        level: 3,
         typeJa: "筆者の主張",
         variant: "word",
         prompt: "Which statement would the writer most likely agree with?",
@@ -458,6 +470,7 @@ const readingPassages = [
     questions: [
       {
         id: "colorwords-q1",
+        level: 3,
         typeJa: "内容一致",
         variant: "word",
         prompt: "What do the Russian experiments actually measure?",
@@ -481,6 +494,7 @@ const readingPassages = [
       },
       {
         id: "colorwords-q2",
+        level: 3,
         typeJa: "指示語",
         variant: "reason",
         prompt: "What happens when speakers repeat numbers in their heads during the task?",
@@ -504,6 +518,7 @@ const readingPassages = [
       },
       {
         id: "colorwords-q3",
+        level: 3,
         typeJa: "具体例の役割",
         variant: "word",
         prompt: "Why does the writer mention the Japanese word ao?",
@@ -527,6 +542,7 @@ const readingPassages = [
       },
       {
         id: "colorwords-q4",
+        level: 3,
         typeJa: "要旨",
         variant: "word",
         prompt: "Which statement best sums up the passage?",
@@ -595,6 +611,7 @@ const readingPassages = [
     questions: [
       {
         id: "repaircafe-q1",
+        level: 3,
         typeJa: "内容一致",
         variant: "word",
         prompt: "What is the rule of a repair café?",
@@ -618,6 +635,7 @@ const readingPassages = [
       },
       {
         id: "repaircafe-q2",
+        level: 3,
         typeJa: "内容一致",
         variant: "word",
         prompt: "Which of the following makes repair difficult?",
@@ -641,6 +659,7 @@ const readingPassages = [
       },
       {
         id: "repaircafe-q3",
+        level: 3,
         typeJa: "内容一致",
         variant: "word",
         prompt: "What do repair cafés send to European lawmakers?",
@@ -664,6 +683,7 @@ const readingPassages = [
       },
       {
         id: "repaircafe-q4",
+        level: 3,
         typeJa: "推論",
         variant: "reason",
         prompt: "What does the writer imply in the final two sentences?",

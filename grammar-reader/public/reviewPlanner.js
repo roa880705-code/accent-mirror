@@ -12,7 +12,7 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
-  var STATE_VERSION = 1;
+  var STATE_VERSION = 2;
   var MASTERED_BOX = 3;
   // box が上がるほど次に出るまでの間隔を延ばす（0 はその場で復習）。
   var INTERVAL_DAYS = [0, 1, 3];
@@ -45,6 +45,25 @@
     return kind + ":" + groupId + ":" + questionId;
   }
 
+  /** その問題をすでに解いたことがあるか（初見問題モードの絞り込みに使う）。 */
+  function hasSeen(state, kind, groupId, questionId) {
+    return Object.prototype.hasOwnProperty.call(state.items, itemKey(kind, groupId, questionId));
+  }
+
+  /**
+   * 初見（1回目）の解答だけを取り出す。
+   * 復習では答えを覚えているため、実力の推定には初見の結果しか使わない。
+   */
+  function firstAttempts(state) {
+    return Object.keys(state.items)
+      .map(function (key) {
+        return state.items[key];
+      })
+      .filter(function (item) {
+        return typeof item.firstCorrect === "boolean";
+      });
+  }
+
   function nextDueAt(box, now) {
     if (box >= MASTERED_BOX) return null;
     var days = INTERVAL_DAYS[box] || 0;
@@ -66,11 +85,15 @@
         kind: answer.kind,
         groupId: answer.groupId,
         questionId: answer.questionId,
+        level: [1, 2, 3].indexOf(answer.level) >= 0 ? answer.level : 1,
         box: 0,
         wrongCount: 0,
         rightCount: 0,
         dueAt: at,
-        lastAnsweredAt: at
+        lastAnsweredAt: at,
+        // 初見の結果はあとから書き換えない（実力推定の材料になる）
+        firstCorrect: answer.correct === true,
+        firstAnsweredAt: at
       };
       state.items[key] = item;
     }
@@ -169,6 +192,8 @@
     createState: createState,
     normalizeState: normalizeState,
     itemKey: itemKey,
+    hasSeen: hasSeen,
+    firstAttempts: firstAttempts,
     recordAnswer: recordAnswer,
     getDueItems: getDueItems,
     isMastered: isMastered,

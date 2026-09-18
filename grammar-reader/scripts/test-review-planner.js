@@ -96,11 +96,40 @@ test("集計は正答率とユニット別成績を返す", () => {
   });
 });
 
-test("壊れた保存データは初期状態として読み込まれる", () => {
+test("壊れた保存データや古い形式は初期状態として読み込まれる", () => {
   assert.deepStrictEqual(planner.normalizeState(null), planner.createState());
   assert.deepStrictEqual(planner.normalizeState({ version: 999, items: { x: {} } }), planner.createState());
-  const restored = planner.normalizeState({ version: 1, items: {}, totals: { answered: 4, correct: 3 }, groups: {} });
+  assert.deepStrictEqual(planner.normalizeState({ version: planner.STATE_VERSION - 1, items: { x: {} } }), planner.createState());
+  const restored = planner.normalizeState({
+    version: planner.STATE_VERSION,
+    items: {},
+    totals: { answered: 4, correct: 3 },
+    groups: {}
+  });
   assert.strictEqual(restored.totals.answered, 4);
+});
+
+test("初見の結果と難易度を記録し、あとから上書きしない", () => {
+  const state = planner.createState();
+  planner.recordAnswer(state, { kind: "grammar", groupId: "tense", questionId: "tense-1", correct: false, level: 3 }, T0);
+  const item = state.items[planner.itemKey("grammar", "tense", "tense-1")];
+  assert.strictEqual(item.firstCorrect, false);
+  assert.strictEqual(item.level, 3);
+  assert.strictEqual(item.firstAnsweredAt, T0);
+
+  planner.recordAnswer(state, { kind: "grammar", groupId: "tense", questionId: "tense-1", correct: true, level: 3 }, T0 + DAY);
+  assert.strictEqual(item.firstCorrect, false, "復習で正解しても初見の結果は変わらない");
+  assert.strictEqual(item.firstAnsweredAt, T0);
+  assert.strictEqual(planner.firstAttempts(state).length, 1);
+});
+
+test("解いたかどうかを問い合わせられる（初見問題の絞り込み用）", () => {
+  const state = planner.createState();
+  assert.strictEqual(planner.hasSeen(state, "grammar", "tense", "tense-1"), false);
+  answer(state, true, T0, "tense-1");
+  assert.strictEqual(planner.hasSeen(state, "grammar", "tense", "tense-1"), true);
+  assert.strictEqual(planner.hasSeen(state, "grammar", "tense", "tense-2"), false);
+  assert.strictEqual(planner.hasSeen(state, "reading", "tense", "tense-1"), false);
 });
 
 console.log(`\n${passed} tests passed`);
