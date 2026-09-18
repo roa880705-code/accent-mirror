@@ -57,6 +57,49 @@ function postJson(url, body) {
   });
 }
 
+/* ---------- 問題の取得 ----------
+   通常はサーバーの API から取る。1枚版（scripts/build-standalone.js が作る HTML）では
+   同じ内容が window.GRAMMAR_READER_DATA に埋め込まれているので、そちらから読む。 */
+
+var embedded = window.GRAMMAR_READER_DATA || null;
+
+function loadContent() {
+  return embedded ? Promise.resolve(embedded.content) : getJson("/api/content");
+}
+
+function loadGrammarUnit(unitId) {
+  if (!embedded) return getJson("/api/grammar/units/" + encodeURIComponent(unitId));
+  var unit = embedded.units[unitId];
+  return unit ? Promise.resolve({ unit: unit }) : Promise.reject(new Error("unit_not_found: " + unitId));
+}
+
+function loadReadingPassage(passageId) {
+  if (!embedded) return getJson("/api/reading/passages/" + encodeURIComponent(passageId));
+  var passage = embedded.passages[passageId];
+  return passage ? Promise.resolve({ passage: passage }) : Promise.reject(new Error("passage_not_found: " + passageId));
+}
+
+function loadReviewQuestions(items) {
+  if (!embedded) return postJson("/api/review/questions", { items: items });
+  var questions = items
+    .map(function (item) {
+      var group = item.kind === "grammar" ? embedded.units[item.groupId] : embedded.passages[item.groupId];
+      if (!group) return null;
+      var question = group.questions.filter(function (candidate) {
+        return candidate.id === item.questionId;
+      })[0];
+      if (!question) return null;
+      return {
+        kind: item.kind,
+        groupId: item.groupId,
+        groupTitle: group.title,
+        question: question
+      };
+    })
+    .filter(Boolean);
+  return Promise.resolve({ questions: questions });
+}
+
 function formatDate(timestamp) {
   return new Date(timestamp).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" });
 }
@@ -427,7 +470,7 @@ function renderFeedback(node, question, correct) {
 /* ---------- 演習セッション ---------- */
 
 function startGrammarUnit(unitId) {
-  getJson("/api/grammar/units/" + encodeURIComponent(unitId))
+  loadGrammarUnit(unitId)
     .then(function (data) {
       var unit = data.unit;
       var questions = unit.questions.filter(function (question) {
@@ -468,7 +511,7 @@ function startReviewSession() {
   var request = due.map(function (item) {
     return { kind: item.kind, groupId: item.groupId, questionId: item.questionId };
   });
-  postJson("/api/review/questions", { items: request })
+  loadReviewQuestions(request)
     .then(function (data) {
       if (!data.questions.length) {
         window.alert("復習用の問題を取り出せませんでした。");
@@ -631,7 +674,7 @@ function renderResult() {
 /* ---------- 読解 ---------- */
 
 function openReadingPassage(passageId) {
-  getJson("/api/reading/passages/" + encodeURIComponent(passageId))
+  loadReadingPassage(passageId)
     .then(function (data) {
       reading = {
         passage: data.passage,
@@ -879,7 +922,7 @@ function bindEvents() {
 
 function boot() {
   bindEvents();
-  getJson("/api/content")
+  loadContent()
     .then(function (data) {
       contentSummary = data;
       $("footerStatus").textContent =
