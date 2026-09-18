@@ -52,6 +52,24 @@ function getReadingPassage(id) {
   return Object.assign({}, passage, { wordCount: countWords(passage.paragraphs) });
 }
 
+/**
+ * 全ユニットの文法問題をフラットに並べて返す。
+ * 分野をまたいでランダムに出題するときに使う（返す形は復習と同じ）。
+ */
+function listAllGrammarQuestions() {
+  return grammarUnits
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .flatMap((unit) =>
+      unit.questions.map((question) => ({
+        kind: "grammar",
+        groupId: unit.id,
+        groupTitle: unit.title,
+        question
+      }))
+    );
+}
+
 /** 復習画面が問題本体を引き当てるための逆引き。 */
 function findQuestion(kind, groupId, questionId) {
   if (kind === "grammar") {
@@ -91,6 +109,7 @@ function contentSummary() {
 module.exports = {
   countWords,
   listGrammarUnits,
+  listAllGrammarQuestions,
   getGrammarUnit,
   listReadingPassages,
   getReadingPassage,

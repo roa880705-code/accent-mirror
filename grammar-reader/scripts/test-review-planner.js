@@ -132,4 +132,37 @@ test("解いたかどうかを問い合わせられる（初見問題の絞り�
   assert.strictEqual(planner.hasSeen(state, "reading", "tense", "tense-1"), false);
 });
 
+test("1セット全問正解で出題レベルが1つ上がる", () => {
+  const state = planner.createState();
+  assert.strictEqual(state.difficulty.target, 1);
+  let shift = planner.applySessionResult(state, 3, 3);
+  assert.deepStrictEqual(shift, { from: 1, to: 2, changed: true });
+  shift = planner.applySessionResult(state, 3, 3);
+  assert.strictEqual(shift.to, 3);
+  shift = planner.applySessionResult(state, 3, 3);
+  assert.deepStrictEqual(shift, { from: 3, to: 3, changed: false }, "上限は3");
+});
+
+test("2/3は据え置き、1/3以下は1つ下がる", () => {
+  const state = planner.createState();
+  state.difficulty.target = 2;
+  assert.strictEqual(planner.nextTargetLevel(2, 2, 3), 2);
+  assert.strictEqual(planner.nextTargetLevel(2, 1, 3), 1);
+  assert.strictEqual(planner.nextTargetLevel(2, 0, 3), 1);
+  assert.strictEqual(planner.nextTargetLevel(1, 0, 3), 1, "下限は1");
+  const shift = planner.applySessionResult(state, 2, 3);
+  assert.strictEqual(shift.changed, false);
+  assert.strictEqual(state.difficulty.target, 2);
+});
+
+test("出題レベルは保存され、壊れた値は範囲内に直る", () => {
+  const state = planner.createState();
+  state.difficulty.target = 3;
+  const restored = planner.normalizeState(JSON.parse(JSON.stringify(state)));
+  assert.strictEqual(restored.difficulty.target, 3);
+  assert.strictEqual(planner.normalizeState({ version: planner.STATE_VERSION, difficulty: { target: 99 } }).difficulty.target, 3);
+  assert.strictEqual(planner.normalizeState({ version: planner.STATE_VERSION, difficulty: { target: "x" } }).difficulty.target, 1);
+  assert.strictEqual(planner.normalizeState({ version: planner.STATE_VERSION }).difficulty.target, 1);
+});
+
 console.log(`\n${passed} tests passed`);

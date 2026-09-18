@@ -218,3 +218,11 @@ h2{font-size:17px;margin:0 0 10px}
 .score-shift-diff{font-size:13px;font-weight:900;border-radius:999px;padding:3px 9px;background:var(--surface);color:var(--text-soft)}
 .score-shift-diff.up{background:var(--ok-soft);color:var(--ok)}
 .score-shift-diff.down{background:var(--ng-soft);color:var(--ng)}
+
+/* ランダム出題の入口と、出題レベルの変化 */
+.start-card{border-color:var(--accent);box-shadow:0 10px 26px rgba(47,79,216,.16)}
+.start-card .menu-card-label{background:var(--accent);color:#fff;border-radius:999px;padding:3px 10px;align-self:flex-start}
+.start-card .menu-card-title{font-size:20px}
+.level-shift{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin:10px 0 4px;padding:12px;border-radius:12px;background:var(--accent-soft);border:1px solid var(--accent)}
+.level-shift-label{font-size:12px;font-weight:800;color:var(--accent)}
+.level-shift-body{font-size:15px;font-weight:800}

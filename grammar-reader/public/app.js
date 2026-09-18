@@ -7,6 +7,7 @@
    - 学習記録は localStorage（reviewPlanner.js が box 管理、scoreEstimator.js が換算）  */
 
 var STORAGE_KEY = "grammarReader.state.v1";
+var SESSION_SIZE = 3; // 初見1セットの問題数
 var planner = window.ReviewPlanner;
 var estimator = window.ScoreEstimator;
 
@@ -67,10 +68,26 @@ function loadContent() {
   return embedded ? Promise.resolve(embedded.content) : getJson("/api/content");
 }
 
-function loadGrammarUnit(unitId) {
-  if (!embedded) return getJson("/api/grammar/units/" + encodeURIComponent(unitId));
-  var unit = embedded.units[unitId];
-  return unit ? Promise.resolve({ unit: unit }) : Promise.reject(new Error("unit_not_found: " + unitId));
+var allGrammarQuestions = null; // 一度取ったら使い回す
+
+function loadAllGrammarQuestions() {
+  if (allGrammarQuestions) return Promise.resolve(allGrammarQuestions);
+  var source = embedded
+    ? Promise.resolve({
+        questions: Object.keys(embedded.units).reduce(function (list, unitId) {
+          var unit = embedded.units[unitId];
+          return list.concat(
+            unit.questions.map(function (question) {
+              return { kind: "grammar", groupId: unit.id, groupTitle: unit.title, question: question };
+            })
+          );
+        }, [])
+      })
+    : getJson("/api/grammar/questions");
+  return source.then(function (data) {
+    allGrammarQuestions = data.questions;
+    return allGrammarQuestions;
+  });
 }
 
 function loadReadingPassage(passageId) {
@@ -166,7 +183,8 @@ function refreshHomeStats() {
   var readingLeft = totalUnseen("reading", contentSummary.reading.passages);
   $("freshCardNote").textContent =
     grammarLeft + readingLeft > 0
-      ? "初見の問題があと " + (grammarLeft + readingLeft) + "問（文法 " + grammarLeft + "／読解 " + readingLeft + "）。解くほど推定点が動きます。"
+      ? "次は レベル" + progress.difficulty.target + " の文法を3問。初見は残り " + (grammarLeft + readingLeft) +
+        "問（文法 " + grammarLeft + "／読解 " + readingLeft + "）。"
       : "初見の問題はすべて解き終わりました。";
 
   var reviewCard = $("goReviewButton");
@@ -304,12 +322,13 @@ function renderFreshScreen() {
   renderScoreCard();
   var grammarLeft = totalUnseen("grammar", contentSummary.grammar.units);
   var readingLeft = totalUnseen("reading", contentSummary.reading.passages);
+  $("freshLevelLabel").textContent = "レベル " + progress.difficulty.target;
   $("freshGrammarNote").textContent = grammarLeft
-    ? "初見の問題が " + grammarLeft + "問 残っています"
-    : "初見の問題はもうありません（復習モードへ）";
+    ? "分野をまたいで、いまのレベルに近い問題から出します。初見の残り " + grammarLeft + "問。全問正解で次はレベルが上がります。"
+    : "初見の文法問題はもうありません（復習問題モードへ）";
   $("freshReadingNote").textContent = readingLeft
-    ? "初見の設問が " + readingLeft + "問 残っています"
-    : "初見の設問はもうありません（復習モードへ）";
+    ? "本文を読んでから設問4問。初見の設問が " + readingLeft + "問 残っています"
+    : "初見の設問はもうありません（復習問題モードへ）";
   show("freshScreen");
 }
 
@@ -340,46 +359,6 @@ function renderReviewScreen() {
 }
 
 /* ---------- 一覧（初見問題モード） ---------- */
-
-function renderGrammarList() {
-  var listNode = $("grammarUnitList");
-  clear(listNode);
-  contentSummary.grammar.units.forEach(function (unit) {
-    var left = unseenIds("grammar", unit.id, unit.questionIds).length;
-    var stats = planner.groupStats(progress, unit.id);
-    var button = el("button", "list-item");
-    button.type = "button";
-    if (left === 0) button.classList.add("is-done");
-
-    var head = el("div", "list-item-head");
-    head.appendChild(el("span", "list-item-order", "Unit " + unit.order));
-    head.appendChild(el("span", "list-item-title", unit.title));
-    button.appendChild(head);
-    button.appendChild(el("div", "list-item-sub", unit.subtitle));
-
-    var tags = el("div", "tag-row");
-    if (left > 0) {
-      tags.appendChild(el("span", "tag accent", "初見 " + left + "問"));
-    } else {
-      tags.appendChild(el("span", "tag", "初見なし"));
-    }
-    if (stats.answered > 0) {
-      var tone = stats.accuracy >= 80 ? "tag ok" : stats.accuracy >= 50 ? "tag" : "tag ng";
-      tags.appendChild(el("span", tone, "正答率 " + stats.accuracy + "%（" + stats.answered + "問解答）"));
-    }
-    button.appendChild(tags);
-
-    button.addEventListener("click", function () {
-      if (left === 0) {
-        window.alert("このユニットに初見の問題は残っていません。復習問題モードから解き直せます。");
-        return;
-      }
-      startGrammarUnit(unit.id);
-    });
-    listNode.appendChild(button);
-  });
-  show("grammarListScreen");
-}
 
 function renderReadingList() {
   var listNode = $("readingPassageList");
@@ -494,30 +473,48 @@ function renderFeedback(node, question, correct) {
 
 /* ---------- 演習セッション ---------- */
 
-function startGrammarUnit(unitId) {
-  loadGrammarUnit(unitId)
-    .then(function (data) {
-      var unit = data.unit;
-      var questions = unit.questions.filter(function (question) {
-        return !planner.hasSeen(progress, "grammar", unit.id, question.id);
+function shuffled(list) {
+  var copy = list.slice();
+  for (var i = copy.length - 1; i > 0; i -= 1) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var swap = copy[i];
+    copy[i] = copy[j];
+    copy[j] = swap;
+  }
+  return copy;
+}
+
+/** いまの出題レベルに近い問題を優先しつつ、分野はまたいでランダムに選ぶ。 */
+function pickQuestions(pool, target, count) {
+  return shuffled(pool)
+    .sort(function (a, b) {
+      return Math.abs(a.question.level - target) - Math.abs(b.question.level - target);
+    })
+    .slice(0, count);
+}
+
+function startRandomSession() {
+  loadAllGrammarQuestions()
+    .then(function (items) {
+      var pool = items.filter(function (item) {
+        return !planner.hasSeen(progress, "grammar", item.groupId, item.question.id);
       });
-      if (!questions.length) {
-        window.alert("このユニットに初見の問題は残っていません。");
+      if (!pool.length) {
+        window.alert("初見の文法問題はすべて解き終わりました。復習問題モードか読解へどうぞ。");
         return;
       }
+      var target = progress.difficulty.target;
+      var picked = pickQuestions(pool, target, SESSION_SIZE);
       session = {
         kind: "fresh",
-        eyebrow: "初見問題モード／文法",
-        title: unit.title,
-        overview: unit.overview,
-        backTo: "grammar",
+        eyebrow: "初見問題モード",
+        title: "レベル" + target + " の文法 " + picked.length + "問",
+        overview: "分野をまたいでランダムに出題します。全問正解すると、次のセットのレベルが上がります。",
+        backTo: "fresh",
         scoreBefore: currentEstimate(),
-        replay: function () {
-          startGrammarUnit(unitId);
-        },
-        items: questions.map(function (question) {
-          return { kind: "grammar", groupId: unit.id, groupTitle: unit.title, question: question };
-        }),
+        levelBefore: target,
+        replay: startRandomSession,
+        items: picked,
         index: 0,
         correctCount: 0,
         missed: []
@@ -579,10 +576,9 @@ function renderQuizQuestion() {
   $("quizProgress").style.width = Math.round((session.index / session.items.length) * 100) + "%";
   $("quizUnitOverview").textContent = session.overview || "";
 
-  var label = question.point || question.typeJa || "";
-  if (session.kind === "review") {
-    label = (item.kind === "grammar" ? "文法" : "読解") + "／" + item.groupTitle + (label ? "／" + label : "");
-  }
+  // 分野をまたいで出題するので、どのユニットの問題かを必ず添える
+  var label = (item.kind === "grammar" ? "文法" : "読解") + "／" + item.groupTitle;
+  if (question.point || question.typeJa) label += "／" + (question.point || question.typeJa);
   if (question.level) label += "　レベル" + question.level;
   if (question.variant === "reason") label += "（根拠だけが違う2択）";
   $("quizPoint").textContent = label;
@@ -657,6 +653,24 @@ function renderScoreShift() {
   node.appendChild(el("div", "minor", "推定の幅 " + after.low + "〜" + after.high + "点／初見 " + after.answered + "問"));
 }
 
+function renderLevelShift(shift) {
+  var node = $("resultLevelShift");
+  clear(node);
+  if (!shift) {
+    node.classList.add("hidden");
+    return;
+  }
+  node.classList.remove("hidden");
+  node.appendChild(el("span", "level-shift-label", "次のセットの出題レベル"));
+  if (shift.changed) {
+    node.appendChild(
+      el("span", "level-shift-body", "レベル" + shift.from + " → レベル" + shift.to + (shift.to > shift.from ? "（全問正解）" : "（少し戻します）"))
+    );
+  } else {
+    node.appendChild(el("span", "level-shift-body", "レベル" + shift.to + " のまま（全問正解で上がります）"));
+  }
+}
+
 function renderResult() {
   var total = session.items.length;
   var correct = session.correctCount;
@@ -665,12 +679,19 @@ function renderResult() {
   $("resultAccuracy").textContent = "正答率 " + accuracy + "%";
 
   var comment;
-  if (accuracy === 100) comment = "全問正解です。次のユニットへ進みましょう。";
-  else if (accuracy >= 70) comment = "間違えた問題は復習キューに入りました。日を置いてもう一度出てきます。";
-  else comment = "誤った根拠のどこが違うかを読み直してから、復習問題モードで解き直すのが近道です。";
+  if (correct === total) comment = "全問正解です。この調子で次のセットへ。";
+  else if (total - correct === 1) comment = "取りこぼしは1問。間違えた問題は復習キューに入りました。";
+  else comment = "誤った根拠のどこが違うかを読み直してから、次のセットへ進みましょう。";
   $("resultComment").textContent = comment;
 
   renderScoreShift();
+
+  var levelShift = null;
+  if (session.kind === "fresh") {
+    levelShift = planner.applySessionResult(progress, correct, total);
+    saveProgress();
+  }
+  renderLevelShift(levelShift);
 
   var missedNode = $("resultMissedList");
   clear(missedNode);
@@ -689,10 +710,9 @@ function renderResult() {
     });
   }
 
-  // 初見モードでは同じ問題を解き直せない（解いた時点で初見ではなくなる）
-  $("resultRetryButton").classList.toggle("hidden", session.kind === "fresh");
-  $("resultBackButton").textContent =
-    session.backTo === "grammar" ? "ユニット一覧に戻る" : session.backTo === "review" ? "復習モードに戻る" : "ホームに戻る";
+  // 初見モードでは同じ問題は二度と出ないので、「次の3問」を出す
+  $("resultRetryButton").textContent = session.kind === "fresh" ? "次の3問へ" : "もう一度解く";
+  $("resultBackButton").textContent = session.backTo === "review" ? "復習モードに戻る" : "初見モードに戻る";
   show("resultScreen");
 }
 
@@ -905,7 +925,7 @@ function bindEvents() {
   $("goFreshButton").addEventListener("click", renderFreshScreen);
   $("goReviewButton").addEventListener("click", renderReviewScreen);
   $("startReviewButton").addEventListener("click", startReviewSession);
-  $("freshGrammarButton").addEventListener("click", renderGrammarList);
+  $("startRandomButton").addEventListener("click", startRandomSession);
   $("freshReadingButton").addEventListener("click", renderReadingList);
 
   $("resetProgressButton").addEventListener("click", function () {
@@ -920,9 +940,8 @@ function bindEvents() {
     session.replay();
   });
   $("resultBackButton").addEventListener("click", function () {
-    if (session.backTo === "grammar") renderGrammarList();
-    else if (session.backTo === "review") renderReviewScreen();
-    else goHome();
+    if (session.backTo === "review") renderReviewScreen();
+    else renderFreshScreen();
   });
 
   $("toggleGlossaryButton").addEventListener("click", function () {

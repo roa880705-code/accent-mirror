@@ -30,6 +30,12 @@ const server = app.listen(0, async () => {
     assert.strictEqual(content.body.reading.passages[0].questionIds.length, 4);
     checks.push("GET /api/content");
 
+    const all = await get("/api/grammar/questions");
+    assert.strictEqual(all.body.questions.length, 60);
+    assert.ok(all.body.questions.every((item) => item.groupTitle && item.question.id && item.question.level));
+    assert.ok(new Set(all.body.questions.map((item) => item.groupId)).size === 10, "10ユニットすべてから出せる");
+    checks.push("GET /api/grammar/questions (ランダム出題用)");
+
     const unit = await get("/api/grammar/units/relative");
     assert.strictEqual(unit.body.unit.questions.length, 6);
     const sample = unit.body.unit.questions[0];

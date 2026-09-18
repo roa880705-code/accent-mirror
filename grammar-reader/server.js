@@ -35,6 +35,11 @@ app.get("/api/grammar/units", (_req, res) => {
   res.json({ units: content.listGrammarUnits() });
 });
 
+// 分野をまたいだランダム出題用。全問まとめて返し、選ぶのはクライアント側。
+app.get("/api/grammar/questions", (_req, res) => {
+  res.json({ questions: content.listAllGrammarQuestions() });
+});
+
 app.get("/api/grammar/units/:unitId", (req, res) => {
   const unit = content.getGrammarUnit(req.params.unitId);
   if (!unit) {

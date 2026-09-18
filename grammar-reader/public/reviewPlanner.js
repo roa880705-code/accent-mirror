@@ -14,6 +14,11 @@
 
   var STATE_VERSION = 2;
   var MASTERED_BOX = 3;
+  var MIN_LEVEL = 1;
+  var MAX_LEVEL = 3;
+  // 1セットの正答率がこれ以上ならレベルを上げる／下げない
+  var LEVEL_UP_RATE = 1;
+  var LEVEL_KEEP_RATE = 0.6;
   // box が上がるほど次に出るまでの間隔を延ばす（0 はその場で復習）。
   var INTERVAL_DAYS = [0, 1, 3];
   var DAY_MS = 24 * 60 * 60 * 1000;
@@ -23,7 +28,9 @@
       version: STATE_VERSION,
       items: {},
       totals: { answered: 0, correct: 0 },
-      groups: {}
+      groups: {},
+      // 次に出す問題の難易度。1セットの成績で上下する。
+      difficulty: { target: MIN_LEVEL }
     };
   }
 
@@ -38,7 +45,37 @@
       state.totals.correct = Number(raw.totals.correct) || 0;
     }
     if (raw.groups && typeof raw.groups === "object") state.groups = raw.groups;
+    if (raw.difficulty && typeof raw.difficulty === "object") {
+      state.difficulty.target = clampLevel(raw.difficulty.target);
+    }
     return state;
+  }
+
+  function clampLevel(level) {
+    var value = Math.round(Number(level));
+    if (!isFinite(value)) return MIN_LEVEL;
+    return Math.min(MAX_LEVEL, Math.max(MIN_LEVEL, value));
+  }
+
+  /**
+   * 1セット解き終えたあとの出題レベル。
+   * 全問正解なら1つ上げ、6割以上なら据え置き、それ未満なら1つ下げる。
+   */
+  function nextTargetLevel(current, correct, total) {
+    var level = clampLevel(current);
+    if (!total) return level;
+    var rate = correct / total;
+    if (rate >= LEVEL_UP_RATE) return clampLevel(level + 1);
+    if (rate >= LEVEL_KEEP_RATE) return level;
+    return clampLevel(level - 1);
+  }
+
+  /** セットの結果を反映し、変化の前後を返す。 */
+  function applySessionResult(state, correct, total) {
+    var from = clampLevel(state.difficulty.target);
+    var to = nextTargetLevel(from, correct, total);
+    state.difficulty.target = to;
+    return { from: from, to: to, changed: from !== to };
   }
 
   function itemKey(kind, groupId, questionId) {
@@ -187,6 +224,11 @@
   return {
     STATE_VERSION: STATE_VERSION,
     MASTERED_BOX: MASTERED_BOX,
+    MIN_LEVEL: MIN_LEVEL,
+    MAX_LEVEL: MAX_LEVEL,
+    clampLevel: clampLevel,
+    nextTargetLevel: nextTargetLevel,
+    applySessionResult: applySessionResult,
     INTERVAL_DAYS: INTERVAL_DAYS,
     DAY_MS: DAY_MS,
     createState: createState,
