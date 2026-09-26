@@ -2015,6 +2015,622 @@ const grammarUnits = [
           "日本語の「〜から」に引かれて from としてしまう例です。奪う対象（人）が目的語、奪われる物が of のあと、と形で覚えます。"
       }
     ]
+  },
+  {
+    id: "inanimate",
+    order: 14,
+    title: "無生物主語",
+    subtitle: "人以外を主語に立てる英語らしい言い方",
+    overview:
+      "英語は「何が人にそうさせたか」を主語に立てるのを好みます。日本語では「〜のせいで」「〜すれば」と訳し下ろすことが多く、直訳すると不自然になる分野です。",
+    questions: [
+      {
+        id: "inanimate-1",
+        level: 3,
+        point: "make +目的語+原形（無生物主語）",
+        variant: "word",
+        prompt: "What ____ you to change your mind?",
+        translation: "なぜ考えを変えたのですか。",
+        options: [
+          {
+            answer: "made",
+            reason: "make +目的語+原形で「〜させる」を表し、原因を what として主語に立てられるから",
+            correct: true
+          },
+          {
+            answer: "let",
+            reason: "「〜させてやる」という意味で、同じく目的語のあとに原形を続けるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "What made you 〜? は「何があなたを〜させたのか」＝「なぜ〜したのか」。Why did you 〜? より柔らかく理由を尋ねる言い方です。",
+        misconception:
+          "let は相手の希望を許す「〜させてやる」です。考えを変えた原因を尋ねる文では、許可ではなく原因を表す make を使います。"
+      },
+      {
+        id: "inanimate-2",
+        level: 3,
+        point: "take +人+ to 場所",
+        variant: "word",
+        prompt: "A ten-minute walk will ____ you to the station.",
+        translation: "10分歩けば駅に着きます。",
+        options: [
+          {
+            answer: "take",
+            reason: "take +人+ to 場所 で「人をその場所へ運ぶ」を表し、無生物を主語にできるから",
+            correct: true
+          },
+          {
+            answer: "bring",
+            reason: "「連れていく」という意味なので、行き先を to で示せるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "This road will take you to the park. のように、道・乗り物・時間を主語にして「〜すれば着く」を表せます。",
+        misconception:
+          "bring は話し手のいる側へ「持ってくる・連れてくる」。ここでは話し手から離れた駅へ向かうので take です。方向が逆になります。"
+      },
+      {
+        id: "inanimate-3",
+        level: 3,
+        point: "keep A from -ing",
+        variant: "word",
+        prompt: "His illness ____ him from attending the meeting.",
+        translation: "病気のせいで彼は会議に出られなかった。",
+        options: [
+          {
+            answer: "kept",
+            reason: "keep A from -ing の形で「A が〜するのを妨げる」を表すから",
+            correct: true
+          },
+          {
+            answer: "made",
+            reason: "「〜させない」という意味を表すので、make のあとに from -ing を続けるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "keep / prevent / stop / discourage は A from -ing の形をとります。無生物主語では「〜のせいで…できない」と訳し下ろします。",
+        misconception:
+          "make のあとに from -ing は続きません。make +目的語+原形（make him attend）の形しか作れないので、妨げる意味は表せません。"
+      },
+      {
+        id: "inanimate-4",
+        level: 3,
+        point: "enable +目的語+ to do",
+        variant: "reason",
+        prompt: "The new system ____ us to work from home.",
+        translation: "新しい制度のおかげで、在宅勤務ができるようになった。",
+        options: [
+          {
+            answer: "enables",
+            reason: "enable +目的語+ to do の形で「〜できるようにする」を表すから",
+            correct: true
+          },
+          {
+            answer: "enables",
+            reason: "主語が無生物のときは動詞に -s を付ける決まりだから",
+            correct: false
+          }
+        ],
+        explanation:
+          "enable / allow / permit は「目的語+ to do」をとります。無生物主語＋ enable は「〜のおかげで…できる」と訳すと自然です。",
+        misconception:
+          "三人称単数の -s は主語が単数だから付くもので、無生物かどうかとは関係ありません（They enable us 〜 なら -s は付きません）。ここで enable を選ぶ理由は、あとに us to work という形が続くからです。"
+      },
+      {
+        id: "inanimate-5",
+        level: 2,
+        point: "cause +目的語+ to do",
+        variant: "word",
+        prompt: "The heavy traffic ____ us to arrive an hour late.",
+        translation: "渋滞のせいで、私たちは1時間遅れて到着した。",
+        options: [
+          {
+            answer: "caused",
+            reason: "cause +目的語+ to do の形で「〜する原因となる」を表すから",
+            correct: true
+          },
+          {
+            answer: "let",
+            reason: "「〜させる」という意味なので、目的語のあとに to 不定詞を続けるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "cause は望ましくない結果を引き起こすときによく使われます。The rain caused the game to be canceled. のように使います。",
+        misconception:
+          "let は to を付けず原形を続けます（let him go）。さらに「渋滞が遅刻を許す」では意味が通りません。"
+      },
+      {
+        id: "inanimate-6",
+        level: 3,
+        point: "deprive A of B",
+        variant: "word",
+        prompt: "The accident ____ him of his sight.",
+        translation: "その事故で彼は視力を失った。",
+        options: [
+          {
+            answer: "deprived",
+            reason: "deprive A of B で「A から B を奪う」を表し、奪う側を主語に立てられるから",
+            correct: true
+          },
+          {
+            answer: "lost",
+            reason: "「失う」という意味なので、失ったものを目的語にとるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "rob / deprive / relieve / cure はいずれも「A of B」の形。無生物主語では「〜によって A は B を失う」と訳し下ろします。",
+        misconception:
+          "lose なら He lost his sight. と、失う本人が主語になります。事故を主語にするなら、奪う側の動詞を使う必要があります。"
+      }
+    ]
+  },
+  {
+    id: "nominal",
+    order: 15,
+    title: "名詞構文",
+    subtitle: "動詞や形容詞の内容を名詞で表す",
+    overview:
+      "英語は動詞の内容を名詞にまとめて表すことが多く、前置詞と組み合わせて形容詞や副詞のはたらきもさせます。名詞の形のまま読まず、動詞に戻して理解するのが読解のコツです。",
+    questions: [
+      {
+        id: "nominal-1",
+        level: 3,
+        point: "on +名詞（〜するとすぐに）",
+        variant: "word",
+        prompt: "____ his arrival in Tokyo, he called his family.",
+        translation: "東京に着くとすぐ、彼は家族に電話した。",
+        options: [
+          {
+            answer: "On",
+            reason: "on +動作を表す名詞で「〜するとすぐに」を表すから",
+            correct: true
+          },
+          {
+            answer: "In",
+            reason: "「〜の中で」と場所や状況を表すから",
+            correct: false
+          }
+        ],
+        explanation:
+          "On his arrival = As soon as he arrived。on +名詞（on arriving / on hearing the news）で時を表します。",
+        misconception:
+          "in は状態や期間を表す前置詞で、「〜するとすぐに」という時の一致を表せません。名詞 arrival を動詞 arrive に戻して読むのがコツです。"
+      },
+      {
+        id: "nominal-2",
+        level: 3,
+        point: "of +抽象名詞＝形容詞",
+        variant: "word",
+        prompt: "This matter is ____ great importance to all of us.",
+        translation: "この件は私たち全員にとって非常に重要だ。",
+        options: [
+          {
+            answer: "of",
+            reason: "of +抽象名詞で形容詞のはたらきをし、of importance = important となるから",
+            correct: true
+          },
+          {
+            answer: "in",
+            reason: "「〜において」と範囲を示して、重要さの及ぶ範囲を表すから",
+            correct: false
+          }
+        ],
+        explanation:
+          "of value = valuable、of use = useful、of no help = unhelpful。形容詞より硬い響きになります。",
+        misconception:
+          "in great importance という形はありません。be動詞のあとに名詞を置いて形容詞の意味にするには of が必要です。"
+      },
+      {
+        id: "nominal-3",
+        level: 3,
+        point: "with +抽象名詞＝副詞",
+        variant: "word",
+        prompt: "He solved the difficult problem with ____.",
+        translation: "彼はその難問をたやすく解いた。",
+        options: [
+          {
+            answer: "ease",
+            reason: "with +抽象名詞で副詞のはたらきをし、with ease = easily となるから",
+            correct: true
+          },
+          {
+            answer: "easy",
+            reason: "「簡単に」という意味を表す語だから",
+            correct: false
+          }
+        ],
+        explanation:
+          "with care = carefully、with difficulty = hardly、without difficulty = easily。前置詞の後ろは名詞です。",
+        misconception:
+          "easy は形容詞なので前置詞のあとに置けません。副詞 easily に置き換えられるかどうかで、この形かを判断できます。"
+      },
+      {
+        id: "nominal-4",
+        level: 3,
+        point: "所有格+名詞+ of 〜",
+        variant: "reason",
+        prompt: "Her ____ of the situation was surprisingly accurate.",
+        translation: "彼女の状況の理解は驚くほど正確だった。",
+        options: [
+          {
+            answer: "understanding",
+            reason: "所有格 Her と of 〜 にはさまれた名詞の位置なので、名詞として使われているから",
+            correct: true
+          },
+          {
+            answer: "understanding",
+            reason: "理解が続いている最中であることを表す進行形だから",
+            correct: false
+          }
+        ],
+        explanation:
+          "She understood the situation accurately. を名詞構文にした形です。主語にあたる語が所有格、目的語が of のあとに来ます。",
+        misconception:
+          "be動詞がないので進行形にはなりません。-ing は動名詞・現在分詞・名詞のどれにもなり得るので、前後の枠から品詞を決めます。"
+      },
+      {
+        id: "nominal-5",
+        level: 2,
+        point: "There is no -ing",
+        variant: "word",
+        prompt: "There is no ____ what will happen next.",
+        translation: "次に何が起こるかは分からない。",
+        options: [
+          {
+            answer: "telling",
+            reason: "There is no -ing で「〜できない」を表す決まった形だから",
+            correct: true
+          },
+          {
+            answer: "tell",
+            reason: "no のあとに動詞を続けて「まったく〜しない」と否定するから",
+            correct: false
+          }
+        ],
+        explanation:
+          "There is no telling / knowing / denying は「〜できない」。It is impossible to tell 〜 と同じ内容です。",
+        misconception:
+          "There is no のあとに来るのは名詞か動名詞です。原形の動詞は置けません。ここでの tell は「見分ける・分かる」の意味です。"
+      },
+      {
+        id: "nominal-6",
+        level: 3,
+        point: "have no intention of -ing",
+        variant: "word",
+        prompt: "I have no ____ of changing my mind.",
+        translation: "考えを変えるつもりはまったくない。",
+        options: [
+          {
+            answer: "intention",
+            reason: "have no のあとは名詞の位置で、intention of -ing の形をとるから",
+            correct: true
+          },
+          {
+            answer: "intend",
+            reason: "「〜するつもりである」という意味を表す語だから",
+            correct: false
+          }
+        ],
+        explanation:
+          "I have no intention of -ing = I don't intend to do。名詞構文のほうが意志の強さが出ます。",
+        misconception:
+          "intend は動詞なので、have no のあとには置けません。動詞で言うなら I don't intend to change my mind. と形ごと変えます。"
+      }
+    ]
+  },
+  {
+    id: "compidiom",
+    order: 16,
+    title: "比較の慣用表現",
+    subtitle: "訳を知らないと読めない比較の形",
+    overview:
+      "比較の慣用表現は、字面の意味と実際の意味がずれます。no more than と not more than のように、no と not の違いだけで意味が変わるものが多い分野です。",
+    questions: [
+      {
+        id: "compidiom-1",
+        level: 3,
+        point: "no more than（〜にすぎない）",
+        variant: "word",
+        prompt: "He is ____ more than a child in his understanding of money.",
+        translation: "お金の理解という点では、彼は子どもにすぎない。",
+        options: [
+          {
+            answer: "no",
+            reason: "no more than 〜 で「たった〜にすぎない」と少なさを強調するから",
+            correct: true
+          },
+          {
+            answer: "not",
+            reason: "「〜より多くはない」と数量の上限を示すから",
+            correct: false
+          }
+        ],
+        explanation:
+          "no more than = only。差がゼロであることを no で示し、「〜と変わらない、〜にすぎない」となります。",
+        misconception:
+          "not more than は at most（多くても〜）で、事実として上限を述べるだけです。no more than は話し手が「それだけしかない」と評価している言い方です。"
+      },
+      {
+        id: "compidiom-2",
+        level: 3,
+        point: "no less than（〜も）",
+        variant: "word",
+        prompt: "She has ____ less than five thousand books in her house.",
+        translation: "彼女の家には5000冊もの本がある。",
+        options: [
+          {
+            answer: "no",
+            reason: "no less than 〜 で「〜もの多さだ」と多さを強調するから",
+            correct: true
+          },
+          {
+            answer: "not",
+            reason: "「〜より少なくない」と下限を示すから",
+            correct: false
+          }
+        ],
+        explanation:
+          "no less than = as many as。no more than（〜にすぎない）と対になる表現です。",
+        misconception:
+          "not less than は at least（少なくとも〜）で、事実の下限を述べるだけです。no less than は「5000冊も」と驚きを込めた言い方になります。"
+      },
+      {
+        id: "compidiom-3",
+        level: 3,
+        point: "A is to B what C is to D",
+        variant: "word",
+        prompt: "Reading is to the mind ____ food is to the body.",
+        translation: "読書と心の関係は、食べ物と体の関係と同じだ。",
+        options: [
+          {
+            answer: "what",
+            reason: "A is to B what C is to D の形で、2つの関係が同じであることを表すから",
+            correct: true
+          },
+          {
+            answer: "as",
+            reason: "「〜のように」と2つを比べる接続詞だから",
+            correct: false
+          }
+        ],
+        explanation:
+          "what は先行詞を含む関係代名詞で、ここでは「C と D の関係」というまとまりを作っています。",
+        misconception:
+          "as も比較を表しますが、この構文では what と決まっています。訳は「A の B に対する関係は、C の D に対する関係に等しい」です。"
+      },
+      {
+        id: "compidiom-4",
+        level: 3,
+        point: "know better than to do",
+        variant: "reason",
+        prompt: "You should know ____ than to lend him money again.",
+        translation: "また彼にお金を貸すなんて、分別がなさすぎる。",
+        options: [
+          {
+            answer: "better",
+            reason: "know better than to do で「〜しないだけの分別がある」を表す決まった形だから",
+            correct: true
+          },
+          {
+            answer: "better",
+            reason: "彼にお金を貸すよりも良い方法があると述べているから",
+            correct: false
+          }
+        ],
+        explanation:
+          "know better（もっと分別がある）+ than to do（〜するよりは）。「〜するほど愚かではない」という意味になります。",
+        misconception:
+          "良い方法を比べている文ではありません。better は「分別がある」という意味で、than to do とセットで1つの慣用表現を作っています。"
+      },
+      {
+        id: "compidiom-5",
+        level: 3,
+        point: "the last +名詞+ to do",
+        variant: "word",
+        prompt: "He is the ____ person to tell a lie.",
+        translation: "彼は決して嘘をつくような人ではない。",
+        options: [
+          {
+            answer: "last",
+            reason: "the last +名詞+ to do で「最も〜しそうにない」を表すから",
+            correct: true
+          },
+          {
+            answer: "least",
+            reason: "「最も少ない」という意味で、可能性の低さを表すから",
+            correct: false
+          }
+        ],
+        explanation:
+          "「順番が最後に来る人」＝「最もありそうにない人」。the last thing I want to do（いちばんしたくないこと）も同じ発想です。",
+        misconception:
+          "least を使うなら the least likely person to tell a lie のように likely が必要です。名詞を直接修飾して「最もしそうにない」を表すのは last です。"
+      },
+      {
+        id: "compidiom-6",
+        level: 2,
+        point: "cannot ... too 〜",
+        variant: "word",
+        prompt: "You cannot be ____ careful when you drive at night.",
+        translation: "夜の運転では、いくら注意してもしすぎることはない。",
+        options: [
+          {
+            answer: "too",
+            reason: "cannot ... too 〜 で「いくら〜してもしすぎることはない」を表すから",
+            correct: true
+          },
+          {
+            answer: "so",
+            reason: "「そんなに〜できない」と程度を否定するから",
+            correct: false
+          }
+        ],
+        explanation:
+          "「注意しすぎるということがありえない」＝「できるだけ注意せよ」。can't thank you enough も同じ発想の強調です。",
+        misconception:
+          "too を「〜すぎる」とだけ覚えていると、意味が逆に取れてしまいます。cannot と組み合わさると勧める意味になります。"
+      }
+    ]
+  },
+  {
+    id: "setpattern",
+    order: 17,
+    title: "重要構文",
+    subtitle: "形ごと覚える慣用構文",
+    overview:
+      "文法の規則からは導けず、形ごと覚えるしかない構文があります。形式目的語の it や、動名詞をとる決まった形が代表です。",
+    questions: [
+      {
+        id: "setpattern-1",
+        level: 3,
+        point: "It goes without saying that",
+        variant: "word",
+        prompt: "It goes ____ saying that health is more important than money.",
+        translation: "健康がお金より大切なのは言うまでもない。",
+        options: [
+          {
+            answer: "without",
+            reason: "It goes without saying that 〜 で「〜は言うまでもない」を表す決まった形だから",
+            correct: true
+          },
+          {
+            answer: "before",
+            reason: "「〜する前に」と順序を表すから",
+            correct: false
+          }
+        ],
+        explanation:
+          "「言わずとも通用する」が直訳です。Needless to say, 〜 と書き換えられます。",
+        misconception:
+          "前置詞を入れ替えると意味が作れません。慣用構文は語順も語も固定されているので、形ごと覚えます。"
+      },
+      {
+        id: "setpattern-2",
+        level: 3,
+        point: "make it a rule to do",
+        variant: "word",
+        prompt: "I make ____ a rule to get up at six every morning.",
+        translation: "私は毎朝6時に起きることにしている。",
+        options: [
+          {
+            answer: "it",
+            reason: "make +目的語+補語 の目的語の位置に形式目的語 it を置き、中身を to 不定詞で後ろに示すから",
+            correct: true
+          },
+          {
+            answer: "that",
+            reason: "後ろの内容を導く接続詞が必要だから",
+            correct: false
+          }
+        ],
+        explanation:
+          "make it a rule to do で「〜することにしている」。think it important to do、find it difficult to do も同じ形式目的語の形です。",
+        misconception:
+          "that では目的語の位置に節を置くことになり、a rule という補語が続きません。長い目的語をいったん it で受けるのがこの構文です。"
+      },
+      {
+        id: "setpattern-3",
+        level: 3,
+        point: "It occurs to +人+ that",
+        variant: "word",
+        prompt: "It ____ to me that I had left my phone at home.",
+        translation: "スマホを家に置いてきたことに、ふと気づいた。",
+        options: [
+          {
+            answer: "occurred",
+            reason: "It occurs to +人+ that 〜 の形で「〜だと人の心に浮かぶ」を表すから",
+            correct: true
+          },
+          {
+            answer: "reminded",
+            reason: "「思い出させる」という意味なので、人に気づかせることを表せるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "形式主語 It が that 節を指します。人を主語にせず「考えのほうが浮かんでくる」と表すのが英語らしい言い方です。",
+        misconception:
+          "remind は It reminded me of 〜 のように人を直接目的語にとります。to me という形が続いている時点で、occur の構文だと判断できます。"
+      },
+      {
+        id: "setpattern-4",
+        level: 2,
+        point: "have difficulty (in) -ing",
+        variant: "reason",
+        prompt: "I had difficulty ____ the door because the lock was frozen.",
+        translation: "鍵が凍っていて、ドアを開けるのに苦労した。",
+        options: [
+          {
+            answer: "opening",
+            reason: "have difficulty (in) -ing で「〜するのに苦労する」を表す決まった形だから",
+            correct: true
+          },
+          {
+            answer: "opening",
+            reason: "difficulty が名詞なので、名詞のあとには必ず動名詞が続くから",
+            correct: false
+          }
+        ],
+        explanation:
+          "in が省略された形です。have trouble (in) -ing、spend time (in) -ing も同じ仲間です。",
+        misconception:
+          "名詞のあとに必ず動名詞が続く規則はありません（a chance to win のように to 不定詞が続く名詞もあります）。この形は have difficulty (in) -ing という慣用として覚えます。"
+      },
+      {
+        id: "setpattern-5",
+        level: 3,
+        point: "be worth -ing",
+        variant: "word",
+        prompt: "This book is worth ____ twice.",
+        translation: "この本は2回読む価値がある。",
+        options: [
+          {
+            answer: "reading",
+            reason: "be worth -ing の形で「〜する価値がある」を表し、目的語を置かないから",
+            correct: true
+          },
+          {
+            answer: "to read",
+            reason: "「読むための価値」と目的を表すので、to 不定詞を続けるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "worth のあとは動名詞です。意味の上では「読まれる価値がある」と受け身ですが、形は reading のまま使います。",
+        misconception:
+          "worth に to 不定詞は続きません。It is worth reading this book. / This book is worth reading. の2通りで覚えます。"
+      },
+      {
+        id: "setpattern-6",
+        level: 2,
+        point: "spend +時間+ -ing",
+        variant: "word",
+        prompt: "I spent two hours ____ my homework last night.",
+        translation: "昨夜は2時間かけて宿題をした。",
+        options: [
+          {
+            answer: "doing",
+            reason: "spend +時間+ -ing で「〜して時間を使う」を表す決まった形だから",
+            correct: true
+          },
+          {
+            answer: "to do",
+            reason: "時間を使う目的を表すので、to 不定詞を続けるから",
+            correct: false
+          }
+        ],
+        explanation:
+          "spend / waste +時間・お金+ -ing。be busy -ing も同じく動名詞をとります。",
+        misconception:
+          "目的を表したくなりますが、この構文に to 不定詞は続きません。時間の使い道は -ing で表します。"
+      }
+    ]
   }
 ];
 
