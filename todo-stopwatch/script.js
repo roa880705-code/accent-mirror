@@ -1979,6 +1979,7 @@
   // ものが上に来るよう配列の先頭に足す。ユーザー側で編集する仕組みでは
   // なく、開発側が更新を伝えるための一方向の掲示板。
   const ANNOUNCEMENTS = [
+    { date: "2026-09-26", text: "印刷レイアウトの「予定」欄を、縦軸+時間帯を面積で示す箱の見た目から、他の欄(最優先/今日中など)と同じ時刻順のテキスト一覧に変更しました(例: 「09:00〜09:30 朝会」)。子タスクがある場合はその下に箇条書きで続けて表示します。" },
     { date: "2026-09-17", text: "印刷(マンスリー/ウィークリー)で、印刷画面内で用紙の向きを手動で横向きに切り替えると、内容が真っ白になってしまう不具合を修正しました。原因は、印刷表示の切り替えをJSが付けるクラスに頼っていたため、向きの切り替えでプレビューが再計算された際にそのクラスが失われることがあった点でした。今後はどちらの向きを選んでも正しく表示されます(用紙の向きの初期選択が「横」に自動でならない場合があるのは、端末側の仕様のためこちらでは制御できません。お手数ですが手動で切り替えてください)。" },
     { date: "2026-09-16", text: "マンスリー/ウィークリー/デイリーに「印刷」ボタンを追加しました。画面の表示をそのまま印刷するのではなく、読みやすいリスト形式(マンスリーはカレンダー形式)に組み直したA4サイズの印刷用レイアウトを作ります(デイリーは縦向き、マンスリー/ウィークリーは横向き)。予定(時間にはまったスケジュール)だけは、画面のウィークリー/デイリーと同じ「縦軸+時間帯を面積で示す箱」の見た目をそのまま残しています。紙のプランナーとして使う、バックアップ代わりに保管する、どちらの用途にもお使いください。" },
     { date: "2026-09-16", text: "設定ページに「バックアップ履歴」を追加しました。サインインしていると、Supabase側が日本時間0:05頃に自動で全データの控えを取り(直近90日分保持)、過去のある日の内容をここで確認できます。アプリ自体からは一切書き込まない読み取り専用の控えなので、万一の不具合でデータが消えた/変わったように見えた時の確認用にお使いください。" },
@@ -2521,87 +2522,28 @@
     return section;
   }
 
-  // 予定(時間にはまったスケジュール)は、テキストの一覧に崩さず、画面の
-  // ウィークリー/デイリーと同じ「縦軸+時間帯を面積で示す箱」の見た目を
-  // 印刷でも残す。表示時間帯の設定(calendarHourRange)をそのまま使い、
-  // 重なる予定はlayoutSegments(実際のカレンダー描画で使っているのと同じ
-  // 重なり解消ロジック)で横に並べる。
-  function buildPrintTimeline(dateStr, { compact } = {}) {
-    const rangeStart = calendarHourRange.startMin;
-    const rangeEnd = calendarHourRange.endMin;
-    const totalMin = Math.max(1, rangeEnd - rangeStart);
-    const heightPx = compact ? 420 : 640;
+  // 予定(時間にはまったスケジュール)も、他の項目と同じく時刻順のテキスト
+  // 一覧に組み直す(縦軸+箱による時間帯の可視化は廃止)。
+  function buildPrintScheduleList(dateStr, { compact } = {}) {
+    const dayPlans = plansForDate(dateStr).slice().sort((a, b) => a.startMin - b.startMin);
+    if (!dayPlans.length) return makePrintEmpty("予定なし");
 
-    const wrap = document.createElement("div");
-    wrap.className = compact ? "print-timeline print-timeline-compact" : "print-timeline";
-
-    const hoursCol = document.createElement("div");
-    hoursCol.className = "print-timeline-hours";
-    hoursCol.style.height = `${heightPx}px`;
-
-    const gridCol = document.createElement("div");
-    gridCol.className = "print-timeline-grid";
-    gridCol.style.height = `${heightPx}px`;
-
-    const firstHour = Math.ceil(rangeStart / 60);
-    const lastHourExclusive = Math.ceil(rangeEnd / 60);
-    for (let h = firstHour; h < lastHourExclusive; h++) {
-      const topPx = ((h * 60 - rangeStart) / totalMin) * heightPx;
-      const label = document.createElement("span");
-      label.className = "print-timeline-hour-label";
-      label.style.top = `${topPx}px`;
-      label.textContent = compact ? String(h) : `${h}:00`;
-      hoursCol.appendChild(label);
-
-      const line = document.createElement("div");
-      line.className = "print-timeline-hour-line";
-      line.style.top = `${topPx}px`;
-      gridCol.appendChild(line);
-    }
-
-    const dayPlans = plansForDate(dateStr);
-    if (!dayPlans.length) {
-      wrap.append(hoursCol, gridCol);
-      return wrap;
-    }
-    layoutSegments(dayPlans.map((p) => ({ startMs: p.startMin, endMs: p.endMin, ref: p }))).forEach(({ seg, col, colCount }) => {
-      const plan = seg.ref;
-      const start = Math.max(rangeStart, plan.startMin);
-      const end = Math.min(rangeEnd, plan.endMin);
-      if (end <= start) return;
-      const top = (((start - rangeStart) / totalMin) * heightPx);
-      const boxH = Math.max(compact ? 9 : 13, ((end - start) / totalMin) * heightPx);
-      const box = document.createElement("div");
-      box.className = "print-timeline-block";
-      box.style.top = `${top}px`;
-      box.style.height = `${boxH}px`;
-      box.style.left = `calc(${(col / colCount) * 100}% + 1px)`;
-      box.style.width = `calc(${(1 / colCount) * 100}% - 2px)`;
-      const label = document.createElement("div");
-      label.className = "print-timeline-block-label";
-      label.textContent = plan.label || "(名称未設定)";
-      box.appendChild(label);
-      if (!compact) {
-        const time = document.createElement("div");
-        time.className = "print-timeline-block-time";
-        time.textContent = `${formatMinHM(plan.startMin)}〜${formatMinHM(plan.endMin)}`;
-        box.appendChild(time);
-        // 箱の枠自体は時間帯の可視化に専念させ、子タスクは(高さが足りる
-        // 分だけ自然に見える)補足の1行としてまとめて添える程度に留める
-        // (孫・ひ孫まで展開すると箱の中で樹形図が組めず読みにくいため)。
-        const rootChildren = planChildrenOf(plan, null);
-        if (rootChildren.length) {
-          const childLine = document.createElement("div");
-          childLine.className = "print-timeline-block-children";
-          childLine.textContent = `子: ${rootChildren.map((c) => c.label).join("、")}`;
-          box.appendChild(childLine);
-        }
+    const ul = document.createElement("ul");
+    ul.className = compact ? "print-plain-list print-plain-list-compact" : "print-plain-list";
+    dayPlans.forEach((plan) => {
+      const li = document.createElement("li");
+      const time = document.createElement("span");
+      time.className = "print-schedule-time";
+      time.textContent = `${formatMinHM(plan.startMin)}〜${formatMinHM(plan.endMin)}`;
+      li.appendChild(time);
+      li.appendChild(document.createTextNode(plan.label || "(名称未設定)"));
+      const rootChildren = planChildrenOf(plan, null);
+      if (rootChildren.length) {
+        appendPrintTreeList(li, rootChildren, (n) => planChildrenOf(plan, n.id));
       }
-      gridCol.appendChild(box);
+      ul.appendChild(li);
     });
-
-    wrap.append(hoursCol, gridCol);
-    return wrap;
+    return ul;
   }
 
   function priorityAndTodayItems(dateStr) {
@@ -2629,7 +2571,7 @@
     page.appendChild(h1);
 
     const scheduleSection = makePrintSectionShell("予定");
-    scheduleSection.appendChild(buildPrintTimeline(dateStr));
+    scheduleSection.appendChild(buildPrintScheduleList(dateStr));
     page.appendChild(scheduleSection);
 
     page.appendChild(makePrintListSection("最優先", priorityItems.map((it) => labelOf(it, "最優先タスク"))));
@@ -2666,7 +2608,11 @@
       dayTitle.textContent = `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS[d.getDay()]})`;
       col.appendChild(dayTitle);
 
-      col.appendChild(buildPrintTimeline(dateStr, { compact: true }));
+      const scheduleHeading = document.createElement("div");
+      scheduleHeading.className = "print-week-sub-heading";
+      scheduleHeading.textContent = "予定";
+      col.appendChild(scheduleHeading);
+      col.appendChild(buildPrintScheduleList(dateStr, { compact: true }));
 
       const { priorityItems, todayItems } = priorityAndTodayItems(dateStr);
       [
