@@ -1,6 +1,6 @@
 "use strict";
 
-// 共通テスト換算の推定ロジックのテスト。
+// 実力の範囲を出す推定ロジックのテスト。
 //   node grammar-reader/scripts/test-score-estimator.js
 
 const assert = require("assert");
@@ -14,87 +14,102 @@ function test(name, fn) {
   console.log("  ok  " + name);
 }
 
-function stateWith(results) {
+// [レベル, 出題数, 正解数] の組から初見の記録を作る
+function estimateFor(spec, kind) {
   const state = planner.createState();
-  results.forEach((result, index) => {
-    planner.recordAnswer(
-      state,
-      {
-        kind: result.kind || "grammar",
-        groupId: result.groupId || "tense",
-        questionId: "q" + index,
-        correct: result.correct,
-        level: result.level
-      },
-      1000 + index
-    );
+  let index = 0;
+  spec.forEach(([level, total, correct]) => {
+    for (let i = 0; i < total; i += 1) {
+      planner.recordAnswer(
+        state,
+        {
+          kind: kind || "grammar",
+          groupId: "g" + level,
+          questionId: "q" + index++,
+          level,
+          correct: i < correct
+        },
+        1000 + index
+      );
+    }
   });
-  return state;
-}
-
-function estimateOf(state) {
   return estimator.estimate(planner.firstAttempts(state));
 }
 
-function repeat(count, template) {
-  return Array.from({ length: count }, () => Object.assign({}, template));
-}
-
-// [レベル, 出題数, 正解数] の組から初見の記録を作る
-function estimateFor(spec) {
-  const results = spec.flatMap(([level, total, correct]) =>
-    Array.from({ length: total }, (unused, index) => ({ level, correct: index < correct }))
-  );
-  return estimateOf(stateWith(results));
-}
-
-test("解答数が足りないうちは点数を出さない", () => {
-  const result = estimateOf(stateWith(repeat(5, { level: 2, correct: true })));
+test("解答が少なすぎるうちは範囲を出さない", () => {
+  const result = estimateFor([[1, 2, 2]]);
   assert.strictEqual(result.ready, false);
-  assert.strictEqual(result.answered, 5);
-  assert.strictEqual(result.needMore, estimator.MIN_ANSWERS - 5);
+  assert.strictEqual(result.answered, 2);
+  assert.strictEqual(result.needMore, estimator.MIN_ANSWERS - 2);
+  assert.ok(Array.isArray(result.bands), "範囲が出せなくても、ものさしの情報は返す");
 });
 
-test("正答率50%（2択のまぐれと同じ）は最低ラインの点になる", () => {
-  const state = stateWith(repeat(10, { level: 1, correct: true }).concat(repeat(10, { level: 1, correct: false })));
-  const result = estimateOf(state);
-  assert.strictEqual(result.accuracyPercent, 50);
-  assert.strictEqual(result.mastery, 0);
-  assert.strictEqual(result.score, 25);
+test("範囲は必ず 下限 ≦ 中心 ≦ 上限 で、ものさしの中に収まる", () => {
+  [
+    [[1, 3, 0]],
+    [[1, 3, 3]],
+    [[3, 20, 20]],
+    [[3, 20, 0]],
+    [[1, 6, 6], [2, 6, 3], [3, 6, 0]]
+  ].forEach((spec) => {
+    const result = estimateFor(spec);
+    assert.ok(result.low <= result.point, `${result.low} <= ${result.point}`);
+    assert.ok(result.point <= result.high, `${result.point} <= ${result.high}`);
+    assert.ok(result.low >= estimator.SCALE_MIN && result.high <= estimator.SCALE_MAX);
+  });
 });
 
-test("全問正解でも上限は88点", () => {
-  const result = estimateOf(stateWith(repeat(30, { level: 3, correct: true })));
-  assert.strictEqual(result.accuracy, 1);
-  assert.strictEqual(result.score, 88);
-  assert.strictEqual(result.high, 88);
+test("解答が増えると範囲が狭まる", () => {
+  const few = estimateFor([[2, 4, 3]]);
+  const many = estimateFor([[2, 24, 18]]);
+  assert.ok(many.width < few.width, `${many.width} < ${few.width}`);
+  assert.strictEqual(few.precision, "wide");
+  assert.notStrictEqual(many.precision, "wide");
 });
 
-test("難しい問題に正解するほど点が上がる（加重）", () => {
-  const easyOnly = estimateOf(
-    stateWith(repeat(10, { level: 1, correct: true }).concat(repeat(10, { level: 3, correct: false })))
-  );
-  const hardOnly = estimateOf(
-    stateWith(repeat(10, { level: 1, correct: false }).concat(repeat(10, { level: 3, correct: true })))
-  );
-  assert.strictEqual(easyOnly.answered, hardOnly.answered);
-  assert.ok(hardOnly.score > easyOnly.score, `${hardOnly.score} > ${easyOnly.score}`);
+test("やさしい問題だけ解いても上限は絞れず、範囲が上に広いまま残る", () => {
+  const easyOnly = estimateFor([[1, 9, 9]]);
+  assert.ok(easyOnly.high >= 70, `上限 ${easyOnly.high} が上に開いたまま`);
+  assert.ok(easyOnly.low >= 38, `下限 ${easyOnly.low} は持ち上がる`);
+  assert.ok(easyOnly.width >= 20, "断定せず、幅で不確かさを示す");
+  assert.strictEqual(easyOnly.levels[2].answered, 0);
 });
 
-test("解答数が増えると推定の幅が狭まる", () => {
-  const few = estimateOf(stateWith(repeat(6, { level: 2, correct: true }).concat(repeat(4, { level: 2, correct: false }))));
-  const many = estimateOf(
-    stateWith(repeat(48, { level: 2, correct: true }).concat(repeat(32, { level: 2, correct: false })))
-  );
-  assert.strictEqual(few.accuracyPercent, many.accuracyPercent);
-  assert.ok(many.high - many.low < few.high - few.low, `${many.high - many.low} < ${few.high - few.low}`);
-  assert.strictEqual(few.stable, false);
-  assert.strictEqual(many.stable, true);
+test("難しい問題を解けていると、範囲ごと上に移る", () => {
+  const easyOnly = estimateFor([[1, 12, 12]]);
+  const hardToo = estimateFor([[1, 6, 6], [3, 12, 12]]);
+  assert.ok(hardToo.point > easyOnly.point, `${hardToo.point} > ${easyOnly.point}`);
+  assert.ok(hardToo.low > easyOnly.low);
+  assert.ok(hardToo.width < easyOnly.width, "難易度の幅が広いほど絞り込める");
+});
+
+test("難しい問題を落とすと上限が下がる", () => {
+  const passed3 = estimateFor([[3, 8, 8]]);
+  const failed3 = estimateFor([[3, 8, 2]]);
+  assert.ok(failed3.high < passed3.high, `${failed3.high} < ${passed3.high}`);
+  assert.ok(failed3.point < passed3.point);
+});
+
+test("当てずっぽう相当（2択で5割）では下のほうに寄る", () => {
+  const result = estimateFor([[2, 20, 10]]);
+  assert.ok(result.point < estimator.LEVEL_DIFFICULTY[2], `${result.point} < ${estimator.LEVEL_DIFFICULTY[2]}`);
+});
+
+test("範囲の呼び名は、上の帯だけ点数で言う", () => {
+  assert.strictEqual(estimator.labelOf(30), "英検3級");
+  assert.strictEqual(estimator.labelOf(45), "英検準2級");
+  assert.strictEqual(estimator.labelOf(60), "英検2級");
+  assert.strictEqual(estimator.labelOf(75), "共通テスト75点");
+  assert.strictEqual(estimator.rangeLabel(45, 80), "英検準2級 〜 共通テスト80点");
+  assert.strictEqual(estimator.rangeLabel(44, 46), "英検準2級", "同じ帯なら1つにまとめる");
 });
 
 test("復習で正解しても初見の結果は書き換わらない", () => {
-  const state = stateWith(repeat(10, { level: 2, correct: false }));
-  const before = estimateOf(state);
+  const state = planner.createState();
+  for (let i = 0; i < 10; i += 1) {
+    planner.recordAnswer(state, { kind: "grammar", groupId: "g", questionId: "q" + i, level: 2, correct: false }, 1000);
+  }
+  const before = estimator.estimate(planner.firstAttempts(state));
   Object.keys(state.items).forEach((key) => {
     const item = state.items[key];
     planner.recordAnswer(
@@ -103,98 +118,44 @@ test("復習で正解しても初見の結果は書き換わらない", () => {
       9999
     );
   });
-  const after = estimateOf(state);
-  assert.strictEqual(after.score, before.score);
+  const after = estimator.estimate(planner.firstAttempts(state));
+  assert.strictEqual(after.point, before.point);
   assert.strictEqual(after.answered, before.answered);
 });
 
-test("分野別・難易度別・ユニット別の内訳を返す", () => {
-  const state = stateWith(
-    repeat(6, { level: 1, correct: true, groupId: "tense" })
-      .concat(repeat(6, { level: 3, correct: false, groupId: "relative" }))
-      .concat(repeat(4, { kind: "reading", level: 2, correct: true, groupId: "yawn" }))
-  );
-  const result = estimateOf(state);
+test("正解する確率は、実力が上がるほど・問題がやさしいほど高い", () => {
+  assert.ok(estimator.correctChance(70, 1) > estimator.correctChance(40, 1));
+  assert.ok(estimator.correctChance(50, 1) > estimator.correctChance(50, 3));
+  assert.ok(estimator.correctChance(20, 3) >= estimator.GUESS, "2択なので下限は50%");
+  assert.ok(estimator.correctChance(88, 1) <= 1);
+});
+
+test("次に効くレベルは、推定の中心に近く、まだ解いていないものを選ぶ", () => {
+  const result = estimateFor([[1, 9, 9]]);
+  assert.strictEqual(result.nextLevel.level, 2, "レベル1を解き切ったら次はレベル2");
+  const levels = [
+    { level: 1, answered: 0, difficulty: estimator.LEVEL_DIFFICULTY[1] },
+    { level: 2, answered: 0, difficulty: estimator.LEVEL_DIFFICULTY[2] },
+    { level: 3, answered: 0, difficulty: estimator.LEVEL_DIFFICULTY[3] }
+  ];
+  assert.strictEqual(estimator.nextUsefulLevel(levels, 75).level, 3);
+  assert.strictEqual(estimator.nextUsefulLevel(levels, 40).level, 1);
+});
+
+test("分野別とユニット別の内訳を返す", () => {
+  const state = planner.createState();
+  [["grammar", "tense", true], ["grammar", "tense", false], ["vocab", "phrasal", true]].forEach((entry, index) => {
+    planner.recordAnswer(
+      state,
+      { kind: entry[0], groupId: entry[1], questionId: "q" + index, level: 2, correct: entry[2] },
+      1000
+    );
+  });
+  const result = estimator.estimate(planner.firstAttempts(state));
   const areas = result.byArea.reduce((map, area) => Object.assign(map, { [area.key]: area }), {});
-  assert.strictEqual(areas.grammar.answered, 12);
-  assert.strictEqual(areas.reading.answered, 4);
-  assert.deepStrictEqual(result.byLevel.map((entry) => entry.key), ["1", "2", "3"]);
-
-  const weakest = estimator.weakestGroup(result);
-  assert.strictEqual(weakest.key, "relative");
-  assert.strictEqual(weakest.accuracy, 0);
-});
-
-test("やさしい問題だけ全問正解しても、共通テストの点数は出ない", () => {
-  const result = estimateFor([[1, 10, 10]]);
-  assert.strictEqual(result.ready, true);
-  assert.strictEqual(result.scoreReady, false, "レベル3をクリアするまで点数は出さない");
-  assert.strictEqual(result.rank.label, estimator.TIERS[1].clearedLabel);
-  assert.strictEqual(result.rank.goal, estimator.TIERS[2].goal);
-  assert.strictEqual(result.rank.levels[2].answered, 0);
-});
-
-test("レベルを上げてクリアするほど階級が上がる", () => {
-  assert.strictEqual(estimateFor([[1, 8, 4]]).rank.label, estimator.BASE_LABEL);
-  assert.strictEqual(estimateFor([[1, 8, 8]]).rank.label, estimator.TIERS[1].clearedLabel);
-  assert.strictEqual(estimateFor([[1, 6, 6], [2, 8, 8]]).rank.label, estimator.TIERS[2].clearedLabel);
-
-  const top = estimateFor([[1, 6, 6], [2, 8, 8], [3, 8, 8]]);
-  assert.strictEqual(top.rank.label, estimator.TIERS[3].clearedLabel);
-  assert.strictEqual(top.scoreReady, true);
-  assert.strictEqual(top.score, 88);
-});
-
-test("挑戦中は「あと◯歩」が出て、進むほど減る", () => {
-  const early = estimateFor([[1, 6, 6], [2, 2, 1]]);
-  const late = estimateFor([[1, 6, 6], [2, 5, 5]]);
-  assert.strictEqual(early.rank.label, estimator.TIERS[2].tryLabel);
-  assert.strictEqual(early.rank.goal, estimator.TIERS[2].goal);
-  assert.ok(early.rank.steps >= 1 && early.rank.steps <= estimator.MAX_STEPS);
-  assert.ok(late.rank.steps < early.rank.steps, `${late.rank.steps} < ${early.rank.steps}`);
-  assert.ok(late.rank.message.length > 0);
-});
-
-test("そのレベルを解く前は、クリア済みの階級を名乗って次を促す", () => {
-  const result = estimateFor([[1, 8, 8]]);
-  assert.strictEqual(result.rank.label, estimator.TIERS[1].clearedLabel);
-  assert.strictEqual(result.rank.steps, estimator.MAX_STEPS);
-  assert.ok(result.rank.message.includes("レベル2"));
-});
-
-test("難しい問題を落とすと、上の階級には上がらない", () => {
-  const result = estimateFor([[1, 6, 6], [2, 8, 8], [3, 8, 4]]);
-  assert.strictEqual(result.scoreReady, false);
-  assert.strictEqual(result.rank.label, estimator.TIERS[3].tryLabel);
-  assert.strictEqual(result.rank.levels[2].cleared, false);
-});
-
-test("上のレベルをクリアしていれば、下のレベルの解答数不足で足踏みしない", () => {
-  // 適応出題でレベル3まで進み、レベル1・2の解答数が足りていない状態
-  const result = estimateFor([[1, 3, 3], [2, 3, 3], [3, 18, 18]]);
-  assert.strictEqual(result.scoreReady, true, "レベル3をクリアしていれば点数を出す");
-  assert.strictEqual(result.rank.label, estimator.TIERS[3].clearedLabel);
-  assert.strictEqual(result.rank.levels[0].impliedByHigher, true);
-  assert.strictEqual(result.rank.levels[1].impliedByHigher, true);
-  assert.strictEqual(result.rank.levels[2].impliedByHigher, false, "レベル3は自力のクリア");
-});
-
-test("上のレベルを落としていれば、下のクリアは引き継がれない", () => {
-  const result = estimateFor([[1, 3, 3], [2, 8, 4], [3, 6, 2]]);
-  assert.strictEqual(result.scoreReady, false);
-  assert.strictEqual(result.rank.levels[1].cleared, false);
-  assert.strictEqual(result.rank.levels[0].impliedByHigher, false);
-});
-
-test("アンカー表は到達度に対して単調に増える", () => {
-  let previous = -1;
-  for (let m = 0; m <= 1.0001; m += 0.05) {
-    const score = estimator.scoreFromMastery(m);
-    assert.ok(score >= previous, `mastery ${m.toFixed(2)} で下がった`);
-    previous = score;
-  }
-  assert.strictEqual(estimator.scoreFromMastery(0), 25);
-  assert.strictEqual(estimator.scoreFromMastery(1), 88);
+  assert.strictEqual(areas.grammar.answered, 2);
+  assert.strictEqual(areas.vocab.answered, 1);
+  assert.strictEqual(estimator.weakestGroup(result, 2).key, "tense");
 });
 
 console.log(`\n${passed} tests passed`);

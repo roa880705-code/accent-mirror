@@ -193,9 +193,7 @@ function refreshHomeStats() {
         "問（文法・語彙 " + practiceLeft + "／読解 " + readingLeft + "）。"
       : "初見の問題はすべて解き終わりました。";
   $("homeRankNote").textContent = est.ready
-    ? est.scoreReady
-      ? "レベル3までクリア。共通テスト換算で表示しています。"
-      : est.rank.goal + "まで あと" + est.rank.steps + "歩。上の階級は、上のレベルの問題を解いて初めて届きます。"
+    ? "解くほど範囲が狭まります。やさしい問題だけでは上限が絞れないので、範囲は広いままになります。"
     : "";
 
   var reviewCard = $("goReviewButton");
@@ -247,45 +245,76 @@ function breakdownRow(label, summary) {
 }
 
 /* ---------- 実力表示（ホームと初見モードで共用） ----------
-   共通テストの点数は、レベル3までクリアして初めて出す。
-   それまでは英検相当の階級と「あと何歩か」で現在地を示す。 */
+   出すのは1点ではなく範囲。共通テスト換算点の軸に英検相当の帯を重ねたバロメーターに、
+   推定の範囲と中心を描く。解答が少なければ範囲は広いまま示す。 */
 
-function stepDots(stepsLeft, max) {
-  var row = el("span", "step-dots");
-  for (var i = 0; i < max; i += 1) {
-    row.appendChild(el("span", "step-dot" + (i < max - stepsLeft ? " done" : "")));
-  }
-  return row;
+function scalePercent(est, score) {
+  return ((score - est.scaleMin) / (est.scaleMax - est.scaleMin)) * 100;
 }
 
-function meter(ratio) {
-  var bar = el("div", "score-meter");
-  var fill = el("div", "score-meter-fill");
-  fill.style.width = Math.round(clampRatio(ratio) * 100) + "%";
-  bar.appendChild(fill);
-  return bar;
+function buildBarometer(est) {
+  var wrapper = el("div", "barometer");
+
+  var bandRow = el("div", "barometer-bands");
+  var from = est.scaleMin;
+  est.bands.forEach(function (band, index) {
+    var segment = el("div", "barometer-band band-" + index);
+    segment.style.left = scalePercent(est, from) + "%";
+    segment.style.width = scalePercent(est, band.max) - scalePercent(est, from) + "%";
+    segment.appendChild(el("span", "barometer-band-label", band.label));
+    bandRow.appendChild(segment);
+    from = band.max;
+  });
+  wrapper.appendChild(bandRow);
+
+  var track = el("div", "barometer-track");
+  var range = el("div", "barometer-range");
+  range.style.left = scalePercent(est, est.low) + "%";
+  range.style.width = Math.max(scalePercent(est, est.high) - scalePercent(est, est.low), 1.5) + "%";
+  track.appendChild(range);
+  var point = el("div", "barometer-point");
+  point.style.left = scalePercent(est, est.point) + "%";
+  track.appendChild(point);
+  wrapper.appendChild(track);
+
+  var ticks = el("div", "barometer-ticks");
+  var tickValues = [est.scaleMin].concat(
+    est.bands.map(function (band) {
+      return band.max;
+    })
+  );
+  tickValues.forEach(function (value) {
+    var tick = el("span", "barometer-tick", String(value));
+    tick.style.left = scalePercent(est, value) + "%";
+    ticks.appendChild(tick);
+  });
+  wrapper.appendChild(ticks);
+
+  return wrapper;
 }
 
-function clampRatio(value) {
-  return Math.min(1, Math.max(0, value));
+function precisionText(est) {
+  if (est.precision === "narrow") return "範囲はかなり絞れています。";
+  if (est.precision === "medium") return "だいぶ絞れてきました。";
+  return "まだ範囲は広いままです。";
 }
 
 function levelRow(summary) {
-  var row = el("div", "level-row" + (summary.cleared ? " is-cleared" : ""));
+  var row = el("div", "level-row" + (summary.answered === 0 ? " is-untouched" : ""));
   row.appendChild(el("span", "level-row-name", "レベル " + summary.level));
   var bar = el("span", "breakdown-bar");
   var fill = el("span", "breakdown-bar-fill");
   fill.style.width = Math.round(summary.accuracy * 100) + "%";
   bar.appendChild(fill);
   row.appendChild(bar);
-  var note;
-  if (summary.impliedByHigher) note = "クリア（上のレベル達成による）";
-  else if (summary.cleared) note = "クリア";
-  else if (summary.answered === 0) note = "未挑戦";
-  else if (summary.answered < summary.minAnswers) note = "あと" + (summary.minAnswers - summary.answered) + "問";
-  else note = "正答率が不足";
   row.appendChild(
-    el("span", "level-row-value", Math.round(summary.accuracy * 100) + "%（" + summary.answered + "問）・" + note)
+    el(
+      "span",
+      "level-row-value",
+      summary.answered === 0
+        ? "未挑戦"
+        : Math.round(summary.accuracy * 100) + "%（" + summary.correct + "/" + summary.answered + "問）"
+    )
   );
   return row;
 }
@@ -299,50 +328,41 @@ function renderScoreBlock(node, est, detailed) {
         "p",
         "lead",
         est.answered === 0
-          ? "初見問題を " + est.minAnswers + "問 解くと、いまのレベルを判定します。"
-          : "初見 " + est.answered + "問。あと " + est.needMore + "問で、いまのレベルを判定します。"
+          ? "初見問題を " + est.minAnswers + "問 解くと、いまの実力の範囲を出します。"
+          : "初見 " + est.answered + "問。あと " + est.needMore + "問で、いまの実力の範囲を出します。"
       )
     );
     return;
   }
 
-  var rank = est.rank;
-
-  if (est.scoreReady) {
-    var headline = el("div", "score-headline");
-    headline.appendChild(el("span", "score-label", "共通テスト英語 Reading"));
-    var value = el("span", "score-value");
-    value.appendChild(el("strong", null, String(est.score)));
-    value.appendChild(document.createTextNode("点"));
-    headline.appendChild(value);
-    node.appendChild(headline);
-    node.appendChild(el("div", "score-range", rank.label + "／推定の幅 " + est.low + "〜" + est.high + "点"));
-    node.appendChild(meter(est.score / 100));
-  } else {
-    node.appendChild(el("div", "rank-headline", rank.label));
-    var stepRow = el("div", "step-row");
-    stepRow.appendChild(el("span", "step-goal", rank.goal + "まで"));
-    stepRow.appendChild(stepDots(rank.steps, estimator.MAX_STEPS));
-    stepRow.appendChild(el("span", "step-count", "あと" + rank.steps + "歩"));
-    node.appendChild(stepRow);
-    node.appendChild(meter(rank.ladderProgress));
-  }
-
-  node.appendChild(el("p", "minor", rank.message));
+  node.appendChild(el("div", "range-headline", est.rangeLabel));
+  node.appendChild(
+    el(
+      "div",
+      "range-sub",
+      "中心は " + est.pointLabel + " あたり／" + Math.round(est.credible * 100) + "% の確からしさでこの範囲"
+    )
+  );
+  node.appendChild(buildBarometer(est));
   node.appendChild(
     el(
       "p",
       "minor",
-      "初見 " + est.answered + "問／難易度で重みをつけた正答率 " + est.accuracyPercent + "%" +
-        (est.stable ? "。判定はほぼ安定しています。" : "。あと " + est.untilStable + "問で安定します。")
+      precisionText(est) +
+        (est.precision !== "narrow" && est.nextLevel
+          ? "いまはレベル" + est.nextLevel.level + "の問題がいちばん範囲を狭めます。"
+          : "")
     )
+  );
+  node.appendChild(
+    el("p", "minor", "初見 " + est.answered + "問／正答率 " + est.accuracyPercent + "%（2択なので50%は当てずっぽうの線）")
   );
 
   if (!detailed) return;
 
   var levels = el("div", "score-breakdown");
-  levels.appendChild(el("div", "feedback-label", "難易度ごとの到達（初見のみ）"));
-  rank.levels.forEach(function (summary) {
+  levels.appendChild(el("div", "feedback-label", "難易度ごとの成績（初見のみ）"));
+  est.levels.forEach(function (summary) {
     levels.appendChild(levelRow(summary));
   });
   levels.appendChild(el("div", "feedback-label", "分野別"));
@@ -359,27 +379,30 @@ function renderScoreBlock(node, est, detailed) {
       el(
         "span",
         "weak-point-body",
-        groupTitle(weakest.key) + "　初見の加重正答率 " + Math.round(weakest.accuracy * 100) + "%（" + weakest.answered + "問）"
+        groupTitle(weakest.key) + "　初見の正答率 " + Math.round(weakest.accuracy * 100) + "%（" + weakest.answered + "問）"
       )
     );
     node.appendChild(weak);
   }
 
   var details = el("details", "score-note");
-  details.appendChild(el("summary", null, "この判定の出し方"));
+  details.appendChild(el("summary", null, "この範囲の出し方"));
   var body = el("div", "score-note-body");
   [
     "材料は初見（1回目）の解答だけです。復習の結果は、答えを覚えているぶん実力より高く出るので使いません。",
-    "階級は「解いた問題の難易度」で決まります。やさしい問題だけを正解しても上の階級には届きません。レベル1をクリアで" +
-      estimator.TIERS[1].clearedLabel + "、レベル2で" + estimator.TIERS[2].clearedLabel + "、レベル3で" +
-      estimator.TIERS[3].clearedLabel + "です。",
-    "クリアの条件は、そのレベルを " + estimator.TIERS[2].minAnswers + "問前後解いたうえで、2択のまぐれ当たりを差し引いた到達度が基準を超えること（素の正答率でおよそ8割）。",
-    "共通テストの点数は、レベル3をクリアして初めて出します。到達度と点数の対応は" +
-      estimator.ANCHORS.map(function (anchor) {
-        return " " + Math.round(anchor[0] * 100) + "%→" + anchor[1] + "点";
-      }).join("、") + "（あいだは直線で補間）。",
-    "本アプリの問題で測った目安であり、公式の換算表でも英検の合否判定でもありません。本番の分量（およそ6000語・80分）は再現していないため、全問正解でも " +
-      estimator.ANCHORS[estimator.ANCHORS.length - 1][1] + "点で頭打ちにしています。"
+    "ものさしは共通テスト英語 Reading の換算点1本（" + est.scaleMin + "〜" + est.scaleMax +
+      "）で、その上に英検相当の帯を置いています。帯の区切りは " +
+      est.bands
+        .map(function (band) {
+          return band.label + "〜" + band.max;
+        })
+        .join("、") + " 点です。",
+    "問題にはレベルごとの難しさ（レベル1が" + estimator.LEVEL_DIFFICULTY[1] + "点、レベル2が" +
+      estimator.LEVEL_DIFFICULTY[2] + "点、レベル3が" + estimator.LEVEL_DIFFICULTY[3] +
+      "点あたり）を持たせ、実力がその難しさを上回るほど正解しやすい、というモデルで計算しています。2択なので、実力が届かなくても半分は当たる分も織り込んでいます。",
+    "出しているのは1点ではなく範囲です。解答が少なければ範囲は広いまま、やさしい問題しか解いていなければ上限は絞れません。断定できないことを、幅で正直に示しています。",
+    "本アプリの問題で測った目安であり、公式の換算表でも英検の合否判定でもありません。本番の分量（およそ6000語・80分）は再現していないため、上限は " +
+      est.scaleMax + "点にしています。"
   ].forEach(function (line) {
     body.appendChild(el("p", null, line));
   });
@@ -703,25 +726,26 @@ function renderScoreShift() {
   var after = currentEstimate();
   node.classList.remove("hidden");
   if (!after.ready) {
-    node.appendChild(el("div", "score-shift-text", "あと " + after.needMore + "問の初見で推定点が出ます。"));
+    node.appendChild(el("div", "score-shift-text", "あと " + after.needMore + "問の初見で、実力の範囲を出します。"));
     return;
   }
   var before = session.scoreBefore;
   var line = el("div", "score-shift-text");
-  line.appendChild(el("span", "score-shift-label", "共通テスト英語 Reading 推定"));
+  line.appendChild(el("span", "score-shift-label", "いまの実力の範囲"));
   if (before && before.ready) {
-    line.appendChild(el("span", "score-shift-old", before.score + "点"));
+    line.appendChild(el("span", "score-shift-old", before.rangeLabel));
     line.appendChild(el("span", "score-shift-arrow", "→"));
   }
-  line.appendChild(el("span", "score-shift-new", after.score + "点"));
-  if (before && before.ready) {
-    var diff = after.score - before.score;
-    line.appendChild(
-      el("span", "score-shift-diff " + (diff > 0 ? "up" : diff < 0 ? "down" : ""), diff > 0 ? "+" + diff : String(diff))
-    );
-  }
+  line.appendChild(el("span", "score-shift-new", after.rangeLabel));
   node.appendChild(line);
-  node.appendChild(el("div", "minor", "推定の幅 " + after.low + "〜" + after.high + "点／初見 " + after.answered + "問"));
+
+  var note = "中心は " + after.pointLabel + " あたり／初見 " + after.answered + "問";
+  if (before && before.ready) {
+    var narrowed = before.width - after.width;
+    if (narrowed > 0) note += "／範囲が " + narrowed + "点ぶん狭まりました";
+    else if (narrowed < 0) note += "／範囲は " + -narrowed + "点ぶん広がりました";
+  }
+  node.appendChild(el("div", "minor", note));
 }
 
 function renderLevelShift(shift) {

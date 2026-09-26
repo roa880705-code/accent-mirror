@@ -1,19 +1,18 @@
 /*
- * 初見（1回目）の解答から、共通テスト英語 Reading 換算の推定点を出す。
+ * 初見（1回目）の解答から、いまの実力が入りそうな「範囲」を推定する。
  * ブラウザでは window.ScoreEstimator、Node からは require() で使う。
  *
  * 考え方:
  *   1. 復習は答えを覚えているため、材料は初見の解答だけに限る。
- *   2. 難易度（level 1〜3）を配点として加重正答率を出す。
- *   3. 2択なので、当てずっぽうでも 50% は当たる。その分を差し引いて到達度に直す。
- *   4. 難易度ごとに「クリアしたか」を判定し、階級（英検相当）で現在地を示す。
- *      やさしい問題だけで高い階級は出ない。解いた問題の難易度が、名乗れる上限を決める。
- *   5. レベル3までクリアして初めて、共通テストの点数に翻訳する（下のアンカー表を直線で補間）。
- *   6. 解答数が少ないうちは推定が揺れるので、標準誤差から幅を出して併記する。
+ *   2. ものさしは1本。共通テスト英語 Reading の換算点（20〜90）を軸にして、
+ *      その上に英検相当の帯を置く。
+ *   3. 問題にはレベルごとの「難しさ」があり、実力が難しさを上回るほど正解しやすい、
+ *      という素直なモデルで、正誤の並びと辻褄が合う実力の分布を求める。
+ *   4. 2択なので、実力が足りなくても半分は当たる。その分はモデルに組み込む。
+ *   5. 表示するのは1点ではなく範囲。解答が少なければ範囲は広いままで、
+ *      やさしい問題しか解いていなければ上限は絞れない。そこを隠さない。
  *
- * この換算はあくまで本アプリの問題で測った目安で、公式な換算表ではない。
- * 本番の分量（およそ6000語・80分）や4択・複数正答の形式は再現していないため、
- * 満点相当は 88 点で頭打ちにしてある。
+ * この換算は本アプリの問題で測った目安で、公式の換算表でも英検の合否判定でもない。
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
@@ -24,105 +23,153 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
-  var LEVEL_WEIGHT = { 1: 1, 2: 2, 3: 3 };
-  var GUESS_RATE = 0.5; // 2択
-  var MIN_ANSWERS = 8; // これ未満では点数を出さない
-  var STABLE_ANSWERS = 25; // これ以上で「安定してきた」とみなす
+  var SCALE_MIN = 20;
+  var SCALE_MAX = 88; // この教材で測れる上限（本番の分量は再現していないため）
 
-  /*
-   * 階級のはしご。
-   * tier 1〜3 はそれぞれ問題のレベル1〜3に対応し、下から順にクリアしていく。
-   * minAnswers はそのレベルを評価するのに最低限必要な解答数、
-   * minMastery はまぐれ補正後の到達度（0.6 なら2択の素の正答率で80%）。
-   */
-  var TIERS = {
-    1: {
-      minAnswers: 4,
-      minMastery: 0.6,
-      tryLabel: "英検準2級 トライレベル",
-      goal: "英検準2級",
-      clearedLabel: "英検準2級レベル"
-    },
-    2: {
-      minAnswers: 6,
-      minMastery: 0.6,
-      tryLabel: "英検2級 トライレベル",
-      goal: "英検2級",
-      clearedLabel: "英検2級レベル"
-    },
-    3: {
-      minAnswers: 6,
-      minMastery: 0.55,
-      tryLabel: "共通テスト トライレベル",
-      goal: "共通テスト水準",
-      clearedLabel: "共通テストレベル"
-    }
-  };
-  var TIER_COUNT = 3;
-  var BASE_LABEL = "英検3級レベル"; // レベル1がまだ固まっていない段階
-  var BASE_MASTERY = 0.2;
-  var MAX_STEPS = 3; // 「あと3歩」の3
-
-  // [到達度, 共通テスト Reading 換算点]
-  var ANCHORS = [
-    [0.0, 25],
-    [0.25, 40],
-    [0.5, 55],
-    [0.7, 68],
-    [0.85, 78],
-    [1.0, 88]
+  // 共通テスト換算点の軸に置いた、英検相当の帯。上限は帯の終わり。
+  var BANDS = [
+    { max: 38, label: "英検3級", full: "英検3級 相当" },
+    { max: 52, label: "英検準2級", full: "英検準2級 相当" },
+    { max: 68, label: "英検2級", full: "英検2級 相当" },
+    { max: SCALE_MAX, label: "共通テスト", full: "共通テスト 高得点帯" }
   ];
+
+  // 各レベルの問題の「難しさ」。この実力の人がちょうど手こずる、という位置。
+  var LEVEL_DIFFICULTY = { 1: 42, 2: 58, 3: 74 };
+  var SLOPE = 10; // 難しさの前後どれくらいで正答率が変わるか
+  var GUESS = 0.5; // 2択なので、実力が届かなくても半分は当たる
+
+  // 何も解いていないときの出発点（だいたい真ん中から少し下）。
+  var PRIOR_MEAN = 45;
+  var PRIOR_SD = 16;
+
+  var CREDIBLE = 0.8; // 範囲の確からしさ（8割）
+  var MIN_ANSWERS = 3; // これ未満では範囲を出さない
+  var NARROW_WIDTH = 16; // これ以下なら「絞れてきた」
+  var WIDE_WIDTH = 26; // これ以上なら「まだ広い」
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
   }
 
-  function weightOf(level) {
-    return LEVEL_WEIGHT[level] || 1;
+  function levelOf(item) {
+    var level = Math.round(Number(item.level));
+    return LEVEL_DIFFICULTY[level] ? level : 1;
   }
 
-  /** 加重正答率（0〜1）から、まぐれ当たり分を差し引いた到達度（0〜1）を出す。 */
-  function masteryFromAccuracy(accuracy) {
-    return clamp((accuracy - GUESS_RATE) / (1 - GUESS_RATE), 0, 1);
+  /** 実力 ability の人が、レベル level の問題に正解する確率。 */
+  function correctChance(ability, level) {
+    var logistic = 1 / (1 + Math.exp(-(ability - LEVEL_DIFFICULTY[level]) / SLOPE));
+    return GUESS + (1 - GUESS) * logistic;
   }
 
-  /** 到達度（0〜1）をアンカー表の直線補間で点数に直す。 */
-  function scoreFromMastery(mastery) {
-    var m = clamp(mastery, 0, 1);
-    for (var i = 1; i < ANCHORS.length; i += 1) {
-      var prev = ANCHORS[i - 1];
-      var next = ANCHORS[i];
-      if (m <= next[0]) {
-        var span = next[0] - prev[0];
-        var ratio = span === 0 ? 0 : (m - prev[0]) / span;
-        return prev[1] + (next[1] - prev[1]) * ratio;
+  function priorWeight(ability) {
+    var z = (ability - PRIOR_MEAN) / PRIOR_SD;
+    return Math.exp(-0.5 * z * z);
+  }
+
+  /**
+   * 実力の分布。軸上の各点について、そこに実力があるとしたときの
+   * 「その正誤の並びの起こりやすさ」を出し、出発点の重みと掛け合わせる。
+   */
+  function posterior(attempts) {
+    var grid = [];
+    var total = 0;
+    for (var ability = SCALE_MIN; ability <= SCALE_MAX; ability += 1) {
+      var weight = priorWeight(ability);
+      for (var i = 0; i < attempts.length; i += 1) {
+        var chance = correctChance(ability, levelOf(attempts[i]));
+        weight *= attempts[i].firstCorrect ? chance : 1 - chance;
       }
+      grid.push({ ability: ability, weight: weight });
+      total += weight;
     }
-    return ANCHORS[ANCHORS.length - 1][1];
+    if (total > 0) {
+      grid.forEach(function (point) {
+        point.weight /= total;
+      });
+    }
+    return grid;
   }
 
-  function scoreFromAccuracy(accuracy) {
-    return scoreFromMastery(masteryFromAccuracy(accuracy));
+  function mean(grid) {
+    return grid.reduce(function (sum, point) {
+      return sum + point.ability * point.weight;
+    }, 0);
+  }
+
+  /** 累積が ratio に達する位置（範囲の端を出すのに使う）。 */
+  function quantile(grid, ratio) {
+    var cumulative = 0;
+    for (var i = 0; i < grid.length; i += 1) {
+      cumulative += grid[i].weight;
+      if (cumulative >= ratio) return grid[i].ability;
+    }
+    return grid[grid.length - 1].ability;
+  }
+
+  function bandOf(score) {
+    for (var i = 0; i < BANDS.length; i += 1) {
+      if (score < BANDS[i].max) return BANDS[i];
+    }
+    return BANDS[BANDS.length - 1];
+  }
+
+  /** 軸上の1点を、いちばん意味の伝わる言い方にする。 */
+  function labelOf(score) {
+    var band = bandOf(score);
+    if (band === BANDS[BANDS.length - 1]) return "共通テスト" + Math.round(score) + "点";
+    return band.label;
+  }
+
+  function rangeLabel(low, high) {
+    var lowLabel = labelOf(low);
+    var highLabel = labelOf(high);
+    if (lowLabel === highLabel) return lowLabel;
+    return lowLabel + " 〜 " + highLabel;
+  }
+
+  function levelSummary(attempts, level) {
+    var subset = attempts.filter(function (item) {
+      return levelOf(item) === level;
+    });
+    var correct = subset.filter(function (item) {
+      return item.firstCorrect;
+    }).length;
+    return {
+      level: level,
+      answered: subset.length,
+      correct: correct,
+      accuracy: subset.length ? correct / subset.length : 0,
+      difficulty: LEVEL_DIFFICULTY[level]
+    };
+  }
+
+  /**
+   * 範囲を狭めるのにいちばん効くレベル。
+   * 推定の中心に近い難しさほど情報量が多く、すでに解いた数が多いほど新しい情報は減る。
+   * その2つを足し合わせて、いちばん小さいものを選ぶ。
+   */
+  var ANSWER_PENALTY = 1.5;
+
+  function nextUsefulLevel(levels, point) {
+    return levels
+      .slice()
+      .sort(function (a, b) {
+        var costA = Math.abs(a.difficulty - point) + a.answered * ANSWER_PENALTY;
+        var costB = Math.abs(b.difficulty - point) + b.answered * ANSWER_PENALTY;
+        return costA - costB;
+      })[0];
   }
 
   function summarizeAttempts(attempts) {
-    var points = 0;
-    var max = 0;
-    var correct = 0;
-    attempts.forEach(function (item) {
-      var weight = weightOf(item.level);
-      max += weight;
-      if (item.firstCorrect) {
-        points += weight;
-        correct += 1;
-      }
-    });
+    var correct = attempts.filter(function (item) {
+      return item.firstCorrect;
+    }).length;
     return {
       answered: attempts.length,
       correct: correct,
-      points: points,
-      max: max,
-      accuracy: max > 0 ? points / max : 0
+      accuracy: attempts.length ? correct / attempts.length : 0
     };
   }
 
@@ -142,173 +189,60 @@
 
   /**
    * 推定のまとめ。引数は ReviewPlanner.firstAttempts(state) が返す初見の解答の配列。
-   * ready が false のときは、まだ点数を出さずに必要な問題数だけを返す。
+   * ready が false のときは、まだ範囲を出さずに必要な解答数だけを返す。
    */
   function estimate(attempts) {
-    var overall = summarizeAttempts(attempts || []);
+    var list = attempts || [];
+    var overall = summarizeAttempts(list);
 
     if (overall.answered < MIN_ANSWERS) {
       return {
         ready: false,
         answered: overall.answered,
         needMore: MIN_ANSWERS - overall.answered,
-        minAnswers: MIN_ANSWERS
+        minAnswers: MIN_ANSWERS,
+        scaleMin: SCALE_MIN,
+        scaleMax: SCALE_MAX,
+        bands: BANDS
       };
     }
 
-    var rank = rankOf(attempts);
-    var accuracy = overall.accuracy;
-    // 標準誤差。解いた問題が少ないほど幅が広がる。
-    var se = Math.sqrt(Math.max(accuracy * (1 - accuracy), 0.01) / overall.answered);
-    var score = scoreFromAccuracy(accuracy);
-    var low = scoreFromAccuracy(accuracy - se);
-    var high = scoreFromAccuracy(accuracy + se);
+    var grid = posterior(list);
+    var point = mean(grid);
+    var low = quantile(grid, (1 - CREDIBLE) / 2);
+    var high = quantile(grid, 1 - (1 - CREDIBLE) / 2);
+    var width = high - low;
+    var levels = [1, 2, 3].map(function (level) {
+      return levelSummary(list, level);
+    });
+    var next = nextUsefulLevel(levels, point);
 
     return {
       ready: true,
       answered: overall.answered,
       correct: overall.correct,
-      points: overall.points,
-      max: overall.max,
-      accuracy: accuracy,
-      accuracyPercent: Math.round(accuracy * 100),
-      mastery: masteryFromAccuracy(accuracy),
-      rank: rank,
-      // 共通テストの点数は、レベル3までクリアして初めて名乗れる
-      scoreReady: rank.scoreReady,
-      score: Math.round(score),
+      accuracyPercent: Math.round(overall.accuracy * 100),
+      scaleMin: SCALE_MIN,
+      scaleMax: SCALE_MAX,
+      bands: BANDS,
+      credible: CREDIBLE,
       low: Math.round(low),
       high: Math.round(high),
-      stable: overall.answered >= STABLE_ANSWERS,
-      untilStable: Math.max(0, STABLE_ANSWERS - overall.answered),
-      byArea: breakdownBy(attempts, function (item) {
+      point: Math.round(point),
+      width: Math.round(width),
+      lowLabel: labelOf(low),
+      highLabel: labelOf(high),
+      pointLabel: labelOf(point),
+      rangeLabel: rangeLabel(low, high),
+      precision: width <= NARROW_WIDTH ? "narrow" : width >= WIDE_WIDTH ? "wide" : "medium",
+      levels: levels,
+      nextLevel: next,
+      byArea: breakdownBy(list, function (item) {
         return item.kind;
       }),
-      byLevel: breakdownBy(attempts, function (item) {
-        return String(weightOf(item.level) === 1 ? 1 : item.level);
-      }).sort(function (a, b) {
-        return Number(a.key) - Number(b.key);
-      }),
-      byGroup: breakdownBy(attempts, function (item) {
+      byGroup: breakdownBy(list, function (item) {
         return item.groupId;
       })
-    };
-  }
-
-  function levelSummary(attempts, level) {
-    var subset = attempts.filter(function (item) {
-      return weightOf(item.level) === level;
-    });
-    var correct = subset.filter(function (item) {
-      return item.firstCorrect;
-    }).length;
-    var accuracy = subset.length ? correct / subset.length : 0;
-    var requirement = TIERS[level];
-    return {
-      level: level,
-      answered: subset.length,
-      correct: correct,
-      accuracy: accuracy,
-      mastery: subset.length ? masteryFromAccuracy(accuracy) : 0,
-      minAnswers: requirement.minAnswers,
-      minMastery: requirement.minMastery,
-      cleared: subset.length >= requirement.minAnswers && masteryFromAccuracy(accuracy) >= requirement.minMastery,
-      impliedByHigher: false
-    };
-  }
-
-  /**
-   * 上のレベルをクリアしていれば、下のレベルもクリア扱いにする。
-   * 適応出題で難しい問題へ進んだ学習者が、やさしいレベルの解答数が足りないという
-   * それだけの理由で階級を下げられないようにするため。
-   */
-  function applyImpliedClears(levels) {
-    for (var i = levels.length - 2; i >= 0; i -= 1) {
-      if (!levels[i].cleared && levels[i + 1].cleared) {
-        levels[i].cleared = true;
-        levels[i].impliedByHigher = true;
-      }
-    }
-    return levels;
-  }
-
-  /** そのレベルをクリアするまでの進み具合（0〜1）。問題数4割、到達度6割で見る。 */
-  function tierProgress(summary) {
-    var byCount = Math.min(summary.answered / summary.minAnswers, 1);
-    var byMastery = Math.min(summary.mastery / summary.minMastery, 1);
-    return clamp(byCount * 0.4 + byMastery * 0.6, 0, 1);
-  }
-
-  /**
-   * いまの階級。
-   * 解いた問題の難易度が名乗れる上限を決めるので、
-   * やさしい問題だけを正解しても共通テストの点数には届かない。
-   */
-  function rankOf(attempts) {
-    var levels = applyImpliedClears(
-      [1, 2, 3].map(function (level) {
-        return levelSummary(attempts, level);
-      })
-    );
-
-    var tier = 1;
-    while (tier <= TIER_COUNT && levels[tier - 1].cleared) tier += 1;
-
-    if (tier > TIER_COUNT) {
-      return {
-        tier: TIER_COUNT + 1,
-        label: TIERS[TIER_COUNT].clearedLabel,
-        goal: null,
-        steps: null,
-        progress: 1,
-        ladderProgress: 1,
-        scoreReady: true,
-        levels: levels,
-        message: "レベル3まで到達しました。共通テスト換算の点数を出しています。"
-      };
-    }
-
-    var current = levels[tier - 1];
-    var progress = tierProgress(current);
-    var ladderProgress = clamp((tier - 1 + progress) / TIER_COUNT, 0, 1);
-    var cleared = tier > 1 ? TIERS[tier - 1].clearedLabel : BASE_LABEL;
-
-    // そのレベルをまだ解いていないときは、クリア済みの階級をそのまま名乗る
-    if (current.answered === 0) {
-      return {
-        tier: tier,
-        label: cleared,
-        goal: TIERS[tier].goal,
-        steps: MAX_STEPS,
-        progress: 0,
-        ladderProgress: ladderProgress,
-        scoreReady: false,
-        levels: levels,
-        message: "レベル" + tier + "の問題を解くと、" + TIERS[tier].goal + "に届いているか測れます。"
-      };
-    }
-
-    // レベル1がまだ固まっていない段階は、いちばん下の階級から
-    var label = tier === 1 && current.answered >= current.minAnswers && current.mastery < BASE_MASTERY
-      ? BASE_LABEL
-      : TIERS[tier].tryLabel;
-
-    var steps = clamp(MAX_STEPS - Math.floor(progress * MAX_STEPS), 1, MAX_STEPS);
-    var shortOfCount = Math.max(0, current.minAnswers - current.answered);
-
-    return {
-      tier: tier,
-      label: label,
-      goal: TIERS[tier].goal,
-      steps: steps,
-      progress: progress,
-      ladderProgress: ladderProgress,
-      scoreReady: false,
-      levels: levels,
-      message: shortOfCount
-        ? "レベル" + tier + "をあと" + shortOfCount + "問解くと判定できます（いまの正答率 " + Math.round(current.accuracy * 100) + "%）。"
-        : "レベル" + tier + "の正答率を " + Math.round((current.minMastery * (1 - GUESS_RATE) + GUESS_RATE) * 100) +
-          "% まで上げると " + TIERS[tier].goal + "です（いま " + Math.round(current.accuracy * 100) + "%）。"
     };
   }
 
@@ -326,23 +260,18 @@
   }
 
   return {
-    LEVEL_WEIGHT: LEVEL_WEIGHT,
-    GUESS_RATE: GUESS_RATE,
+    SCALE_MIN: SCALE_MIN,
+    SCALE_MAX: SCALE_MAX,
+    BANDS: BANDS,
+    LEVEL_DIFFICULTY: LEVEL_DIFFICULTY,
+    GUESS: GUESS,
     MIN_ANSWERS: MIN_ANSWERS,
-    STABLE_ANSWERS: STABLE_ANSWERS,
-    ANCHORS: ANCHORS,
-    TIERS: TIERS,
-    TIER_COUNT: TIER_COUNT,
-    BASE_LABEL: BASE_LABEL,
-    MAX_STEPS: MAX_STEPS,
-    levelSummary: levelSummary,
-    applyImpliedClears: applyImpliedClears,
-    rankOf: rankOf,
-    weightOf: weightOf,
-    masteryFromAccuracy: masteryFromAccuracy,
-    scoreFromMastery: scoreFromMastery,
-    scoreFromAccuracy: scoreFromAccuracy,
-    summarizeAttempts: summarizeAttempts,
+    CREDIBLE: CREDIBLE,
+    correctChance: correctChance,
+    posterior: posterior,
+    labelOf: labelOf,
+    rangeLabel: rangeLabel,
+    nextUsefulLevel: nextUsefulLevel,
     estimate: estimate,
     weakestGroup: weakestGroup
   };
