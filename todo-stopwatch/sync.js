@@ -513,12 +513,28 @@
     }
   }
 
+  // client.auth.getSession()は、端末をしばらく放置した後(セッションの
+  // 更新が必要になるタイミングなど)、ネットワークの状態やSupabase-js内部
+  // のロック待ちが原因で、応答が永久に返ってこないことがある。ここが
+  // 止まるとinit()自体も完了しないため、以降のonAuthStateChange登録や
+  // 定期的な同期チェックすら始まらず、同期機能全体が固まったままになって
+  // しまう。一定時間で諦めて未サインイン扱いとして進めることで、少なくとも
+  // アプリ本体の初期描画(script.js側のAppSyncReady待ちタイムアウト)を
+  // 塞がないようにする。
+  const SESSION_FETCH_TIMEOUT_MS = 6000;
+  async function getSessionWithTimeout() {
+    return Promise.race([
+      client.auth.getSession(),
+      new Promise((resolve) => setTimeout(() => resolve({ data: { session: null } }), SESSION_FETCH_TIMEOUT_MS)),
+    ]);
+  }
+
   async function init() {
     if (!configured) return;
     client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     logVisitIfNewDay();
     setInterval(logVisitIfNewDay, VISIT_RECHECK_MS);
-    const { data } = await client.auth.getSession();
+    const { data } = await getSessionWithTimeout();
     session = data.session;
     if (session) await initialSync();
     setInterval(checkForRemoteUpdates, BACKGROUND_SYNC_CHECK_MS);
