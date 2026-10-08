@@ -1,0 +1,456 @@
+<title>持ち物見える化</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<style>
+/* レイアウト：スマホ1列。上にシーンのタブ（固定）、その下に場所カードが縦に並ぶ */
+:root {
+  --bg: #f3f4f1;
+  --surface: #ffffff;
+  --fg: #23272a;
+  --muted: #7b827f;
+  --faint: #c3c8c4;
+  --line: #e1e4e0;
+  --accent: #2f6f62;
+  --accent-soft: #dcebe6;
+  --use: #b4542f;
+  --use-soft: #f6e3da;
+  /* 場所の色（名前ごとに固定で割り当て） */
+  --p0-line: #3f7fb5; --p0-bg: #eaf2f9;
+  --p1-line: #c08a1e; --p1-bg: #fbf3e2;
+  --p2-line: #8a5fb0; --p2-bg: #f3edf8;
+  --p3-line: #3c9a6b; --p3-bg: #e8f5ee;
+  --p4-line: #c0566e; --p4-bg: #fbecef;
+  --p5-line: #5d7a8c; --p5-bg: #edf2f5;
+  --p6-line: #9a7a4f; --p6-bg: #f5efe6;
+  --font-display: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Hiragino Sans", sans-serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #171a1a; --surface: #212525; --fg: #e6e9e7; --muted: #949c98; --faint: #555c59; --line: #323837;
+    --accent: #7fc4b3; --accent-soft: #24403a; --use: #f0a07f; --use-soft: #47302a;
+    --p0-line: #7cb4e3; --p0-bg: #1f2c38;
+    --p1-line: #e3b75a; --p1-bg: #332c1c;
+    --p2-line: #bb97dc; --p2-bg: #2c2535;
+    --p3-line: #74cc9e; --p3-bg: #1d3128;
+    --p4-line: #e78ea2; --p4-bg: #36232a;
+    --p5-line: #9bb6c7; --p5-bg: #252e33;
+    --p6-line: #cfae80; --p6-bg: #312a20;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #171a1a; --surface: #212525; --fg: #e6e9e7; --muted: #949c98; --faint: #555c59; --line: #323837;
+  --accent: #7fc4b3; --accent-soft: #24403a; --use: #f0a07f; --use-soft: #47302a;
+  --p0-line: #7cb4e3; --p0-bg: #1f2c38;
+  --p1-line: #e3b75a; --p1-bg: #332c1c;
+  --p2-line: #bb97dc; --p2-bg: #2c2535;
+  --p3-line: #74cc9e; --p3-bg: #1d3128;
+  --p4-line: #e78ea2; --p4-bg: #36232a;
+  --p5-line: #9bb6c7; --p5-bg: #252e33;
+  --p6-line: #cfae80; --p6-bg: #312a20;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+button { font: inherit; color: inherit; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app { max-width: 520px; margin: 0 auto; padding-bottom: 32px; }
+
+/* ── 上部：予定名とタブ ── */
+.top {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 5;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.trip { display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 6px; }
+.trip h1 { margin: 0; font-family: var(--font-display); font-size: 20px; font-weight: 700; letter-spacing: .02em; }
+.trip .kind { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 1px 8px; }
+
+.tabs {
+  display: flex; gap: 6px;
+  overflow-x: auto; scrollbar-width: none;
+  padding: 6px 16px 10px;
+  scroll-padding-inline: 16px;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  flex: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 99px;
+  padding: 5px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; line-height: 1.25;
+}
+.tab .day { font-size: 10px; color: var(--muted); }
+.tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 700; }
+.tab[aria-selected="true"] .day { color: var(--surface); opacity: .85; }
+.tab.past:not([aria-selected="true"]) { color: var(--muted); }
+
+/* ── シーンの見出し ── */
+.scene-head { padding: 14px 16px 4px; display: grid; gap: 6px; }
+.scene-title { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.scene-title h2 { margin: 0; font-family: var(--font-display); font-size: 22px; font-weight: 700; text-wrap: balance; }
+.step { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.uses { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.uses .chip { background: var(--use-soft); color: var(--use); border-radius: 6px; padding: 1px 7px; font-weight: 500; }
+.legend { font-size: 11px; color: var(--muted); display: flex; justify-content: flex-end; gap: 4px; padding: 0 16px; }
+
+/* ── 場所カード ── */
+.places { display: grid; gap: 12px; padding: 8px 16px 0; }
+.place {
+  background: var(--surface);
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--pl);
+  overflow: hidden;
+}
+.place .place { border-radius: 8px; border-top: none; border-right: none; border-bottom: none; background: var(--pb); }
+.place .place .place { background: var(--surface); }
+.place-body .place { margin: 4px 0 6px; }
+.place-head {
+  width: 100%;
+  display: flex; align-items: center; gap: 8px;
+  border: 0; background: transparent; text-align: left;
+  padding: 9px 12px 9px 10px; cursor: pointer;
+}
+.place > .place-head { background: var(--pb); }
+.place .place > .place-head { background: transparent; padding: 6px 10px 6px 8px; }
+.caret { width: 12px; flex: none; color: var(--pl); font-size: 11px; transition: transform .15s; }
+.place[data-open="true"] > .place-head .caret { transform: rotate(90deg); }
+.place-name { font-weight: 700; flex: 1; min-width: 0; }
+.place .place .place-name { font-weight: 500; font-size: 14px; }
+.place-count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.place-body { padding: 2px 10px 6px 10px; }
+.place .place .place-body { padding: 0 8px 4px 8px; }
+.place[data-open="false"] > .place-body { display: none; }
+
+/* ── アイテム行 ── */
+.item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--line);
+  min-height: 36px;
+}
+.item:last-child { border-bottom: 0; }
+.place-body > .place + .item, .place-body > .item:has(+ .place) { border-bottom: 0; }
+.type {
+  flex: none; width: 18px; height: 18px; border-radius: 5px;
+  font-size: 10px; line-height: 18px; text-align: center;
+  color: var(--muted); border: 1px solid var(--faint);
+}
+.type.consume { border-style: dashed; }
+.item .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.use-tag { flex: none; font-size: 11px; color: var(--use); background: var(--use-soft); border-radius: 5px; padding: 0 5px; font-variant-numeric: tabular-nums; }
+.nums { flex: none; display: flex; align-items: baseline; gap: 3px; font-variant-numeric: tabular-nums; min-width: 58px; justify-content: flex-end; }
+.nums .u { font-size: 17px; font-weight: 700; min-width: 1.3em; text-align: right; }
+.nums .sep { color: var(--faint); }
+.nums .h { font-size: 13px; color: var(--muted); min-width: 1.3em; }
+.nums.repeat { color: var(--accent); font-size: 16px; }
+.item.done .name, .item.done .nums .u { color: var(--faint); }
+.item.done .type { opacity: .5; }
+
+/* ── 未配置・使い切り ── */
+.unplaced { background: var(--surface); border: 1px dashed var(--faint); border-radius: 10px; padding: 8px 12px; }
+.unplaced h3 { margin: 0 0 2px; font-size: 13px; color: var(--use); font-weight: 700; }
+.unplaced .hint { font-size: 11px; color: var(--muted); margin: 0 0 4px; }
+.gone { font-size: 12px; color: var(--muted); padding: 2px 4px; }
+.gone b { font-weight: 500; }
+
+/* ── 下部のシーン送り ── */
+.pager { display: flex; justify-content: space-between; gap: 12px; padding: 16px; }
+.pager button {
+  flex: 1; border: 1px solid var(--line); background: var(--surface); border-radius: 10px;
+  padding: 10px; font-size: 13px; cursor: pointer;
+}
+.pager button:disabled { opacity: .35; cursor: default; }
+
+.key { margin: 4px 16px 0; padding: 12px; border-radius: 10px; border: 1px solid var(--line); font-size: 12px; color: var(--muted); display: grid; gap: 6px; }
+.key-row { display: flex; align-items: center; gap: 8px; }
+.key-row .nums { min-width: 0; }
+.sample { font-size: 11px; color: var(--muted); text-align: center; padding: 8px 16px 0; }
+
+@media (prefers-reduced-motion: reduce) { .caret { transition: none; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="trip"><h1 id="tripName"></h1><span class="kind" id="tripKind"></span></div>
+    <nav class="tabs" id="tabs" role="tablist" aria-label="シーン"></nav>
+  </header>
+  <main id="scene"></main>
+  <div class="pager">
+    <button type="button" id="prev">← 前のシーン</button>
+    <button type="button" id="next">次のシーン →</button>
+  </div>
+  <section class="key" aria-label="表示の見かた">
+    <div class="key-row"><span class="nums"><span class="u">2</span><span class="sep">/</span><span class="h">3</span></span>未使用 / 手持ち（そのシーンを使い終えた時点）</div>
+    <div class="key-row"><span class="type">帰</span>持ち帰り型：使っても手持ちは減らない</div>
+    <div class="key-row"><span class="type consume">消</span>消耗型：使ったら手持ちも減る</div>
+    <div class="key-row"><span class="nums repeat">♻︎</span>繰り返し型：何度使っても減らない</div>
+    <div class="key-row"><span class="use-tag">−1</span>このシーンで使う予定の数</div>
+  </section>
+  <p class="sample">サンプルデータで表示しています（試作版）</p>
+</div>
+
+<script>
+// ───────── サンプルデータ：京都 2泊3日 ─────────
+// データの形は指示書 7章（予定／シーン／アイテム／場所／配置／使用）に合わせています。
+
+const TYPE = { BACK: 'back', CONSUME: 'consume', REPEAT: 'repeat' };
+
+function buildScenes(nights) {
+  const s = [
+    { name: '行きの移動', layout: 'transit' },
+    { name: '1日目 日中', layout: 'day' },
+    { name: '1日目 夕刻', layout: 'evening' },
+  ];
+  for (let d = 1; d <= nights; d++) {
+    s.push({ name: `${d}日目 夜`, layout: 'room' });
+    s.push({ name: `${d}日目 就寝時`, layout: 'room' });
+    s.push({ name: `${d + 1}日目 朝`, layout: 'room' });
+    s.push({ name: `${d + 1}日目 日中`, layout: 'day' });
+  }
+  s.push({ name: '帰りの移動', layout: 'transit' });
+  return s.map((x, i) => ({ id: 's' + i, order: i, ...x }));
+}
+
+const trip = { name: '京都 2泊3日', kind: '旅行', scenes: buildScenes(2) };
+
+// アイテム：名前、総数 N、タイプ
+const items = [
+  ['tshirt',   'Tシャツ',           2, TYPE.BACK],
+  ['under',    '下着',              2, TYPE.BACK],
+  ['socks',    '靴下',              2, TYPE.BACK],
+  ['hanky',    'ハンカチ',          3, TYPE.BACK],
+  ['pajama',   'パジャマ',          1, TYPE.BACK],
+  ['mask',     'マスク',            3, TYPE.CONSUME],
+  ['kairo',    'カイロ',            4, TYPE.CONSUME],
+  ['tissue',   'ポケットティッシュ', 2, TYPE.CONSUME],
+  ['contact',  '使い捨てコンタクト', 2, TYPE.CONSUME],
+  ['medicine', '頭痛薬',            4, TYPE.CONSUME],
+  ['phone',    'スマホ',            1, TYPE.REPEAT],
+  ['wallet',   '財布',              1, TYPE.REPEAT],
+  ['charger',  '充電器',            1, TYPE.REPEAT],
+  ['battery',  'モバイルバッテリー', 1, TYPE.REPEAT],
+  ['umbrella', '折りたたみ傘',      1, TYPE.REPEAT],
+  ['eyedrop',  '目薬',              1, TYPE.REPEAT],
+  ['brush',    '歯ブラシ',          1, TYPE.REPEAT],
+  ['wash',     '洗顔料',            1, TYPE.REPEAT],
+].map(([id, name, n, type]) => ({ id, name, n, type }));
+const itemById = Object.fromEntries(items.map(i => [i.id, i]));
+
+// 使用（予定数）：シーン名 → { アイテム: 個数 }
+const usagePlan = {
+  '1日目 日中': { hanky: 1, mask: 1, kairo: 1 },
+  '1日目 夜':   { under: 1 },
+  '2日目 朝':   { tshirt: 1, socks: 1, contact: 1 },
+  '2日目 日中': { hanky: 1, mask: 1, kairo: 2, tissue: 1 },
+  '2日目 夜':   { under: 1, medicine: 1 },
+  '3日目 朝':   { tshirt: 1, socks: 1, contact: 1 },
+  '3日目 日中': { hanky: 1, mask: 1, kairo: 1 },
+};
+
+// 場所の並び（シーンの種類ごと）。入れ子は最大3段。
+const washPouch = { name: '洗面ポーチ', items: ['brush', 'wash'], children: [
+  { name: '小袋', items: ['contact'] },
+]};
+const handBag = (extra = []) => ({ name: '手提げ鞄', items: ['phone', 'wallet', 'hanky', 'mask', 'tissue', 'kairo', ...extra], children: [
+  { name: '小物ポーチ', items: ['eyedrop', 'medicine', 'battery'] },
+]});
+const layouts = {
+  transit: [
+    { name: 'ボストンバッグ', items: ['tshirt', 'under', 'socks', 'pajama', 'charger'], children: [washPouch] },
+    handBag(['umbrella']),
+  ],
+  day: [
+    handBag(['umbrella']),
+    { name: 'ボストンバッグ', items: ['tshirt', 'under', 'socks', 'pajama', 'charger'], children: [washPouch] },
+  ],
+  // チェックイン直後：傘をどこに置いたか未記入 → 「未配置」の見本
+  evening: [
+    handBag(),
+    { name: 'ボストンバッグ', items: ['tshirt', 'under', 'socks', 'pajama', 'charger'], children: [washPouch] },
+  ],
+  // ホテルの部屋：ポーチをボストンバッグから出して洗面台へ
+  room: [
+    { name: '洗面台', items: [], children: [washPouch] },
+    { name: 'ベッドサイド', items: ['phone', 'charger', 'battery'] },
+    { name: 'ボストンバッグ', items: ['tshirt', 'under', 'socks', 'pajama'] },
+    { name: '手提げ鞄', items: ['wallet', 'hanky', 'mask', 'tissue', 'kairo', 'umbrella'], children: [
+      { name: '小物ポーチ', items: ['eyedrop', 'medicine'] },
+    ]},
+  ],
+};
+
+// 場所（Place）・配置（Placement）・使用（Usage）を組み立てる
+const places = [], placements = [], usages = [];
+let pid = 0;
+function addPlace(scene, node, parentId, depth) {
+  const id = 'p' + (pid++);
+  places.push({ id, sceneId: scene.id, name: node.name, parentId, depth });
+  (node.items || []).forEach(itemId => placements.push({ sceneId: scene.id, placeId: id, itemId, qty: itemById[itemId].n }));
+  (node.children || []).forEach(c => addPlace(scene, c, id, depth + 1));
+}
+trip.scenes.forEach(scene => {
+  layouts[scene.layout].forEach(node => addPlace(scene, node, null, 1));
+  Object.entries(usagePlan[scene.name] || {}).forEach(([itemId, planned]) =>
+    usages.push({ sceneId: scene.id, itemId, planned, actual: null }));
+});
+
+// ───────── 計算 ─────────
+// U = そのシーンまで（そのシーンを含む）に使った累計。当日の記録(actual)があればそちらを優先。
+function usedIn(sceneId, itemId) {
+  const u = usages.find(x => x.sceneId === sceneId && x.itemId === itemId);
+  return u ? (u.actual ?? u.planned) : 0;
+}
+function counts(item, sceneIdx) {
+  if (item.type === TYPE.REPEAT) return { repeat: true, held: item.n };
+  let U = 0;
+  for (let i = 0; i <= sceneIdx; i++) U += usedIn(trip.scenes[i].id, item.id);
+  U = Math.min(U, item.n);
+  const unused = item.n - U;
+  const held = item.type === TYPE.CONSUME ? item.n - U : item.n;
+  return { unused, held };
+}
+
+// 同じ名前の場所はどのシーンでも同じ色
+const colorOf = (() => {
+  const map = new Map();
+  places.forEach(p => { if (!map.has(p.name)) map.set(p.name, map.size % 7); });
+  return name => map.get(name);
+})();
+
+// ───────── 表示 ─────────
+let current = 0;
+const openState = new Map(); // sceneId:placeName-path → 開閉
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function renderTabs() {
+  $('tabs').innerHTML = trip.scenes.map((s, i) => {
+    const m = s.name.match(/^(\d+日目) (.+)$/);
+    const label = m ? `<span class="day">${m[1]}</span>${esc(m[2])}` : `<span class="day">&nbsp;</span>${esc(s.name)}`;
+    return `<button type="button" role="tab" class="tab${i < current ? ' past' : ''}" aria-selected="${i === current}" data-i="${i}">${label}</button>`;
+  }).join('');
+  const active = $('tabs').querySelector('[aria-selected="true"]');
+  active?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+}
+
+function itemRow(item, idx, scene) {
+  const c = counts(item, idx);
+  const use = usedIn(scene.id, item.id);
+  const typeMark = item.type === TYPE.BACK ? '<span class="type" title="持ち帰り型">帰</span>'
+    : item.type === TYPE.CONSUME ? '<span class="type consume" title="消耗型">消</span>'
+    : '<span class="type" title="繰り返し型" style="visibility:hidden"></span>';
+  const nums = c.repeat
+    ? '<span class="nums repeat" aria-label="繰り返し型">♻︎</span>'
+    : `<span class="nums" aria-label="未使用${c.unused} 手持ち${c.held}"><span class="u">${c.unused}</span><span class="sep">/</span><span class="h">${c.held}</span></span>`;
+  const done = !c.repeat && c.unused === 0;
+  return `<div class="item${done ? ' done' : ''}">${typeMark}<span class="name">${esc(item.name)}</span>${use ? `<span class="use-tag">−${use}</span>` : ''}${nums}</div>`;
+}
+
+function renderScene() {
+  const scene = trip.scenes[current];
+  const idx = current;
+  const scenePlaces = places.filter(p => p.sceneId === scene.id);
+  const scenePlacements = placements.filter(p => p.sceneId === scene.id);
+  const isGone = item => { const c = counts(item, idx); return !c.repeat && c.held === 0; };
+
+  // 場所ごとの中身の点数（入れ子を含む、使い切ったものは除く）
+  function total(place) {
+    let n = scenePlacements.filter(x => x.placeId === place.id)
+      .map(x => itemById[x.itemId]).filter(i => !isGone(i))
+      .reduce((a, i) => a + counts(i, idx).held, 0);
+    scenePlaces.filter(p => p.parentId === place.id).forEach(ch => n += total(ch));
+    return n;
+  }
+
+  function placeHtml(place, path) {
+    const key = scene.id + ':' + path;
+    const open = openState.has(key) ? openState.get(key) : place.depth < 3;
+    const col = colorOf(place.name);
+    const rows = scenePlacements.filter(x => x.placeId === place.id)
+      .map(x => itemById[x.itemId]).filter(i => !isGone(i))
+      .map(i => itemRow(i, idx, scene)).join('');
+    const kids = scenePlaces.filter(p => p.parentId === place.id)
+      .map(ch => placeHtml(ch, path + '/' + ch.name)).join('');
+    return `<section class="place" data-open="${open}" style="--pl:var(--p${col}-line);--pb:var(--p${col}-bg)">
+      <button type="button" class="place-head" data-key="${esc(key)}" aria-expanded="${open}">
+        <span class="caret" aria-hidden="true">▶</span>
+        <span class="place-name">${esc(place.name)}</span>
+        <span class="place-count">${total(place)}点</span>
+      </button>
+      <div class="place-body">${rows}${kids}</div>
+    </section>`;
+  }
+
+  const roots = scenePlaces.filter(p => !p.parentId).map(p => placeHtml(p, p.name)).join('');
+
+  const placedIds = new Set(scenePlacements.map(x => x.itemId));
+  const unplaced = items.filter(i => !placedIds.has(i.id) && !isGone(i));
+  const gone = items.filter(isGone);
+
+  const useList = usages.filter(u => u.sceneId === scene.id)
+    .map(u => `<span class="chip">${esc(itemById[u.itemId].name)} ${u.actual ?? u.planned}</span>`).join('');
+
+  $('scene').innerHTML = `
+    <div class="scene-head">
+      <div class="scene-title"><h2>${esc(scene.name)}</h2><span class="step">${idx + 1} / ${trip.scenes.length}</span></div>
+      <div class="uses">${useList ? 'このシーンで使う：' + useList : 'このシーンで使う予定のものはありません'}</div>
+    </div>
+    <div class="legend">右の数字は 未使用 / 手持ち</div>
+    <div class="places">
+      ${roots}
+      ${unplaced.length ? `<div class="unplaced"><h3>未配置（${unplaced.length}点）</h3><p class="hint">このシーンでどの場所にも入っていません</p>${unplaced.map(i => itemRow(i, idx, scene)).join('')}</div>` : ''}
+      ${gone.length ? `<div class="gone">使い切ったもの：<b>${gone.map(i => esc(i.name)).join('、')}</b></div>` : ''}
+    </div>`;
+
+  $('prev').disabled = current === 0;
+  $('next').disabled = current === trip.scenes.length - 1;
+}
+
+function go(i) {
+  current = Math.max(0, Math.min(trip.scenes.length - 1, i));
+  renderTabs();
+  renderScene();
+}
+
+$('tabs').addEventListener('click', e => {
+  const t = e.target.closest('.tab');
+  if (t) go(+t.dataset.i);
+});
+$('scene').addEventListener('click', e => {
+  const h = e.target.closest('.place-head');
+  if (!h) return;
+  const sec = h.parentElement;
+  const open = sec.dataset.open !== 'true';
+  sec.dataset.open = open;
+  h.setAttribute('aria-expanded', open);
+  openState.set(h.dataset.key, open);
+});
+$('prev').addEventListener('click', () => go(current - 1));
+$('next').addEventListener('click', () => go(current + 1));
+
+$('tripName').textContent = trip.name;
+$('tripKind').textContent = trip.kind;
+go(0);
+</script>
